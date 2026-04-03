@@ -441,7 +441,7 @@ tags: [tag1, tag2]
 
 ## 项目配置目录（`.ccserver/`）
 
-`.ccserver/` 与 Claude Code 的 `.claude/` 目录对应，**可以直接将 `.claude/` 目录复制并重命名为 `.ccserver/` 使用**。放在 `CCSERVER_PROJECT_DIR` 指定的工作目录下，框架启动时自动加载。
+`.ccserver/` 对应 Claude Code 的 `.claude/` 目录，实现了其中的部分功能。放在 `CCSERVER_PROJECT_DIR` 指定的工作目录下，框架启动时自动加载。`.claude/` 中已支持的内容可直接拷贝到 `.ccserver/` 使用。
 
 ```
 .ccserver/
@@ -453,7 +453,7 @@ tags: [tag1, tag2]
 └── settings.local.json # 本地覆盖（gitignore，优先级高于 settings.json）
 ```
 
-其中 `agents/`、`skills/`、`hooks/`、`commands/` 的文件格式与 Claude Code 完全兼容。
+已支持的功能中，`agents/`、`skills/`、`hooks/`、`commands/` 的文件格式与 Claude Code 保持一致。
 
 ---
 
