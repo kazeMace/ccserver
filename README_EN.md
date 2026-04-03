@@ -392,6 +392,24 @@ All configuration supports `CCSERVER_*` environment variable overrides.
 
 ---
 
+## Project Config Directory (`.ccserver/`)
+
+`.ccserver/` is the CCServer equivalent of Claude Code's `.claude/` directory — **you can directly copy and rename your `.claude/` directory to `.ccserver/` and it will work out of the box**. Place it under the directory specified by `CCSERVER_PROJECT_DIR` and the framework will load it automatically on startup.
+
+```
+.ccserver/
+├── agents/             # Custom subagent definitions (*.md, same format as Claude Code agents)
+├── skills/             # Skill documents (each subdirectory contains a SKILL.md)
+├── hooks/              # Lifecycle hook scripts (*.py)
+├── commands/           # Custom slash commands (*.md)
+├── settings.json       # Permission settings (allowed_tools / denied_tools, etc.)
+└── settings.local.json # Local overrides (gitignored, takes priority over settings.json)
+```
+
+The file formats in `agents/`, `skills/`, `hooks/`, and `commands/` are fully compatible with Claude Code.
+
+---
+
 ## Architecture
 
 ```mermaid

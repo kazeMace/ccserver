@@ -439,6 +439,24 @@ tags: [tag1, tag2]
 
 ---
 
+## 项目配置目录（`.ccserver/`）
+
+`.ccserver/` 与 Claude Code 的 `.claude/` 目录对应，**可以直接将 `.claude/` 目录复制并重命名为 `.ccserver/` 使用**。放在 `CCSERVER_PROJECT_DIR` 指定的工作目录下，框架启动时自动加载。
+
+```
+.ccserver/
+├── agents/             # 自定义 subagent 定义（*.md，格式同 Claude Code agents）
+├── skills/             # 技能文档（每个子目录含 SKILL.md）
+├── hooks/              # 生命周期钩子脚本（*.py）
+├── commands/           # 自定义斜杠命令（*.md）
+├── settings.json       # 权限设置（allowed_tools / denied_tools 等）
+└── settings.local.json # 本地覆盖（gitignore，优先级高于 settings.json）
+```
+
+其中 `agents/`、`skills/`、`hooks/`、`commands/` 的文件格式与 Claude Code 完全兼容。
+
+---
+
 ## 框架层次结构
 
 ```mermaid
