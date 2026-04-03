@@ -265,12 +265,16 @@ class MyLibV100(PromptLib):
 
 > 除 `build_system()` 外，其余方法均有基类默认实现，按需覆盖即可。
 
-**第二步**：在 `prompts_lib/adapter.py` 末尾注册：
+**第二步**：在同目录下创建 `manifest.json`：
 
-```python
-from prompts_lib.my_lib.v1_0_0.lib import MyLibV100
-register("my_lib:v1.0.0", MyLibV100())
+```json
+{
+  "lib_id": "my_lib:v1.0.0",
+  "class": "MyLibV100"
+}
 ```
+
+框架启动时自动扫描所有 `manifest.json` 并注册，无需修改任何现有文件。
 
 **第三步**：通过环境变量启用：
 

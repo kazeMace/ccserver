@@ -220,12 +220,16 @@ class MyLibV100(PromptLib):
 
 > All methods except `build_system()` have default base class implementations — override only what you need.
 
-**Step 2**: Register in `prompts_lib/adapter.py`:
+**Step 2**: Create a `manifest.json` in the same directory:
 
-```python
-from prompts_lib.my_lib.v1_0_0.lib import MyLibV100
-register("my_lib:v1.0.0", MyLibV100())
+```json
+{
+  "lib_id": "my_lib:v1.0.0",
+  "class": "MyLibV100"
+}
 ```
+
+The framework auto-scans all `manifest.json` files on startup and registers them — no changes to existing files needed.
 
 **Step 3**: Enable via environment variable:
 
