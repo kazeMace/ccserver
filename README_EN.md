@@ -378,6 +378,7 @@ All configuration supports `CCSERVER_*` environment variable overrides.
 
 | Config | Env Var | Default | Description |
 |--------|---------|---------|-------------|
+| `PROJECT_DIR` | `CCSERVER_PROJECT_DIR` | `.` (current dir) | **Agent working directory**. The framework loads `.ccserver/` (agents, skills, hooks, settings, etc.) from this directory, and Agent file operations are rooted here. Must be explicitly set when deploying `server.py`; `tui.py` defaults to the current directory. |
 | `MODEL` | `CCSERVER_MODEL` | `claude-sonnet-4-6` | Claude model to use |
 | `THRESHOLD` | `CCSERVER_THRESHOLD` | `50000` | Character threshold for full compression |
 | `KEEP_RECENT` | `CCSERVER_KEEP_RECENT` | `3` | Tool results kept intact during micro compression |

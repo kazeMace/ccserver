@@ -425,6 +425,7 @@ tags: [tag1, tag2]
 
 | 配置项 | 环境变量 | 默认值 | 说明 |
 |--------|----------|--------|------|
+| `PROJECT_DIR` | `CCSERVER_PROJECT_DIR` | `.`（当前目录） | **Agent 工作目录**。框架从此目录加载 `.ccserver/`（agents、skills、hooks、settings 等），Agent 的文件操作也以此为根目录。`server.py` 部署时必须显式指定，`tui.py` 默认使用当前目录。 |
 | `MODEL` | `CCSERVER_MODEL` | `claude-sonnet-4-6` | 使用的 Claude 模型 |
 | `THRESHOLD` | `CCSERVER_THRESHOLD` | `50000` | 触发完整压缩的字符数阈值 |
 | `KEEP_RECENT` | `CCSERVER_KEEP_RECENT` | `3` | micro 压缩保留的最近工具结果数 |
