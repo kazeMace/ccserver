@@ -1,0 +1,136 @@
+# ─── Python ───────────────────────────────────────────────────────────────────
+**/__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+*.egg
+dist/
+build/
+wheels/
+sdist/
+.installed.cfg
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Type checking
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+.virtualenv/
+
+# ─── Conda / Miniforge / Mamba ────────────────────────────────────────────────
+.conda/
+conda-meta/
+envs/
+pkgs/
+.mamba/
+conda-lock.yml
+
+# Testing
+.pytest_cache/
+.tox/
+.nox/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+
+# ─── IPython / Jupyter ────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+profile_default/
+ipython_config.py
+*.ipynb
+
+# ─── Environment variables ────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+
+# ─── Windows ──────────────────────────────────────────────────────────────────
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# ─── macOS ────────────────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+.AppleDouble
+.LSOverride
+Icon
+*.icloud
+
+# ─── VSCode ───────────────────────────────────────────────────────────────────
+.vscode/
+!.vscode/extensions.json
+*.code-workspace
+
+# ─── Cursor ───────────────────────────────────────────────────────────────────
+.cursor/
+.cursorignore
+.cursorindexingignore
+
+# ─── JetBrains (IntelliJ / PyCharm / WebStorm …) ─────────────────────────────
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+.idea_modules/
+atlassian-ide-plugin.xml
+com_crashlytics_export_strings.xml
+crashlytics.properties
+crashlytics-build.properties
+fabric.properties
+
+# ─── Vim / Emacs ──────────────────────────────────────────────────────────────
+*.swp
+*.swo
+*~
+\#*\#
+.\#*
+
+# ─── CCServer 运行时数据 ──────────────────────────────────────────────────────────
+sessions/
+logs/
+bak/
+docs/
+conversations_*.jsonl
+.specify
+.worktree
+bak
+loggings
+records
+workflows
+**/*.jsonl
+**/*.db
+**/.claude/
+**/CLAUDE.md
+reverse_cc*
+.worktrees
+src/pipeline/_bare_roots/
+**/*.log  

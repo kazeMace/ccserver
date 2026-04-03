@@ -1,0 +1,41 @@
+{
+  "mcpServers": {
+    "web-search": {
+      "type": "stdio",
+      "command": "python3",
+      "args": [
+        "mcp_servers/web-search/server.py"
+      ],
+      "env": {}
+    },
+    "memory": {
+      "type": "stdio",
+      "command": "python3",
+      "args": [
+        "mcp_servers/memory/server.py"
+      ],
+      "env": {}
+    },
+    "weather": {
+      "type": "stdio",
+      "command": "python3",
+      "args": [
+        "mcp_servers/weather/server.py"
+      ],
+      "env": {}
+    },
+    "chat-model": {
+      "type": "stdio",
+      "command": "python3",
+      "args": [
+        "mcp_servers/chat-model/server.py"
+      ],
+      "env": {
+        "API_TYPE": "anthropic",
+        "ANTHROPIC_API_KEY": "YOUR_API_KEY_HERE",
+        "ANTHROPIC_MODEL": "claude-sonnet-4-6",
+        "ANTHROPIC_BASE_URL": "https://api.anthropic.com"
+      }
+    }
+  }
+}

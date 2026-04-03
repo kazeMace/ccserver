@@ -1,0 +1,43 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(chmod +x:*)",
+      "Bash(pip install:*)",
+      "Bash(pip3 install:*)",
+      "Bash(python3:*)",
+      "Bash(ls:*)",
+      "Bash(python:*)",
+      "Bash(source:*)",
+      "Bash(conda run:*)",
+      "Bash(conda info:*)",
+      "WebSearch",
+      "Glob",
+      "Read",
+      "Write",
+      "Edit",
+      "Bash(git checkout:*)",
+      "Bash(mkdir:*)",
+      "Bash(grep:*)",
+      "Bash(claude mcp:*)",
+      "Bash(claude:*)",
+      "mcp__chat-model__conversation_chat",
+      "mcp__memory__get_user_profile",
+      "mcp__memory__update_user_profile",
+      "mcp__memory__save_memory",
+      "mcp__memory__retrieve_memory",
+      "mcp__memory__delete_memory",
+      "mcp__web-search__search_web",
+      "mcp__web-search__search_news",
+      "mcp__weather__get_weather"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "web-search",
+    "memory",
+    "chat-model",
+    "weather"
+  ],
+  "hooks": {
+  }
+}

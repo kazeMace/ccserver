@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__web-search__search_web",
+      "mcp__web-search__search_news",
+      "mcp__weather__get_weather"
+    ]
+  },
+  "enabledMcpjsonServers": [
+    "web-search",
+    "weather"
+  ]
+}

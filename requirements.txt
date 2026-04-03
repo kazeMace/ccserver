@@ -1,0 +1,27 @@
+# ─── 核心依赖 ──────────────────────────────────────────────────────────────────
+anthropic>=0.40.0          # Anthropic API 客户端
+fastapi>=0.115.0           # HTTP / SSE / WebSocket 服务端
+uvicorn[standard]>=0.32.0  # ASGI 服务器
+pydantic>=2.0.0            # 数据校验
+loguru>=0.7.0              # 日志
+python-dotenv>=0.21.0      # .env 文件加载
+httpx>=0.24.0              # HTTP 客户端（WebFetch 工具 / clients/）
+html2text>=2020.1.16       # HTML 转 Markdown（WebFetch 工具）
+prompt_toolkit>=3.0.0      # TUI 输入行编辑（正确处理中文宽字符）
+
+# ─── SQLite 存储后端 ───────────────────────────────────────────────────────────
+# Python 标准库内置，无需安装
+
+# ─── MCP 支持（可选）──────────────────────────────────────────────────────────
+# uv pip install mcp
+# mcp
+
+# ─── Gradio 图形界面（可选）───────────────────────────────────────────────────
+# uv pip install gradio
+# gradio
+
+# ─── MongoDB 存储后端（可选）──────────────────────────────────────────────────
+# uv pip install motor pymongo redis
+# motor
+# pymongo
+# redis

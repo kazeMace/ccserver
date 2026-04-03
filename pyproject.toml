@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ccserver"
+dynamic = ["version"]
+description = "将 Claude Code 的工作方式封装成可调用的服务接口"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+dependencies = [
+    "anthropic>=0.40.0",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "pydantic>=2.0.0",
+    "loguru>=0.7.0",
+    "python-dotenv>=0.21.0",
+    "httpx>=0.24.0",
+    "html2text>=2020.1.16",
+    "prompt_toolkit>=3.0.0",
+]
+
+[project.optional-dependencies]
+mcp = ["mcp"]
+gui = ["gradio"]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+]
+
+[project.scripts]
+ccserver = "ccserver.server:main"
+cctui = "tui:main"
+
+[tool.setuptools.dynamic]
+version = { file = "VERSION" }
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["ccserver*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
