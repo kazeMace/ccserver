@@ -51,7 +51,10 @@ class Session:
         if self._agents is None:
             self._agents = AgentLoader.from_workdir(self.project_root, GLOBAL_CONFIG_DIR)
         if self._hooks is None:
-            self._hooks = HookLoader.from_workdir(self.project_root, GLOBAL_CONFIG_DIR)
+            # 通过 settings.build_hook_loader() 构建，而非 HookLoader.from_workdir()
+            # 这样 settings 里的 hooks 字段（CC/ccserver 格式 + OpenClaw 控制面板）
+            # 都能被正确传给 HookLoader
+            self._hooks = self._settings.build_hook_loader(self.project_root)
         if self._commands is None:
             self._commands = CommandLoader.from_project_root(self.project_root, GLOBAL_CONFIG_DIR)
         if self._mcp is None:

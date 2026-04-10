@@ -1,0 +1,83 @@
+{
+  "permissions": {
+    "deny": [],
+    "allow": [
+      "Base(echo:*)",
+      "Bash(chmod +x:*)",
+      "Bash(pip install:*)",
+      "Bash(pip3 install:*)",
+      "Bash(python3:*)",
+      "Bash(ls:*)",
+      "Bash(python:*)",
+      "Bash(source:*)",
+      "Bash(conda run:*)",
+      "Bash(conda info:*)",
+      "WebSearch",
+      "Bash(git checkout:*)",
+      "Bash(mkdir:*)",
+      "Bash(grep:*)",
+      "Bash(claude mcp:*)",
+      "Bash(claude:*)",
+      "mcp__db__create_session",
+      "mcp__db__get_session",
+      "mcp__db__update_session_user_name",
+      "mcp__db__list_sessions",
+      "mcp__db__save_message",
+      "mcp__db__get_history",
+      "mcp__db__get_latest_user_message",
+      "mcp__db__get_recent_messages",
+      "mcp__db__get_all_messages",
+      "mcp__db__count_messages",
+      "mcp__db__update_profile",
+      "mcp__db__get_profile",
+      "mcp__db__get_profile_slot",
+      "mcp__db__clear_profile_slot",
+      "mcp__db__clear_all_profile",
+      "mcp__db__add_user_memory",
+      "mcp__db__search_user_memory",
+      "mcp__db__get_all_user_memory",
+      "mcp__db__delete_user_memory",
+      "mcp__db__add_persona_memory",
+      "mcp__db__get_persona_memory",
+      "mcp__db__search_persona_memory",
+      "mcp__db__delete_persona_memory",
+      "mcp__db__save_summary",
+      "mcp__db__get_summary",
+      "mcp__db__delete_summary",
+      "mcp__db__get_persona",
+      "mcp__db__list_personas",
+      "mcp__db__get_fewshot",
+      "mcp__db__upsert_persona",
+      "mcp__db__delete_persona",
+      "mcp__chat-model__conversation_chat",
+      "mcp__chat-model__save_turn",
+      "mcp__chat-model__rewrite_style",
+      "mcp__web-search__search_web",
+      "mcp__web-search__search_news",
+      "mcp__weather__get_weather"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "web-search",
+    "memory",
+    "chat-model",
+    "weather",
+    "db"
+  ],
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 .ccserver/hooks/get_conversation_id.py"
+          }
+        ]
+      }
+    ]
+  },
+  "env": {
+
+  }
+}

@@ -8,6 +8,34 @@
 
 ---
 
+## [0.3.0] — 2026-04-10
+
+**会话**: Hook 系统重构与 roleplay_agent_neo 示例
+
+### Added
+- `ccserver/hooks/matcher.py` — 全新 HookMatcher 系统，支持 `LiteralMatcher`（精确/正则）与 `ExpressionMatcher`（完整布尔表达式），兼容 Claude Code 的 matcher 语法
+- `ccserver/hooks/bun_wrapper.ts` — TypeScript hook 的 OpenClaw 兼容适配层
+- `docs/hooks.md` — Hook 系统完整使用文档
+- `playground/agents/roleplay_agent_neo/` — 新版角色扮演 Agent 示例，展示 `UserPromptSubmit` hook 注入 `CONVERSATION_ID` 的完整实践
+
+### Changed
+- `ccserver/hooks/loader.py` — 全面重构 Hook 加载与执行机制：
+  - 废弃旧 A/B/C 风格（文件名/函数名/main 扫描），统一为 `settings.json hooks` + `HOOK.md` 目录两种注册方式
+  - 新增 `parallel/serial` × `all/first/last` 执行策略，与 CC 行为对齐
+  - 支持 `modifying` / `observing` / `claiming` 三种事件模式
+  - 新增 `prompt` / `http` / `agent` 执行器类型
+  - 事件名统一规范化为冒号分隔的 ccserver 标准名，兼容 CC 写法（PascalCase）和 OpenClaw 写法（下划线）
+- `ccserver/agent.py` — `message:inbound:received`（`UserPromptSubmit`）hook 触发点提前到 `/` slash command 判断之前，确保 slash command 也能触发 hook
+- `ccserver/settings.py` — `ProjectSettings` 新增 `build_hook_loader()`，将原始 settings dict 传给 `HookLoader`
+- `ccserver/session.py` — `Session.__post_init__` 改用 `settings.build_hook_loader()` 构建 hook loader
+- `server.py` — 启动时打印 `CONVERSATION_ID` 环境变量（调试用，可选）
+
+### Fixed
+- `ccserver/hooks/loader.py` — command hook 执行时 `cwd` 设为 `ctx.project_root`，保证相对路径命令以 `CCSERVER_PROJECT_DIR` 为基准
+- `ccserver/hooks/loader.py` — bun hook 的 `script` 相对路径自动基于 `ctx.project_root` 解析，执行时也设置 `cwd`
+
+---
+
 ## [0.2.0] — 2026-03-16
 
 **会话**: Pipeline DAG 功能实现

@@ -157,18 +157,22 @@ class Agent:
 
     async def run(self, message: str) -> str:
         """追加用户消息并执行循环。"""
+        # hook: message:inbound:received — 可修改消息内容、注入 additional_context
+        hook_result = await self.session.hooks.emit(
+            "message:inbound:received",
+            {"prompt": message},
+            self._build_hook_ctx(),
+        )
+        # hook 可以替换消息内容
+        if hook_result.message is not None:
+            message = hook_result.message
+        # hook 可以追加额外上下文（拼接到消息末尾，LLM 可见）
+        if hook_result.additional_context:
+            message = message + "\n\n" + hook_result.additional_context
+
         if message.startswith("/"):
             await self._handle_command(message)
         else:
-            # hook: message:inbound:received — 可修改消息内容、注入 additional_context
-            hook_result = await self.session.hooks.emit(
-                "message:inbound:received", message, ctx=self._build_hook_ctx()
-            )
-            if hook_result.message is not None:
-                message = hook_result.message
-            if hook_result.additional_context:
-                # additional_context 追加到消息内容后，让 LLM 能看到
-                message = message + "\n\n" + hook_result.additional_context
             self._append({"role": "user", "content": message})
         return await self._loop()
 
@@ -355,6 +359,12 @@ class Agent:
             input_messages_snapshot = [dict(m) for m in self.context.messages]
             collected_tokens, response = await self._call_llm_with_retry()
             if response is None:
+                # LLM 永久失败（重试耗尽）
+                await self.session.hooks.emit_void(
+                    "agent:stop:failure",
+                    {"error": "LLM call failed after retries"},
+                    self._build_hook_ctx(),
+                )
                 return ""
 
             content = _normalize_content(response.content)
@@ -372,7 +382,9 @@ class Agent:
                 last_text = round_text
                 # hook: prompt:llm:output — 每轮 LLM 完成后（observing，纯观测）
                 await self.session.hooks.emit_void(
-                    "prompt:llm:output", round_text, ctx=self._build_hook_ctx()
+                    "prompt:llm:output",
+                    {"reply": round_text},
+                    self._build_hook_ctx(),
                 )
 
             if response.stop_reason != "tool_use":
@@ -385,7 +397,9 @@ class Agent:
                 if self.context.is_orchestrator:
                     # hook: agent:stop — 根代理最终完成（observing）
                     await self.session.hooks.emit_void(
-                        "agent:stop", last_text, ctx=self._build_hook_ctx()
+                        "agent:stop",
+                        {"reply": last_text},
+                        self._build_hook_ctx(),
                     )
                     await self.emitter.emit_done(last_text)
                 else:
@@ -424,7 +438,9 @@ class Agent:
         """
         # Step 1：触发 hook（observing，不影响后续）
         await self.session.hooks.emit_void(
-            "agent:limit", last_text, ctx=self._build_hook_ctx()
+            "agent:limit",
+            {"last_text": last_text},
+            self._build_hook_ctx(),
         )
 
         # Step 2：callback 优先
@@ -460,7 +476,9 @@ class Agent:
                 await self.emitter.emit_token(token)
             if self.context.is_orchestrator:
                 await self.session.hooks.emit_void(
-                    "agent:stop", last_text, ctx=self._build_hook_ctx()
+                    "agent:stop",
+                    {"reply": last_text},
+                    self._build_hook_ctx(),
                 )
                 await self.emitter.emit_done(last_text)
             else:
@@ -498,7 +516,9 @@ class Agent:
             graceful_msg = f"{graceful_msg}\n\n目前结果：{last_text}"
         if self.context.is_orchestrator:
             await self.session.hooks.emit_void(
-                "agent:stop", graceful_msg, ctx=self._build_hook_ctx()
+                "agent:stop",
+                {"reply": graceful_msg},
+                self._build_hook_ctx(),
             )
             await self.emitter.emit_done(graceful_msg)
         else:
@@ -525,7 +545,9 @@ class Agent:
         result = f"（步骤超限，以下为当前进度摘要）\n\n{summary}"
         if self.context.is_orchestrator:
             await self.session.hooks.emit_void(
-                "agent:stop", result, ctx=self._build_hook_ctx()
+                "agent:stop",
+                {"reply": result},
+                self._build_hook_ctx(),
             )
             await self.emitter.emit_done(result)
         else:
@@ -550,6 +572,12 @@ class Agent:
         for attempt in range(max_retries):
             try:
                 collected_tokens: list[str] = []
+                # hook: prompt:llm:input — 观测即将发送给 LLM 的完整输入
+                await self.session.hooks.emit_void(
+                    "prompt:llm:input",
+                    {"messages": [dict(m) for m in self.context.messages], "model": self.model},
+                    self._build_hook_ctx(),
+                )
                 async with self.adapter.stream(
                     model=self.model,
                     system=self.system,
@@ -608,35 +636,76 @@ class Agent:
 
             # ── 运行时权限检查 ────────────────────────────────────────────────
             if name in ask_tools:
-                if self.run_mode == "interactive":
-                    # 向客户端发送权限请求，等待用户决定
-                    logger.info("Permission request | agent={} tool={} mode=interactive", self.aid_label, name)
-                    granted = await self.emitter.emit_permission_request(name, input_)
-                    if not granted:
-                        logger.info("Permission denied  | agent={} tool={}", self.aid_label, name)
-                        result = ToolResult.error(f"Tool '{name}' was denied by user.")
-                        results.append(result.to_api_dict(block_id))
-                        continue
-                    logger.info("Permission granted | agent={} tool={}", self.aid_label, name)
-                else:
-                    # auto 模式：直接拒绝，不等待用户
-                    logger.info("Permission denied (auto) | agent={} tool={}", self.aid_label, name)
-                    result = ToolResult.error(
-                        f"Tool '{name}' requires user confirmation but run_mode is 'auto'. "
-                        "Add it to permissions.ask and use interactive mode, or remove it from ask_tools."
-                    )
+                # hook: tool:permission:request — modifying，可阻断或修改决策
+                perm_hook = await self.session.hooks.emit(
+                    "tool:permission:request",
+                    {"tool_name": name, "tool_input": input_, "tool_use_id": block_id},
+                    self._build_hook_ctx(),
+                )
+
+                # block 保持向后兼容（等价于 deny）
+                if perm_hook.block:
+                    logger.info("Hook blocked permission | agent={} tool={} reason={}", self.aid_label, name, perm_hook.block_reason)
+                    result = ToolResult.error(perm_hook.block_reason or f"Tool '{name}' blocked by permission hook.")
                     results.append(result.to_api_dict(block_id))
                     continue
 
-            # hook: tool:call:before — 工具执行前（modifying，可阻断）
+                behavior = perm_hook.permission_behavior
+                if behavior == "allow":
+                    # hook 显式允许，跳过权限询问直接执行
+                    logger.info("Hook allowed permission | agent={} tool={}", self.aid_label, name)
+                    # 继续走下方的 tool:call:before 逻辑
+                elif behavior in ("deny",):
+                    # deny（已被 block 捕获，此处为兜底）
+                    logger.info("Hook denied permission | agent={} tool={}", self.aid_label, name)
+                    result = ToolResult.error(f"Tool '{name}' denied by permission hook.")
+                    results.append(result.to_api_dict(block_id))
+                    continue
+                elif behavior in ("ask", "passthrough"):
+                    # 继续走原有权限逻辑：interactive 弹窗 / auto 拒绝
+                    if self.run_mode == "interactive":
+                        logger.info("Permission request | agent={} tool={} mode=interactive", self.aid_label, name)
+                        granted = await self.emitter.emit_permission_request(name, input_)
+                        if not granted:
+                            logger.info("Permission denied  | agent={} tool={}", self.aid_label, name)
+                            await self.session.hooks.emit_void(
+                                "tool:permission:denied",
+                                {"tool_name": name, "tool_input": input_, "tool_use_id": block_id, "reason": "user_denied"},
+                                self._build_hook_ctx(),
+                            )
+                            result = ToolResult.error(f"Tool '{name}' was denied by user.")
+                            results.append(result.to_api_dict(block_id))
+                            continue
+                        logger.info("Permission granted | agent={} tool={}", self.aid_label, name)
+                    else:
+                        logger.info("Permission denied (auto) | agent={} tool={}", self.aid_label, name)
+                        await self.session.hooks.emit_void(
+                            "tool:permission:denied",
+                            {"tool_name": name, "tool_input": input_, "tool_use_id": block_id, "reason": "auto_mode"},
+                            self._build_hook_ctx(),
+                        )
+                        result = ToolResult.error(
+                            f"Tool '{name}' requires user confirmation but run_mode is 'auto'. "
+                            "Add it to permissions.ask and use interactive mode, or remove it from ask_tools."
+                        )
+                        results.append(result.to_api_dict(block_id))
+                        continue
+
+            # hook: tool:call:before — 工具执行前（modifying，可阻断、可修改输入）
             tool_hook = await self.session.hooks.emit(
-                "tool:call:before", name, input_, ctx=self._build_hook_ctx()
+                "tool:call:before",
+                {"tool_name": name, "tool_input": input_, "tool_use_id": block_id},
+                self._build_hook_ctx(),
             )
             if tool_hook.block:
                 logger.info("Hook blocked tool | agent={} tool={} reason={}", self.aid_label, name, tool_hook.block_reason)
                 result = ToolResult.error(tool_hook.block_reason or f"Tool '{name}' blocked by hook.")
                 results.append(result.to_api_dict(block_id))
                 continue
+            # hook 可以修改工具输入（updated_input）
+            if tool_hook.updated_input is not None:
+                logger.debug("Hook updated tool input | agent={} tool={}", self.aid_label, name)
+                input_ = tool_hook.updated_input
 
             if name.startswith("mcp__"):
                 # MCP 工具：显示所有参数，每个 key=value 一项，value 截断 200 字符
@@ -669,11 +738,15 @@ class Agent:
             # hook: tool:call:after / tool:call:failure（observing）
             if result.is_error:
                 await self.session.hooks.emit_void(
-                    "tool:call:failure", name, result.content or "", ctx=self._build_hook_ctx()
+                    "tool:call:failure",
+                    {"tool_name": name, "tool_use_id": block_id, "tool_input": input_, "error": result.content or ""},
+                    self._build_hook_ctx(),
                 )
             else:
                 await self.session.hooks.emit_void(
-                    "tool:call:after", name, result.content or "", ctx=self._build_hook_ctx()
+                    "tool:call:after",
+                    {"tool_name": name, "tool_use_id": block_id, "tool_input": input_, "tool_response": result.content or ""},
+                    self._build_hook_ctx(),
                 )
             results.append(result.to_api_dict(block_id))
 
@@ -703,15 +776,25 @@ class Agent:
         child = self.spawn_child(prompt, agent_def=agent_def, agent_name=agent_name, model_override=model_override)
         agent_type_label = f"{subagent_type}(defined)" if agent_def else f"{subagent_type}(undefined)" if subagent_type else "(generic)"
         logger.info("Child agent spawned | parent={} child={} depth={} type={}", self.aid_label, child.aid_label, child.context.depth, agent_type_label)
-        # hook: subagent:spawning（observing）
+        # hook: subagent:spawning — 子代理即将启动（observing）
         await self.session.hooks.emit_void(
-            "subagent:spawning", ctx=child._build_hook_ctx()
+            "subagent:spawning",
+            {},
+            child._build_hook_ctx(),
+        )
+        # hook: subagent:spawned — 子代理已创建，即将运行（observing）
+        await self.session.hooks.emit_void(
+            "subagent:spawned",
+            {"subagent_id": child.context.agent_id, "subagent_name": child.context.name or ""},
+            child._build_hook_ctx(),
         )
         summary = await child._loop()
         logger.info("Child agent done   | child={} summary_len={}", child.context.agent_id[:8], len(summary))
-        # hook: subagent:ended（observing）
+        # hook: subagent:ended — 子代理完成（observing）
         await self.session.hooks.emit_void(
-            "subagent:ended", summary, ctx=child._build_hook_ctx()
+            "subagent:ended",
+            {"summary": summary, "subagent_id": child.context.agent_id},
+            child._build_hook_ctx(),
         )
         return ToolResult.ok(summary or "(no summary)")
 
@@ -777,9 +860,12 @@ class Agent:
             await self._do_compact(reason="token threshold reached")
 
     async def _do_compact(self, reason: str):
+        message_count = len(self.context.messages)
         # hook: agent:compact:before（observing）
         await self.session.hooks.emit_void(
-            "agent:compact:before", ctx=self._build_hook_ctx()
+            "agent:compact:before",
+            {"message_count": message_count, "token_count": 0},  # token_count 暂不计算
+            self._build_hook_ctx(),
         )
         await self.emitter.emit_compact(reason)
         from ccserver.prompts_lib.adapter import get_lib
@@ -790,13 +876,16 @@ class Agent:
             self.context.messages,
             lib=lib,
         )
+        compacted_count = message_count - len(compacted)
         if self.persist:
             self.session.rewrite_messages(compacted)
         else:
             self.context.messages[:] = compacted
         # hook: agent:compact:after（observing）
         await self.session.hooks.emit_void(
-            "agent:compact:after", ctx=self._build_hook_ctx()
+            "agent:compact:after",
+            {"compacted_count": compacted_count, "summary_length": 0, "tokens_before": 0, "tokens_after": 0},
+            self._build_hook_ctx(),
         )
 
     # ── Hook 辅助 ─────────────────────────────────────────────────────────────

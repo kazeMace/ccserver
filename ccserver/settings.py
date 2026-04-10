@@ -38,6 +38,9 @@ from typing import Optional
 
 from loguru import logger
 
+# 延迟 import HookLoader，避免循环依赖（settings → hooks → settings）
+# HookLoader 在需要时才导入（see build_hook_loader 方法）
+
 
 def _parse_entries(entries: list[str]) -> tuple[frozenset[str], dict[str, list[str]]]:
     """
@@ -94,6 +97,10 @@ class ProjectSettings:
         run_mode: str = "auto",                          # "auto" 或 "interactive"
         main_round_limit: Optional[int] = None,          # None = 使用 config.MAIN_ROUND_LIMIT
         main_limit_strategy: str = "last_text",           # round limit 兜底策略
+        # 保存原始 settings dict，用于构建 HookLoader
+        # （HookLoader 需要完整的 settings 数据来解析 hooks 字段）
+        _raw_project: Optional[dict] = None,
+        _raw_global: Optional[dict] = None,
     ):
         self.allowed_tools = allowed_tools
         self.denied_tools = denied_tools
@@ -104,6 +111,25 @@ class ProjectSettings:
         self.run_mode = run_mode
         self.main_round_limit = main_round_limit
         self.main_limit_strategy = main_limit_strategy
+        # 原始 dict 仅供 build_hook_loader() 使用，不对外暴露
+        self._raw_project = _raw_project
+        self._raw_global = _raw_global
+
+    def build_hook_loader(self, project_root: Path) -> "HookLoader":
+        """
+        根据当前 settings 构建 HookLoader。
+
+        将原始 settings dict 传给 HookLoader，
+        让它解析 hooks 字段（CC/ccserver 格式）和 hooks.internal（OpenClaw 控制面板）。
+
+        在 session.__post_init__ 里调用，替代原来的 HookLoader.from_workdir()。
+        """
+        from ccserver.hooks.loader import HookLoader
+        return HookLoader.from_dirs(
+            project_root=project_root,
+            project_settings=self._raw_project,
+            global_settings=self._raw_global,
+        )
 
     @classmethod
     def from_dirs(cls, project_root: Path) -> "ProjectSettings":
@@ -243,6 +269,8 @@ class ProjectSettings:
             run_mode=run_mode,
             main_round_limit=main_round_limit,
             main_limit_strategy=main_limit_strategy,
+            _raw_project=project_data,
+            _raw_global=global_data,
         )
 
     # ── 工具使用权限判断 ──────────────────────────────────────────────────────

@@ -134,6 +134,7 @@ ccserver/                   # 项目根目录
     │   └── cc_reverse/     # cc_reverse 系列实现
     ├── tools/              # 内置工具集
     ├── core/emitter/       # 事件发射器（TUI / SSE / WebSocket）
+    ├── hooks/              # Hook 系统（生命周期拦截）
     ├── mcp/                # MCP 客户端管理
     ├── storage/            # 存储适配器
     └── pipeline/           # Pipeline Graph 执行引擎
@@ -324,6 +325,30 @@ CCSERVER_PROMPT_LIB=my_lib:v1.0.0 python server.py
 
 ---
 
+### Hook 系统（`ccserver/hooks/`）
+
+兼容 Claude Code `hooks` 配置 与 OpenClaw `HOOK.md` 格式的生命周期钩子系统，支持在 Agent 运行关键节点插入自定义逻辑。
+
+**注册来源（按优先级）：**
+1. `{project_root}/.ccserver/settings.local.json` 的 `hooks` 字段
+2. `{project_root}/.ccserver/hooks/<dir>/`（`HOOK.md` 目录格式）
+3. `~/.ccserver/settings.json` 的 `hooks` 字段
+4. `~/.ccserver/hooks/<dir>/`（`HOOK.md` 目录格式）
+
+**事件类型示例：**
+- `tool:call:before` — 工具调用前拦截/修改
+- `message:inbound:received`（别名 `UserPromptSubmit`）— 用户消息提交时注入上下文
+- `tool:permission:request` — 权限请求前自动决策
+- `session:start` / `agent:stop` — 会话与 Agent 生命周期事件
+
+**执行器类型：** `command` / `bun` / `http` / `prompt`
+
+**Matcher 语法：** 支持 `"Bash"`、`"Bash|Write"`、正则 `"^Write.*"`，以及完整表达式 `tool == "Bash" && tool_input.command matches "git *"`。
+
+> 详细用法参考 `docs/hooks.md`
+
+---
+
 ### 事件系统（`ccserver/core/emitter/`）
 
 统一的 `BaseEmitter` 接口，支持多种输出后端：
@@ -447,7 +472,7 @@ tags: [tag1, tag2]
 .ccserver/
 ├── agents/             # 自定义 subagent 定义（*.md，格式同 Claude Code agents）
 ├── skills/             # 技能文档（每个子目录含 SKILL.md）
-├── hooks/              # 生命周期钩子脚本（*.py）
+├── hooks/              # 生命周期钩子脚本（HOOK.md 目录格式，兼容 CC settings.json hooks）
 ├── commands/           # 自定义斜杠命令（*.md）
 ├── settings.json       # 权限设置（allowed_tools / denied_tools 等）
 └── settings.local.json # 本地覆盖（gitignore，优先级高于 settings.json）
@@ -545,9 +570,17 @@ playground/
 │   ├── web_search/                 # 联网搜索 Agent
 │   │   ├── web-search.md           # Agent system prompt
 │   │   └── .mcp.json               # MCP 工具配置（search_web / search_news / get_weather）
-│   ├── roleplay_agent/             # 角色扮演对话编排 Agent
+│   ├── roleplay_agent/             # 角色扮演对话编排 Agent（经典版）
 │   │   ├── roleplay_instruct.md    # Agent system prompt
 │   │   └── .mcp.json               # MCP 工具配置（chat model 调用）
+│   ├── roleplay_agent_neo/         # 角色扮演对话编排 Agent（新版，使用 hook 注入 conversation_id）
+│   │   ├── roleplay_instruct.md    # Agent system prompt
+│   │   ├── .mcp.json               # MCP 工具配置
+│   │   ├── .ccserver/
+│   │   │   ├── settings.local.json # 权限与 hooks 配置
+│   │   │   └── hooks/              # UserPromptSubmit hook 脚本
+│   │   │       └── get_conversation_id.py
+│   │   └── mcp_servers/            # 内置 MCP 服务端
 │   ├── quality_check/              # 对话质量检测 Agent
 │   │   └── quality-check.md        # Agent system prompt
 │   └── topic_suggest/              # 话题建议 Agent
@@ -559,7 +592,7 @@ playground/
         ├── server.py               # 自定义 API 入口
         ├── gui.py                  # Gradio 界面
         ├── db.py                   # 会话数据库
-        └── README.md                 # 执行流程图
+        └── README.md               # 执行流程图
 ```
 
 ### Agents
@@ -577,7 +610,7 @@ playground/
 
 依赖 MCP 工具：`search_web`、`search_news`、`get_weather`
 
-**roleplay_agent — 角色扮演编排**
+**roleplay_agent — 角色扮演编排（经典版）**
 
 以 Claude 作为编排核心，驱动独立 chat model 进行角色扮演对话的完整系统。
 
@@ -586,6 +619,19 @@ playground/
 - **质量控制循环**：内置 quality-check subagent，检测到问题自动重试，最多 3 次
 - **记忆系统**：用户画像（结构化槽位）+ 用户记忆（非结构化）+ 角色动态设定，全部文件持久化
 - **历史压缩**：对话超过阈值时后台压缩为摘要，保持 context 可控
+
+**roleplay_agent_neo — 角色扮演编排（新版）**
+
+在 `roleplay_agent` 基础上的改进版本，展示了 CCServer 的 hook 系统与 Claude Code 兼容配置的实际应用：
+
+- 使用 `UserPromptSubmit` hook（`message:inbound:received`）自动注入 `CONVERSATION_ID` 上下文
+- hook 通过 `.ccserver/settings.local.json` 注册，与 Claude Code 的 `hooks` 配置格式完全兼容
+- 内置全套 MCP 服务端（db / chat-model / web-search / weather / memory），开箱即用
+- 通过环境变量 `CCSERVER_PROJECT_DIR` 指向本目录即可部署
+
+```bash
+CCSERVER_PROJECT_DIR=/path/to/playground/agents/roleplay_agent_neo python server.py
+```
 
 **quality_check — 质量检测**、**topic_suggest — 话题建议**：作为 agent 在 simple_roleplay_graph 中被调用。
 

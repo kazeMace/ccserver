@@ -73,9 +73,9 @@ class AgentRunner:
             agent_name="orchestrator",
         )
         # hook: session:start（observing）
-        await session.hooks.emit_void("session:start", ctx=hook_ctx)
+        await session.hooks.emit_void("session:start", {}, hook_ctx)
         result = await agent.run(message)
         # hook: session:end（observing）
-        await session.hooks.emit_void("session:end", ctx=hook_ctx)
+        await session.hooks.emit_void("session:end", {}, hook_ctx)
         logger.info("Run done  | session={} reply_len={}", session.id[:8], len(result))
         return result
