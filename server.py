@@ -51,10 +51,14 @@ from ccserver.config import (
 from ccserver.storage import build_storage
 from ccserver.core.emitter.api_emitters import SSEEmitter, WSEmitter, CollectEmitter
 from ccserver.core.emitter.filter_emitter import FilterEmitter, VALID_MODES as _OUTPUT_MODES
+from loguru import logger
 from ccserver.log import setup_logging
 from contextlib import asynccontextmanager
 
 setup_logging(stderr=True)
+
+import os
+logger.info("server startup env | CONVERSATION_ID={}", os.environ.get("CONVERSATION_ID", "<missing>"))
 
 # ─── App setup ────────────────────────────────────────────────────────────────
 

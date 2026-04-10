@@ -1,0 +1,7 @@
+# 所有 MCP server 的 Python 依赖汇总
+# 可直接 pip install -r requirements.txt 一次性安装
+
+mcp          # FastMCP 框架，所有 MCP server 共用
+ddgs         # DuckDuckGo 搜索，web-search MCP 使用
+openai       # OpenAI 兼容客户端，chat-model MCP 使用（API_TYPE=openai 时）
+anthropic    # Anthropic 原生客户端，chat-model MCP 使用（API_TYPE=anthropic 时，默认）

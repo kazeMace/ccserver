@@ -8,6 +8,7 @@ python-dotenv>=0.21.0      # .env 文件加载
 httpx>=0.24.0              # HTTP 客户端（WebFetch 工具 / clients/）
 html2text>=2020.1.16       # HTML 转 Markdown（WebFetch 工具）
 prompt_toolkit>=3.0.0      # TUI 输入行编辑（正确处理中文宽字符）
+pyyaml>=6.0                # YAML 解析（HOOK.md 前置参数）
 
 # ─── SQLite 存储后端 ───────────────────────────────────────────────────────────
 # Python 标准库内置，无需安装

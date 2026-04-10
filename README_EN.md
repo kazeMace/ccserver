@@ -134,6 +134,7 @@ ccserver/                   # Project root
     │   └── cc_reverse/     # cc_reverse series implementation
     ├── tools/              # Built-in tool set
     ├── core/emitter/       # Event emitters (TUI / SSE / WebSocket)
+    ├── hooks/              # Hook system (lifecycle interception)
     ├── mcp/                # MCP client management
     ├── storage/            # Storage adapters
     └── pipeline/           # Pipeline Graph execution engine
@@ -277,6 +278,30 @@ Three-level compression strategy to automatically manage token consumption in lo
 
 ---
 
+### Hook System (`ccserver/hooks/`)
+
+A lifecycle hook system compatible with both Claude Code `hooks` config and OpenClaw `HOOK.md` formats, allowing custom logic to be injected at key Agent lifecycle moments.
+
+**Registration sources (by priority):**
+1. `hooks` field in `{project_root}/.ccserver/settings.local.json`
+2. `{project_root}/.ccserver/hooks/<dir>/` (`HOOK.md` directory format)
+3. `hooks` field in `~/.ccserver/settings.json`
+4. `~/.ccserver/hooks/<dir>/` (`HOOK.md` directory format)
+
+**Example events:**
+- `tool:call:before` — intercept or modify tool calls
+- `message:inbound:received` (alias `UserPromptSubmit`) — inject context when user message is received
+- `tool:permission:request` — auto-decide permission requests
+- `session:start` / `agent:stop` — session and agent lifecycle events
+
+**Executor types:** `command` / `bun` / `http` / `prompt`
+
+**Matcher syntax:** supports `"Bash"`, `"Bash|Write"`, regex `"^Write.*"`, and full expressions like `tool == "Bash" && tool_input.command matches "git *"`.
+
+> For detailed usage, see `docs/hooks.md`
+
+---
+
 ### Event System (`ccserver/core/emitter/`)
 
 Unified `BaseEmitter` interface supporting multiple output backends:
@@ -400,7 +425,7 @@ All configuration supports `CCSERVER_*` environment variable overrides.
 .ccserver/
 ├── agents/             # Custom subagent definitions (*.md, same format as Claude Code agents)
 ├── skills/             # Skill documents (each subdirectory contains a SKILL.md)
-├── hooks/              # Lifecycle hook scripts (*.py)
+├── hooks/              # Lifecycle hook scripts (HOOK.md dirs, compatible with CC settings.json hooks)
 ├── commands/           # Custom slash commands (*.md)
 ├── settings.json       # Permission settings (allowed_tools / denied_tools, etc.)
 └── settings.local.json # Local overrides (gitignored, takes priority over settings.json)
@@ -496,7 +521,8 @@ redis     # Redis cache (used with MongoDB)
 playground/
 ├── agents/                         # Standalone Agent examples (reusable as subagents)
 │   ├── web_search/                 # Web search Agent
-│   ├── roleplay_agent/             # Roleplay orchestration Agent
+│   ├── roleplay_agent/             # Roleplay orchestration Agent (classic)
+│   ├── roleplay_agent_neo/         # Roleplay orchestration Agent (new, uses hook for conversation_id injection)
 │   ├── quality_check/              # Conversation quality check Agent
 │   └── topic_suggest/              # Topic suggestion Agent
 └── graphs/                         # Graph orchestration examples
@@ -509,13 +535,24 @@ Standalone Agent examples, each runnable directly or reusable as a subagent by o
 
 **web_search** — Decides whether to search the web, executes the search, filters by time, and distills results. Depends on MCP tools: `search_web`, `search_news`, `get_weather`.
 
-**roleplay_agent** — Uses Claude as the orchestration core to drive an independent chat model for roleplay conversations.
+**roleplay_agent** — Uses Claude as the orchestration core to drive an independent chat model for roleplay conversations (classic edition).
 
 - **Dual-model design**: Claude handles orchestration (search, memory, quality control); a separate chat model (OpenAI-compatible) generates replies
 - **Parallel scheduling**: Each turn launches web-search, profile-sync and other subagents concurrently, then assembles results before generating
 - **Quality control loop**: Built-in quality-check subagent, auto-retries on failure, up to 3 times
 - **Memory system**: User profile (structured slots) + user memory (unstructured) + dynamic persona settings, all file-persisted
 - **History compression**: Compresses to summary in background when conversation exceeds threshold
+
+**roleplay_agent_neo** — An improved version of `roleplay_agent`, demonstrating CCServer's hook system and Claude Code-compatible configuration in practice:
+
+- Uses the `UserPromptSubmit` hook (`message:inbound:received`) to automatically inject `CONVERSATION_ID` context
+- Hook registered via `.ccserver/settings.local.json`, fully compatible with Claude Code's `hooks` format
+- Includes a full set of built-in MCP servers (`db`, `chat-model`, `web-search`, `weather`, `memory`), ready to use out of the box
+- Deploy by pointing `CCSERVER_PROJECT_DIR` to this directory
+
+```bash
+CCSERVER_PROJECT_DIR=/path/to/playground/agents/roleplay_agent_neo python server.py
+```
 
 **quality_check**, **topic_suggest**: Used as agents inside simple_roleplay_graph.
 
