@@ -13,7 +13,7 @@ import asyncio
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from ccserver.tools.bt_bash import BTBash
+from ccserver.builtins.tools import BTBash
 from ccserver.settings import ProjectSettings
 
 

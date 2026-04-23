@@ -17,9 +17,9 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from ccserver.agent import Agent, AgentContext
-from ccserver.agents.loader import AgentDef
+from ccserver.managers.agents import AgentDef
 from ccserver.settings import ProjectSettings
-from ccserver.tools.constants import CHILD_DISALLOWED_TOOLS, CHILD_DEFAULT_TOOLS, TEAMMATE_EXTRA_TOOLS
+from ccserver.builtins.tools.constants import CHILD_DISALLOWED_TOOLS, CHILD_DEFAULT_TOOLS, TEAMMATE_EXTRA_TOOLS
 
 
 # ─── 辅助函数 ─────────────────────────────────────────────────────────────────

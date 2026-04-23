@@ -6,10 +6,18 @@ Provides real-time web search capability via DuckDuckGo.
 Tool: search_web(query, max_results)
 """
 
+import logging
 import sys
 
 from mcp.server.fastmcp import FastMCP
 from ddgs import DDGS
+
+# ── 日志配置 ──────────────────────────────────────────────────────────────────
+# MCP SDK lowlevel server 每次处理请求都会打 "Processing request of type ..."
+# 这条 INFO 日志对运维无意义，将 mcp 相关 logger 提升到 WARNING 级别压制噪声。
+# 保留 WARNING/ERROR，不影响真正的问题排查。
+logging.getLogger("mcp").setLevel(logging.WARNING)
+logging.getLogger("mcp.server.lowlevel.server").setLevel(logging.WARNING)
 
 mcp = FastMCP("web-search")
 

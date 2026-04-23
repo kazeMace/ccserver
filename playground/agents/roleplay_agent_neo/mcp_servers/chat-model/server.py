@@ -108,7 +108,12 @@ def _call(messages: list[dict], temperature: float, max_tokens: int) -> str:
         # Anthropic extended thinking 模型不支持 temperature，普通模型支持
         kwargs["temperature"] = temperature
         resp = client.messages.create(**kwargs)
-        return resp.content[0].text
+        # resp.content 可能是多个 block（ThinkingBlock + TextBlock），取第一个 TextBlock 的文本
+        for block in resp.content:
+            if hasattr(block, "text"):
+                return block.text
+        # 没有 TextBlock，返回空字符串
+        return ""
     else:
         try:
             from openai import OpenAI

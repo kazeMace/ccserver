@@ -28,6 +28,9 @@ class MongoStorageAdapter(StorageAdapter):
         self._conversations = self._db["conversations"]
         self._messages = self._db["messages"]
         self._transcripts = self._db["transcripts"]
+        self._tasks = self._db["tasks"]
+        self._teams = self._db["teams"]
+        self._inbox_messages = self._db["inbox_messages"]
         logger.debug("MongoAdapter: 初始化 | db={}", db_name)
 
     # ── 初始化索引（异步，需在事件循环中调用一次）─────────────────────────────
@@ -41,6 +44,9 @@ class MongoStorageAdapter(StorageAdapter):
             [("session_id", ASCENDING), ("conversation_id", ASCENDING)]
         )
         await self._conversations.create_index([("session_id", ASCENDING)])
+        await self._inbox_messages.create_index(
+            [("team_name", ASCENDING), ("recipient", ASCENDING), ("read", ASCENDING)]
+        )
         logger.debug("MongoAdapter: 索引已创建")
 
     async def ping(self) -> None:
@@ -212,4 +218,164 @@ class MongoStorageAdapter(StorageAdapter):
         logger.debug(
             "MongoAdapter: conversation created | session={} conv={}",
             session_id[:8], conversation_id[:8]
+        )
+
+    # ── Task 存储 ─────────────────────────────────────────────────────────────
+
+    async def create_task(self, session_id: str, task_data: dict) -> None:
+        """在 _tasks 集合中插入任务文档。"""
+        doc = dict(task_data)
+        doc["session_id"] = session_id
+        await self._tasks.insert_one(doc)
+        logger.debug(
+            "MongoAdapter: task created | session={} task_id={}",
+            session_id[:8], task_data.get("id")
+        )
+
+    async def load_task(self, session_id: str, task_id: str) -> dict | None:
+        """按 session_id 与 id 查询任务。"""
+        doc = await self._tasks.find_one({"session_id": session_id, "id": task_id})
+        if doc is None:
+            return None
+        doc.pop("_id", None)
+        doc.pop("session_id", None)
+        return doc
+
+    async def update_task(self, session_id: str, task_data: dict) -> None:
+        """覆盖更新任务文档。"""
+        await self._tasks.replace_one(
+            {"session_id": session_id, "id": task_data["id"]},
+            {**task_data, "session_id": session_id},
+            upsert=True,
+        )
+        logger.debug(
+            "MongoAdapter: task updated | session={} task_id={}",
+            session_id[:8], task_data.get("id")
+        )
+
+    async def list_tasks(self, session_id: str) -> list[dict]:
+        """列出某 session 下所有任务，按 id 升序。"""
+        docs = await self._tasks.find({"session_id": session_id}).to_list(length=None)
+        for doc in docs:
+            doc.pop("_id", None)
+            doc.pop("session_id", None)
+        return sorted(docs, key=lambda t: int(t.get("id", "0")))
+
+    async def get_task_counter(self, session_id: str) -> int:
+        """从 sessions 集合读取 task_counter 字段。"""
+        doc = await self._sessions.find_one({"_id": session_id})
+        return doc.get("task_counter", 0) if doc else 0
+
+    async def set_task_counter(self, session_id: str, value: int) -> None:
+        """更新 sessions 集合中的 task_counter 字段。"""
+        await self._sessions.update_one(
+            {"_id": session_id},
+            {"$set": {"task_counter": value}},
+            upsert=True,
+        )
+
+    # ── Team 存储 ──────────────────────────────────────────────────────────────
+
+    async def save_team(self, team_data: dict) -> None:
+        """插入或替换 teams 集合中的团队文档。"""
+        doc = dict(team_data)
+        doc["_id"] = team_data["name"]
+        await self._teams.replace_one(
+            {"_id": team_data["name"]},
+            doc,
+            upsert=True,
+        )
+        logger.debug("MongoAdapter: team saved | name={}", team_data["name"])
+
+    async def load_team(self, team_name: str) -> dict | None:
+        """按名称加载团队数据。"""
+        doc = await self._teams.find_one({"_id": team_name})
+        if doc is None:
+            return None
+        doc.pop("_id", None)
+        return doc
+
+    async def delete_team(self, team_name: str) -> None:
+        """删除团队及其关联的 inbox 消息。"""
+        await self._teams.delete_one({"_id": team_name})
+        await self._inbox_messages.delete_many({"team_name": team_name})
+        logger.debug("MongoAdapter: team deleted | name={}", team_name)
+
+    async def list_teams(self) -> list[dict]:
+        """列出所有团队数据，按名称升序。"""
+        docs = await self._teams.find({}).to_list(length=None)
+        for doc in docs:
+            doc.pop("_id", None)
+        return sorted(docs, key=lambda t: t.get("name", ""))
+
+    # ── Mailbox 存储 ───────────────────────────────────────────────────────────
+
+    async def append_inbox_message(self, team_name: str, recipient: str, message: dict) -> None:
+        """向 inbox_messages 集合插入一条消息。"""
+        now = datetime.now(timezone.utc).isoformat()
+        doc = {
+            "team_name": team_name,
+            "recipient": recipient,
+            "message": message,
+            "created_at": now,
+            "read": False,
+        }
+        await self._inbox_messages.insert_one(doc)
+        logger.debug(
+            "MongoAdapter: inbox appended | team={} recipient={} msg_id={}",
+            team_name,
+            recipient,
+            message.get("id", "?"),
+        )
+
+    async def fetch_inbox_messages(
+        self,
+        team_name: str,
+        recipient: str,
+        unread_only: bool = False,
+        limit: int = 100,
+    ) -> list[dict]:
+        """查询 inbox 消息列表。"""
+        query: dict = {"team_name": team_name, "recipient": recipient}
+        if unread_only:
+            query["read"] = False
+
+        cursor = self._inbox_messages.find(query).sort("created_at", ASCENDING)
+        if limit > 0:
+            cursor = cursor.limit(limit)
+
+        docs = await cursor.to_list(length=None)
+        messages = []
+        for doc in docs:
+            msg = doc.get("message", {})
+            msg.setdefault("read", doc.get("read", False))
+            messages.append(msg)
+        return messages
+
+    async def mark_inbox_read(self, team_name: str, recipient: str, message_ids: list[str]) -> None:
+        """将指定消息标记为已读。"""
+        if not message_ids:
+            return
+
+        # 由于消息体嵌套在 message 字段中，我们通过遍历更新
+        target_ids = set(message_ids)
+        docs = await self._inbox_messages.find(
+            {"team_name": team_name, "recipient": recipient}
+        ).to_list(length=None)
+
+        updated = 0
+        for doc in docs:
+            msg = doc.get("message", {})
+            if msg.get("id") in target_ids and not doc.get("read"):
+                await self._inbox_messages.update_one(
+                    {"_id": doc["_id"]},
+                    {"$set": {"read": True}},
+                )
+                updated += 1
+
+        logger.debug(
+            "MongoAdapter: inbox marked read | team={} recipient={} updated={}",
+            team_name,
+            recipient,
+            updated,
         )

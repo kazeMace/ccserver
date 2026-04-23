@@ -12,18 +12,18 @@ tests/test_bt_task_tools.py — BTTaskCreate / BTTaskUpdate / BTTaskGet / BTTask
 import asyncio
 import pytest
 
-from ccserver.tools.bt_task_create import BTTaskCreate
-from ccserver.tools.bt_task_update import BTTaskUpdate
-from ccserver.tools.bt_task_get import BTTaskGet
-from ccserver.tools.bt_task_list import BTTaskList
-from ccserver.task_manager import TaskManager
+from ccserver.builtins.tools import BTTaskCreate
+from ccserver.builtins.tools import BTTaskUpdate
+from ccserver.builtins.tools import BTTaskGet
+from ccserver.builtins.tools import BTTaskList
+from ccserver.managers.tasks import TaskManager
 
 
 # ─── 辅助 ─────────────────────────────────────────────────────────────────────
 
 
 def _make_tools():
-    mgr = TaskManager()
+    mgr = TaskManager(session_id="test-session")
     return (
         BTTaskCreate(mgr),
         BTTaskUpdate(mgr),

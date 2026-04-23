@@ -11,7 +11,7 @@ tests/test_agent_loader.py — AgentDef 新字段解析测试
 import pytest
 from pathlib import Path
 
-from ccserver.agents.loader import AgentLoader, AgentDef
+from ccserver.managers.agents import AgentLoader, AgentDef
 
 
 def _write_agent(tmp_path: Path, filename: str, content: str) -> Path:

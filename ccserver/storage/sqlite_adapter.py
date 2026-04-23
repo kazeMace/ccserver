@@ -71,6 +71,49 @@ class SQLiteStorageAdapter(StorageAdapter):
                     created_at      TEXT NOT NULL,
                     FOREIGN KEY (session_id) REFERENCES sessions(session_id)
                 );
+
+                CREATE TABLE IF NOT EXISTS tasks (
+                    id              TEXT NOT NULL,
+                    session_id      TEXT NOT NULL,
+                    subject         TEXT NOT NULL,
+                    description     TEXT NOT NULL,
+                    status          TEXT NOT NULL DEFAULT 'pending',
+                    task_type       TEXT NOT NULL DEFAULT 'general',
+                    agent_id        TEXT,
+                    agent_type      TEXT,
+                    blocked_by      TEXT,   -- JSON array as text
+                    blocks          TEXT,   -- JSON array as text
+                    started_at      TEXT,
+                    completed_at    TEXT,
+                    output_summary  TEXT,
+                    output_data     TEXT,   -- JSON as text
+                    PRIMARY KEY (session_id, id)
+                );
+
+                CREATE TABLE IF NOT EXISTS task_counter (
+                    session_id      TEXT PRIMARY KEY,
+                    counter         INTEGER NOT NULL DEFAULT 0
+                );
+
+                CREATE TABLE IF NOT EXISTS teams (
+                    name            TEXT PRIMARY KEY,
+                    data            TEXT NOT NULL    -- JSON 序列化的团队数据
+                );
+
+                CREATE TABLE IF NOT EXISTS inbox_messages (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    team_name       TEXT NOT NULL,
+                    recipient       TEXT NOT NULL,   -- 收件人 agent_id
+                    message_json    TEXT NOT NULL,   -- JSON 序列化的消息体
+                    created_at      TEXT NOT NULL,
+                    read            INTEGER NOT NULL DEFAULT 0  -- 0=未读, 1=已读
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_inbox_team_recipient
+                    ON inbox_messages(team_name, recipient);
+
+                CREATE INDEX IF NOT EXISTS idx_inbox_read
+                    ON inbox_messages(team_name, recipient, read);
             """)
         logger.debug("SQLiteAdapter: db initialized | path={}", self.db_path)
 
@@ -283,3 +326,228 @@ class SQLiteStorageAdapter(StorageAdapter):
             }
             for r in rows
         ]
+
+    # ── Task 存储 ─────────────────────────────────────────────────────────────
+
+    def create_task(self, session_id: str, task_data: dict) -> None:
+        """创建任务记录。"""
+        with self._conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO tasks (id, session_id, subject, description, status, task_type, agent_id, agent_type, blocked_by, blocks, started_at, completed_at, output_summary, output_data)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    task_data["id"],
+                    session_id,
+                    task_data["subject"],
+                    task_data["description"],
+                    task_data.get("status", "pending"),
+                    task_data.get("task_type", "general"),
+                    task_data.get("agent_id"),
+                    task_data.get("agent_type"),
+                    json.dumps(task_data.get("blocked_by", [])),
+                    json.dumps(task_data.get("blocks", [])),
+                    task_data.get("started_at"),
+                    task_data.get("completed_at"),
+                    task_data.get("output_summary"),
+                    json.dumps(task_data.get("output_data")) if task_data.get("output_data") else None,
+                ),
+            )
+
+    def load_task(self, session_id: str, task_id: str) -> dict | None:
+        """加载任务。"""
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM tasks WHERE session_id = ? AND id = ?",
+                (session_id, task_id),
+            ).fetchone()
+            if row is None:
+                return None
+            return self._row_to_task(dict(row))
+
+    def update_task(self, session_id: str, task_data: dict) -> None:
+        """更新任务（覆盖式）。"""
+        with self._conn() as conn:
+            conn.execute(
+                """
+                UPDATE tasks SET subject=?, description=?, status=?, task_type=?, agent_id=?, agent_type=?, blocked_by=?, blocks=?, started_at=?, completed_at=?, output_summary=?, output_data=?
+                WHERE session_id = ? AND id = ?
+                """,
+                (
+                    task_data["subject"],
+                    task_data["description"],
+                    task_data.get("status", "pending"),
+                    task_data.get("task_type", "general"),
+                    task_data.get("agent_id"),
+                    task_data.get("agent_type"),
+                    json.dumps(task_data.get("blocked_by", [])),
+                    json.dumps(task_data.get("blocks", [])),
+                    task_data.get("started_at"),
+                    task_data.get("completed_at"),
+                    task_data.get("output_summary"),
+                    json.dumps(task_data.get("output_data")) if task_data.get("output_data") else None,
+                    session_id,
+                    task_data["id"],
+                ),
+            )
+
+    def list_tasks(self, session_id: str) -> list[dict]:
+        """列出所有任务。"""
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT * FROM tasks WHERE session_id = ? ORDER BY id ASC",
+                (session_id,),
+            ).fetchall()
+        return [self._row_to_task(dict(r)) for r in rows]
+
+    def get_task_counter(self, session_id: str) -> int:
+        """获取任务自增计数器。"""
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT counter FROM task_counter WHERE session_id = ?",
+                (session_id,),
+            ).fetchone()
+            return row["counter"] if row else 0
+
+    def set_task_counter(self, session_id: str, value: int) -> None:
+        """设置任务自增计数器。"""
+        with self._conn() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO task_counter (session_id, counter) VALUES (?, ?)",
+                (session_id, value),
+            )
+
+    def _row_to_task(self, row: dict) -> dict:
+        """将数据库行转换为任务字典。"""
+        return {
+            "id": row["id"],
+            "subject": row["subject"],
+            "description": row["description"],
+            "status": row["status"],
+            "task_type": row["task_type"],
+            "agent_id": row["agent_id"],
+            "agent_type": row["agent_type"],
+            "blocked_by": json.loads(row["blocked_by"]) if row["blocked_by"] else [],
+            "blocks": json.loads(row["blocks"]) if row["blocks"] else [],
+            "started_at": row["started_at"],
+            "completed_at": row["completed_at"],
+            "output_summary": row["output_summary"],
+            "output_data": json.loads(row["output_data"]) if row["output_data"] else None,
+        }
+
+    # ── Team 存储 ──────────────────────────────────────────────────────────────
+
+    def save_team(self, team_data: dict) -> None:
+        """插入或更新 teams 表。"""
+        with self._conn() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO teams (name, data) VALUES (?, ?)",
+                (team_data["name"], json.dumps(team_data, ensure_ascii=False)),
+            )
+        logger.debug("SQLiteAdapter: team saved | name={}", team_data["name"])
+
+    def load_team(self, team_name: str) -> dict | None:
+        """按名称加载团队数据。"""
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT data FROM teams WHERE name = ?", (team_name,)
+            ).fetchone()
+            if row is None:
+                return None
+            return json.loads(row["data"])
+
+    def delete_team(self, team_name: str) -> None:
+        """删除团队及其关联的 inbox 消息。"""
+        with self._conn() as conn:
+            conn.execute("DELETE FROM teams WHERE name = ?", (team_name,))
+            conn.execute("DELETE FROM inbox_messages WHERE team_name = ?", (team_name,))
+        logger.debug("SQLiteAdapter: team deleted | name={}", team_name)
+
+    def list_teams(self) -> list[dict]:
+        """列出所有团队数据。"""
+        with self._conn() as conn:
+            rows = conn.execute("SELECT data FROM teams ORDER BY name ASC").fetchall()
+        return [json.loads(r["data"]) for r in rows]
+
+    # ── Mailbox 存储 ───────────────────────────────────────────────────────────
+
+    def append_inbox_message(self, team_name: str, recipient: str, message: dict) -> None:
+        """向 inbox_messages 表插入一条消息。"""
+        now = datetime.now(timezone.utc).isoformat()
+        with self._conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO inbox_messages (team_name, recipient, message_json, created_at, read)
+                VALUES (?, ?, ?, ?, 0)
+                """,
+                (team_name, recipient, json.dumps(message, default=str), now),
+            )
+        logger.debug(
+            "SQLiteAdapter: inbox appended | team={} recipient={} msg_id={}",
+            team_name,
+            recipient,
+            message.get("id", "?"),
+        )
+
+    def fetch_inbox_messages(
+        self,
+        team_name: str,
+        recipient: str,
+        unread_only: bool = False,
+        limit: int = 100,
+    ) -> list[dict]:
+        """查询 inbox 消息列表。"""
+        sql = """
+            SELECT message_json FROM inbox_messages
+            WHERE team_name = ? AND recipient = ?
+        """
+        params = [team_name, recipient]
+        if unread_only:
+            sql += " AND read = 0"
+        sql += " ORDER BY id ASC"
+        if limit > 0:
+            sql += f" LIMIT {limit}"
+
+        with self._conn() as conn:
+            rows = conn.execute(sql, params).fetchall()
+
+        messages = []
+        for r in rows:
+            msg = json.loads(r["message_json"])
+            messages.append(msg)
+        return messages
+
+    def mark_inbox_read(self, team_name: str, recipient: str, message_ids: list[str]) -> None:
+        """
+        将指定消息标记为已读。
+        由于消息体以 JSON 存储在 message_json 中，
+        我们通过遍历并匹配 message.id 来更新对应记录。
+        """
+        if not message_ids:
+            return
+
+        target_ids = set(message_ids)
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT id, message_json FROM inbox_messages WHERE team_name = ? AND recipient = ?",
+                (team_name, recipient),
+            ).fetchall()
+
+            updated = 0
+            for r in rows:
+                msg = json.loads(r["message_json"])
+                if msg.get("id") in target_ids and not msg.get("read"):
+                    msg["read"] = True
+                    conn.execute(
+                        "UPDATE inbox_messages SET message_json = ?, read = 1 WHERE id = ?",
+                        (json.dumps(msg, default=str), r["id"]),
+                    )
+                    updated += 1
+
+        logger.debug(
+            "SQLiteAdapter: inbox marked read | team={} recipient={} updated={}",
+            team_name,
+            recipient,
+            updated,
+        )

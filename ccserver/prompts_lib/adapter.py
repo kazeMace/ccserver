@@ -26,6 +26,11 @@ def get_lib(lib_id: str) -> PromptLib:
     return _REGISTRY[lib_id]
 
 
+def register(lib_id: str, lib: PromptLib) -> None:
+    """手动注册一个 PromptLib 实例。"""
+    _REGISTRY[lib_id] = lib
+
+
 def _auto_register():
     """扫描所有 manifest.json，动态 import lib.py 并注册。"""
     for manifest_path in sorted(_PROMPTS_LIB_DIR.rglob("manifest.json")):

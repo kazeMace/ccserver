@@ -4,11 +4,15 @@ MCPManager — 读取 mcp.json，管理所有 MCPClient 的生命周期。
 
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
 from .client import MCPClient
 from ..config import PROJECT_DIR as _PROJECT_DIR
+
+if TYPE_CHECKING:
+    from ccserver.session import Session
 
 
 class MCPManager:
@@ -18,9 +22,10 @@ class MCPManager:
     挂载在 Session 上，session 创建时 connect，session 结束时 close。
     """
 
-    def __init__(self, clients: dict[str, MCPClient]):
+    def __init__(self, clients: dict[str, MCPClient], session: "Session | None" = None):
         self._clients: dict[str, MCPClient] = clients
         self._connected = False
+        self._session: "Session | None" = session
 
     @classmethod
     def from_config(
@@ -28,11 +33,13 @@ class MCPManager:
         config_path: Path,
         project_dir: Path | None = None,
         enabled_servers: list[str] | None = None,
+        session: "Session | None" = None,
     ) -> "MCPManager":
         """
         从 mcp.json 文件加载配置，返回未连接的 MCPManager。
 
         enabled_servers: 允许连接的 server 名称列表，None 表示全部允许。
+        session: Session 引用，用于发射 mcp:connect:* hooks。
         """
         resolved_cwd = str(project_dir or _PROJECT_DIR)
 
@@ -59,20 +66,62 @@ class MCPManager:
                 cwd=resolved_cwd,
             )
 
-        return cls(clients)
+        return cls(clients, session=session)
 
     async def connect_all(self):
         """并发连接所有 MCP server，已连接时跳过。"""
         if self._connected:
             return
         import asyncio
+
+        # mcp:connect:before（modifying）— 可阻断连接
+        if self._session is not None and self._session._hooks is not None:
+            hook_result = await self._session._hooks.emit(
+                "mcp:connect:before",
+                {"servers": list(self._clients.keys())},
+                {},
+            )
+            if hook_result and hook_result.block:
+                logger.info("MCP connect blocked by hook | reason={}", hook_result.block_reason)
+                return
+
         tasks = [client.connect() for client in self._clients.values()]
         results = await asyncio.gather(*tasks, return_exceptions=True)
+
         failed = []
         for server_name, result in zip(list(self._clients.keys()), results):
+            client = self._clients[server_name]
             if isinstance(result, Exception):
-                logger.error("MCP connect failed | server={} error={}", server_name, result)
+                logger.error(
+                    "MCP connect failed | server={} command={} args={} cwd={} error={}",
+                    server_name, client._command, client._args, client._cwd, result,
+                )
+                # mcp:connect:failure
+                if self._session is not None and self._session._hooks is not None:
+                    await self._session._hooks.emit_void(
+                        "mcp:connect:failure",
+                        {
+                            "server": server_name,
+                            "command": client._command,
+                            "args": client._args,
+                            "cwd": client._cwd,
+                            "error": str(result),
+                        },
+                        {},
+                    )
                 failed.append(server_name)
+            else:
+                # mcp:connect:success
+                if self._session is not None and self._session._hooks is not None:
+                    await self._session._hooks.emit_void(
+                        "mcp:connect:success",
+                        {
+                            "server": server_name,
+                            "tools": [t.name for t in client._tools],
+                        },
+                        {},
+                    )
+
         for server_name in failed:
             self._clients.pop(server_name, None)
         self._connected = True

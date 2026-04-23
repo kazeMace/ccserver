@@ -26,8 +26,8 @@ tests/test_loaders.py — SkillLoader 和 CommandLoader 单元测试
 from pathlib import Path
 import pytest
 
-from ccserver.skills.loader import SkillLoader
-from ccserver.commands.loader import CommandLoader
+from ccserver.managers.skills import SkillLoader
+from ccserver.managers.commands import CommandLoader
 
 
 # ─── 辅助函数 ─────────────────────────────────────────────────────────────────

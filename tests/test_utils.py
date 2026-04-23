@@ -8,18 +8,18 @@ tests/test_utils.py — 工具函数单元测试
     - safe_path() 相对路径处理
 
   src/utils/sdk.py:
-    - _block_get() dict 和 SDK 对象
-    - _normalize_content() SDK 对象转 dict
+    - get_block_attr() dict 和 SDK 对象
+    - normalize_content_blocks() SDK 对象转 dict
     - estimate_tokens() 字符数/4 估算
-    - gen_uuid() 格式和唯一性
+    - generate_message_id() 格式和唯一性
 """
 
 import pytest
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from ccserver.tools.utils import safe_path
-from ccserver.utils.sdk import _block_get, _normalize_content, estimate_tokens, gen_uuid
+from ccserver.utils import safe_path
+from ccserver.utils.sdk import get_block_attr, normalize_content_blocks, estimate_tokens, generate_message_id
 
 
 # ─── safe_path() ─────────────────────────────────────────────────────────────
@@ -62,39 +62,39 @@ def test_safe_path_absolute_outside_raises(tmp_path):
         safe_path(tmp_path, "/etc/passwd")
 
 
-# ─── _block_get() ────────────────────────────────────────────────────────────
+# ─── get_block_attr() ────────────────────────────────────────────────────────
 
 
 def test_block_get_from_dict():
     block = {"type": "text", "text": "hello"}
-    assert _block_get(block, "type") == "text"
-    assert _block_get(block, "text") == "hello"
+    assert get_block_attr(block, "type") == "text"
+    assert get_block_attr(block, "text") == "hello"
 
 
 def test_block_get_missing_key_from_dict():
     block = {"type": "text"}
-    assert _block_get(block, "nonexistent") is None
+    assert get_block_attr(block, "nonexistent") is None
 
 
 def test_block_get_from_sdk_object():
     obj = MagicMock()
     obj.type = "tool_use"
     obj.name = "Bash"
-    assert _block_get(obj, "type") == "tool_use"
-    assert _block_get(obj, "name") == "Bash"
+    assert get_block_attr(obj, "type") == "tool_use"
+    assert get_block_attr(obj, "name") == "Bash"
 
 
 def test_block_get_missing_attr_from_sdk_object():
     obj = MagicMock(spec=[])  # spec=[] 让 getattr 返回 None
-    assert _block_get(obj, "nonexistent") is None
+    assert get_block_attr(obj, "nonexistent") is None
 
 
-# ─── _normalize_content() ────────────────────────────────────────────────────
+# ─── normalize_content_blocks() ──────────────────────────────────────────────
 
 
 def test_normalize_content_passthrough_dicts():
     content = [{"type": "text", "text": "hello"}, {"type": "other"}]
-    result = _normalize_content(content)
+    result = normalize_content_blocks(content)
     assert result == content
 
 
@@ -102,7 +102,7 @@ def test_normalize_content_sdk_text_block():
     block = MagicMock()
     block.type = "text"
     block.text = "hello world"
-    result = _normalize_content([block])
+    result = normalize_content_blocks([block])
     assert result == [{"type": "text", "text": "hello world"}]
 
 
@@ -112,19 +112,19 @@ def test_normalize_content_sdk_tool_use_block():
     block.id = "abc123"
     block.name = "Bash"
     block.input = {"command": "ls"}
-    result = _normalize_content([block])
+    result = normalize_content_blocks([block])
     assert result == [{"type": "tool_use", "id": "abc123", "name": "Bash", "input": {"command": "ls"}}]
 
 
 def test_normalize_content_unknown_type():
     block = MagicMock()
     block.type = "unknown_type"
-    result = _normalize_content([block])
+    result = normalize_content_blocks([block])
     assert result == [{"type": "unknown_type"}]
 
 
 def test_normalize_content_empty_list():
-    assert _normalize_content([]) == []
+    assert normalize_content_blocks([]) == []
 
 
 def test_normalize_content_mixed():
@@ -132,7 +132,7 @@ def test_normalize_content_mixed():
     sdk_block = MagicMock()
     sdk_block.type = "text"
     sdk_block.text = "sdk object"
-    result = _normalize_content([text_dict, sdk_block])
+    result = normalize_content_blocks([text_dict, sdk_block])
     assert len(result) == 2
     assert result[0] == text_dict
     assert result[1] == {"type": "text", "text": "sdk object"}
@@ -168,16 +168,16 @@ def test_estimate_tokens_formula():
     assert token_estimate == raw_len // 4
 
 
-# ─── gen_uuid() ──────────────────────────────────────────────────────────────
+# ─── generate_message_id() ───────────────────────────────────────────────────
 
 
 def test_gen_uuid_is_string():
-    uid = gen_uuid()
+    uid = generate_message_id()
     assert isinstance(uid, str)
 
 
 def test_gen_uuid_contains_timestamp():
-    uid = gen_uuid()
+    uid = generate_message_id()
     # 格式：{uuid}-{yyyyMMddHHmmssSSS}
     parts = uid.split("-")
     # UUID 本身有 5 段（含连字符）
@@ -185,12 +185,12 @@ def test_gen_uuid_contains_timestamp():
 
 
 def test_gen_uuid_unique():
-    ids = {gen_uuid() for _ in range(100)}
+    ids = {generate_message_id() for _ in range(100)}
     assert len(ids) == 100
 
 
 def test_gen_uuid_timestamp_length():
-    uid = gen_uuid()
+    uid = generate_message_id()
     # 时间戳部分在最后，格式为 yyyyMMddHHmmssSSS（17位数字）
     timestamp_part = uid.split("-")[-1]
     assert len(timestamp_part) == 17

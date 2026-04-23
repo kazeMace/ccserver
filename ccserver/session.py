@@ -11,14 +11,18 @@ from typing import Any, Optional
 from loguru import logger
 
 from .config import SESSIONS_BASE, PROJECT_DIR, GLOBAL_CONFIG_DIR
-from .task_manager import TaskManager
-from .skills import SkillLoader
-from .agents.loader import AgentLoader
-from .hooks.loader import HookLoader
-from .commands import CommandLoader
+from .managers.tasks import TaskManager
+from .managers.skills import SkillLoader
+from .managers.agents import AgentLoader
+from .managers.hooks import HookLoader
+from .managers.commands import CommandLoader
+from .agent_scheduler import AgentScheduler
+from .agent_bus import SessionAgentBus
+from .tasks import ShellTaskRegistry, AgentTaskRegistry
 from .mcp import MCPManager
 from .settings import ProjectSettings
 from .storage import StorageAdapter, SessionRecord, FileStorageAdapter
+from .team import TeamRegistry
 
 
 # ─── Session ──────────────────────────────────────────────────────────────────
@@ -40,12 +44,17 @@ class Session:
     _commands: Any = field(default=None, repr=False)
     _mcp: Any = field(default=None, repr=False)
     _settings: Any = field(default=None, repr=False)
+    _scheduler: Any = field(default=None, repr=False)
+    _bus: Any = field(default=None, repr=False)
+    _shell_tasks: Any = field(default=None, repr=False)  # ShellTaskRegistry，后台 shell 任务注册表
+    _agent_tasks: Any = field(default=None, repr=False)  # AgentTaskRegistry，后台 Agent 任务注册表
+    _team_registry: Any = field(default=None, repr=False)  # TeamRegistry，Agent Team 注册表（可选）
 
     def __post_init__(self):
         if self._settings is None:
             self._settings = ProjectSettings.from_dirs(self.project_root)
         if self._tasks is None:
-            self._tasks = TaskManager()
+            self._tasks = TaskManager(session_id=self.id, adapter=self.storage)
         if self._skills is None:
             self._skills = SkillLoader.from_workdir(self.project_root, GLOBAL_CONFIG_DIR)
         if self._agents is None:
@@ -62,6 +71,22 @@ class Session:
                 self.project_root / ".mcp.json",
                 project_dir=self.project_root,
                 enabled_servers=self._settings.enabled_mcp_servers,
+                session=self,
+            )
+        if self._scheduler is None:
+            self._scheduler = AgentScheduler(self)
+        if self._bus is None:
+            self._bus = SessionAgentBus()
+        if self._shell_tasks is None:
+            self._shell_tasks = ShellTaskRegistry()
+        if self._agent_tasks is None:
+            self._agent_tasks = AgentTaskRegistry()
+        if self._team_registry is None and self._settings.user_agent_team:
+            self._team_registry = TeamRegistry(adapter=self.storage)
+            logger.debug(
+                "Session team registry initialized | id={} teams={}",
+                self.id[:8],
+                len(self._team_registry.list_teams()),
             )
 
     @property
@@ -91,6 +116,29 @@ class Session:
     @property
     def mcp(self) -> MCPManager:
         return self._mcp
+
+    @property
+    def scheduler(self) -> AgentScheduler:
+        return self._scheduler
+
+    @property
+    def bus(self) -> SessionAgentBus:
+        return self._bus
+
+    @property
+    def shell_tasks(self) -> ShellTaskRegistry:
+        """Session 级别的后台 Shell 任务注册表。所有 run_in_background=True 的 Bash 调用均注册于此。"""
+        return self._shell_tasks
+
+    @property
+    def agent_tasks(self) -> AgentTaskRegistry:
+        """Session 级别的后台 Agent 任务注册表。所有 spawn_background() 启动的 Agent 均注册于此。"""
+        return self._agent_tasks
+
+    @property
+    def team_registry(self) -> TeamRegistry | None:
+        """Session 级别的 TeamRegistry。仅当 userAgentTeam=True 时初始化。"""
+        return self._team_registry
 
     # ── 消息持久化（委托给 storage adapter）──────────────────────────────────
 

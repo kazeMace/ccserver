@@ -5,10 +5,19 @@ from pathlib import Path
 
 MODEL = os.getenv("CCSERVER_MODEL", "claude-sonnet-4-6")
 
+# ─── Provider ─────────────────────────────────────────────────────────────────
+
+# LLM 提供商：anthropic、openai、openrouter、ollama、lmstudio、oneapi、volcano、generic
+PROVIDER = os.getenv("CCSERVER_PROVIDER", "anthropic")
+
+# 通用 OpenAI-compatible 后端配置（generic / oneapi 等）
+CCSERVER_BASE_URL = os.getenv("CCSERVER_BASE_URL", "")
+CCSERVER_API_KEY = os.getenv("CCSERVER_API_KEY", "")
+
 # ─── Context compaction ───────────────────────────────────────────────────────
 
-THRESHOLD = int(os.getenv("CCSERVER_THRESHOLD", "50000"))   # chars/4 ≈ tokens
-KEEP_RECENT = int(os.getenv("CCSERVER_KEEP_RECENT", "3"))   # tool results to keep untruncated
+THRESHOLD = int(os.getenv("CCSERVER_THRESHOLD", "60000"))   # chars/4 ≈ tokens
+KEEP_RECENT = int(os.getenv("CCSERVER_KEEP_RECENT", "20"))   # tool results to keep untruncated
 
 # ─── Agent loop limits ────────────────────────────────────────────────────────
 
@@ -50,6 +59,11 @@ MONGO_DB  = os.getenv("CCSERVER_MONGO_DB",  "ccserver")
 REDIS_URL        = os.getenv("CCSERVER_REDIS_URL",        "redis://localhost:6379")
 REDIS_CACHE_SIZE = int(os.getenv("CCSERVER_REDIS_CACHE_SIZE", "100"))
 REDIS_TTL        = int(os.getenv("CCSERVER_REDIS_TTL",        "86400"))  # 秒，默认 24h
+
+# ─── Agent Team ───────────────────────────────────────────────────────────────
+
+# 是否启用 Agent Team 功能；True 表示支持 team 抽象、mailbox 协议、SendMessageTool 等
+CCSERVER_USER_AGENT_TEAM = os.getenv("CCSERVER_USER_AGENT_TEAM", "false").lower() in ("true", "1", "yes")
 
 # ─── Prompt Lib ───────────────────────────────────────────────────────────────
 

@@ -43,10 +43,10 @@ from typing import Any, Callable
 from loguru import logger
 
 from ..config import MODEL
-from ..model import ModelAdapter, get_default_adapter
+from ..model import ModelAdapter, get_adapter
 from ..factory import AgentFactory
 from ..session import Session, SessionManager
-from ..core.emitter import BaseEmitter
+from ..emitters import BaseEmitter
 from ..mcp.manager import MCPManager
 from .data import NodeData
 from .node import AgentNode, FunctionNode, MCPToolNode
@@ -95,7 +95,7 @@ class Graph:
     ):
         self._session_manager = session_manager
         self._model = model
-        self._adapter = adapter or get_default_adapter()
+        self._adapter = adapter or get_adapter()
         self._mcp: MCPManager | None = mcp
 
         self._nodes: dict[str, AgentNode | FunctionNode | MCPToolNode] = {}
@@ -346,6 +346,7 @@ class Graph:
             adapter=node.adapter or self._adapter,
             system=system_text,
             append_system=append_system,
+            stream=False,  # Graph 节点不需要实时流式输出
             **node.agent_config,
         )
 
@@ -409,8 +410,9 @@ class Graph:
                 tool_args[param_name] = value_expr
 
         logger.debug("MCPToolNode | id={} server={} tool={} args={}", node.id, node.server, node.tool, tool_args)
-        result = await client.call(node.tool, tool_args)
-        return NodeData(data={node.output_key: result}, from_node=node.id)
+        outcome = await client.call(node.tool, tool_args)
+        # MCPOutcome 可记录 server 来源，供后续节点判断是否出错
+        return NodeData(data={node.output_key: outcome.content}, from_node=node.id)
 
 
 # ── 工具函数 ──────────────────────────────────────────────────────────────────
