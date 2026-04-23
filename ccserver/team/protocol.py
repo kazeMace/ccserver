@@ -7,8 +7,20 @@ team.protocol — Agent Team 消息协议定义。
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from enum import StrEnum
 from typing import Optional, Literal
 import uuid
+
+
+class MsgType(StrEnum):
+    """团队消息类型枚举。继承 StrEnum，可直接与字符串比较和序列化。"""
+    CHAT               = "chat"
+    IDLE_NOTIFICATION  = "idle_notification"
+    NEW_TASK           = "new_task"
+    SHUTDOWN_REQUEST   = "shutdown_request"
+    PERMISSION_REQUEST = "permission_request"
+    PERMISSION_RESPONSE = "permission_response"
+    STATUS_REQUEST     = "status_request"   # 由 _poll_agent_progress 注入，非 Mailbox 消息
 
 
 @dataclass
@@ -28,7 +40,7 @@ class TeamMessage:
     """
 
     msg_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    msg_type: str = "chat"
+    msg_type: str = MsgType.CHAT
     from_agent: str = ""
     to_agent: str = ""
     text: str = ""
@@ -67,7 +79,7 @@ class TeamMessage:
 @dataclass
 class ChatMessage(TeamMessage):
     """普通团队聊天消息。"""
-    msg_type: str = "chat"
+    msg_type: str = MsgType.CHAT
 
 
 @dataclass
@@ -80,7 +92,7 @@ class IdleNotificationMessage(TeamMessage):
     completed_status: 任务完成状态（resolved / blocked / failed）
     """
 
-    msg_type: str = "idle_notification"
+    msg_type: str = MsgType.IDLE_NOTIFICATION
     idle_reason: Literal["available", "interrupted", "failed"] = "available"
     completed_task_id: Optional[str] = None
     completed_status: Optional[Literal["resolved", "blocked", "failed"]] = None
@@ -114,7 +126,7 @@ class IdleNotificationMessage(TeamMessage):
 class NewTaskMessage(TeamMessage):
     """向 idle teammate 分配新任务的消息。"""
 
-    msg_type: str = "new_task"
+    msg_type: str = MsgType.NEW_TASK
     task_id: str = ""
     task_prompt: str = ""
 
@@ -145,7 +157,7 @@ class NewTaskMessage(TeamMessage):
 class ShutdownRequestMessage(TeamMessage):
     """Team Lead 请求 teammate 优雅退出。"""
 
-    msg_type: str = "shutdown_request"
+    msg_type: str = MsgType.SHUTDOWN_REQUEST
     reason: Optional[str] = None
 
     def to_dict(self) -> dict:
@@ -180,7 +192,7 @@ class PermissionRequestMessage(TeamMessage):
     description: 人类可读描述
     """
 
-    msg_type: str = "permission_request"
+    msg_type: str = MsgType.PERMISSION_REQUEST
     request_id: str = ""
     tool_name: str = ""
     tool_input: dict = field(default_factory=dict)
@@ -217,7 +229,7 @@ class PermissionRequestMessage(TeamMessage):
 class PermissionResponseMessage(TeamMessage):
     """Team Lead 对权限审批请求的响应。"""
 
-    msg_type: str = "permission_response"
+    msg_type: str = MsgType.PERMISSION_RESPONSE
     request_id: str = ""
     approved: bool = False
     feedback: Optional[str] = None

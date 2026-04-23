@@ -45,6 +45,7 @@ from typing import List, Dict, Any, Optional, Callable
 # Agent Team 相关导入（延迟导入避免循环依赖）
 from ccserver.team.mailbox import TeamMailbox
 from ccserver.team.protocol import (
+    MsgType,
     TeamMessage,
     NewTaskMessage,
     ShutdownRequestMessage,
@@ -616,52 +617,79 @@ class Agent:
                             "Teammate idle | agent_id={}", child.context.agent_id
                         )
 
+                    # idle_timeout：等待新消息的超时时间（秒）。
+                    # 超时后检查 handle 是否已被取消，避免 _poll_agent_progress
+                    # 停止后协程永久 hang 在 inbox.get()。
+                    idle_timeout = 60.0
                     while True:
-                        msg = await handle.inbox.get()
-                        msg_type = msg.get("msg_type")
-
-                        # 跳过 progress 轮询的 status_request
-                        if msg.get("type") == "status_request":
+                        try:
+                            msg = await asyncio.wait_for(
+                                handle.inbox.get(), timeout=idle_timeout
+                            )
+                        except asyncio.TimeoutError:
+                            # 超时：检查任务是否已被外部取消，否则继续等待
+                            if handle._task is not None and handle._task.cancelled():
+                                logger.info(
+                                    "Teammate idle timeout+cancelled | agent_id={}",
+                                    child.context.agent_id,
+                                )
+                                break
+                            logger.debug(
+                                "Teammate idle heartbeat | agent_id={}",
+                                child.context.agent_id,
+                            )
                             continue
 
-                        if msg_type == "new_task":
-                            task_prompt = msg.get("task_prompt") or msg.get("text", "")
-                            if not task_prompt:
+                        match msg.get("type") or msg.get("msg_type"):
+                            case MsgType.STATUS_REQUEST:
+                                # 进度查询：轮询协程注入，idle 状态下直接跳过
                                 continue
-                            if registry is not None:
-                                registry.update_member_state_by_agent_id(
-                                    child.context.agent_id, TeamMemberState.BUSY
-                                )
-                            logger.info(
-                                "Teammate new task | agent_id={} task_id={}",
-                                child.context.agent_id, msg.get("task_id")
-                            )
-                            result = await child.run(task_prompt, outbox=queue_emitter)
-                            await handle.outbox.put({"type": "done", "content": result})
-                            await self._notify_parent_done(
-                                agent_task_id=agent_task_id,
-                                agent_name=agent_name or child.context.name or "background",
-                                result=result,
-                            )
-                            if registry is not None:
-                                registry.update_member_state_by_agent_id(
-                                    child.context.agent_id, TeamMemberState.IDLE
-                                )
 
-                        elif msg_type == "shutdown_request":
-                            logger.info(
-                                "Teammate shutdown | agent_id={}",
-                                child.context.agent_id
-                            )
-                            await handle.outbox.put(
-                                {"type": "done", "content": "[shutdown by lead]"}
-                            )
-                            break
+                            case MsgType.NEW_TASK:
+                                task_prompt = msg.get("task_prompt") or msg.get("text", "")
+                                if not task_prompt:
+                                    continue
+                                if registry is not None:
+                                    registry.update_member_state_by_agent_id(
+                                        child.context.agent_id, TeamMemberState.BUSY
+                                    )
+                                logger.info(
+                                    "Teammate new task | agent_id={} task_id={}",
+                                    child.context.agent_id, msg.get("task_id")
+                                )
+                                result = await child.run(task_prompt, outbox=queue_emitter)
+                                await handle.outbox.put({"type": "done", "content": result})
+                                await self._notify_parent_done(
+                                    agent_task_id=agent_task_id,
+                                    agent_name=agent_name or child.context.name or "background",
+                                    result=result,
+                                )
+                                if registry is not None:
+                                    registry.update_member_state_by_agent_id(
+                                        child.context.agent_id, TeamMemberState.IDLE
+                                    )
 
-                        elif msg_type == "chat":
-                            # chat 消息在下次 child.run() 时会被 _drain_inbox_and_respond 消费。
-                            # 如果当前处于 idle，暂时忽略，因为 teammate 没有正在运行的 _loop()。
-                            pass
+                            case MsgType.SHUTDOWN_REQUEST:
+                                # 关闭请求：优雅退出，通知 outbox 后跳出循环
+                                logger.info(
+                                    "Teammate shutdown | agent_id={}",
+                                    child.context.agent_id
+                                )
+                                await handle.outbox.put(
+                                    {"type": "done", "content": "[shutdown by lead]"}
+                                )
+                                break
+
+                            case MsgType.CHAT:
+                                # chat 消息在下次 child.run() 时由 _drain_inbox_and_respond 消费
+                                # idle 状态下暂时忽略，因为没有正在运行的 _loop()
+                                pass
+
+                            case _:
+                                logger.warning(
+                                    "Teammate inbox unknown msg type ignored | agent_id={} msg={}",
+                                    child.context.agent_id, msg,
+                                )
 
             except asyncio.CancelledError:
                 await handle.outbox.put({"type": "cancelled"})
@@ -816,70 +844,67 @@ class Agent:
             需要追加到 messages 的新消息列表（如 new_task, shutdown_request, chat）
         """
         new_messages: list[dict] = []
-        if outbox is not None:
-            while True:
-                try:
-                    msg = self.context.inbox.get_nowait()
-                except asyncio.QueueEmpty:
-                    break
-                if msg.get("type") == "status_request":
-                    # 构建进度摘要（基于 AgentState 可直接获取的字段）
-                    progress = {
-                        "round_num": self.state.round_num,
-                        "max_rounds": self.round_limit,
-                        "phase": self.state.phase,
-                        "current_tool": self.state.current_tool,
-                    }
-                    await outbox.put({"type": "progress", **progress})
 
-        # 处理 Team Mailbox 消息（由 TeamMailboxPoller 注入 inbox）
+        # 合并为单个循环，同时处理 status_request（进度回报）和 Team Mailbox 消息
         while True:
             try:
                 msg = self.context.inbox.get_nowait()
             except asyncio.QueueEmpty:
                 break
 
-            msg_type = msg.get("msg_type")
-            if msg.get("type") == "status_request":
-                if outbox is not None:
-                    progress = {
-                        "round_num": self.state.round_num,
-                        "max_rounds": self.round_limit,
-                        "phase": self.state.phase,
-                        "current_tool": self.state.current_tool,
-                    }
-                    await outbox.put({"type": "progress", **progress})
-                continue
+            # status_request 用 type 字段标识（非 Mailbox 消息，由轮询协程注入）
+            # 其余消息用 msg_type 字段标识（来自 TeamMailboxPoller）
+            match msg.get("type") or msg.get("msg_type"):
+                case MsgType.STATUS_REQUEST:
+                    # 进度查询：由 _poll_agent_progress 定期注入，回报当前轮次/阶段给父 Agent
+                    if outbox is not None:
+                        progress = {
+                            "round_num": self.state.round_num,
+                            "max_rounds": self.round_limit,
+                            "phase": self.state.phase,
+                            "current_tool": self.state.current_tool,
+                        }
+                        await outbox.put({"type": "progress", **progress})
 
-            if msg_type == "new_task":
-                new_messages.append({
-                    "role": "user",
-                    "content": msg.get("task_prompt", msg.get("text", "")),
-                    "_ccserver_team_new_task": True,
-                    "task_id": msg.get("task_id"),
-                })
+                case MsgType.NEW_TASK:
+                    # 新任务：Team Lead 分配过来的任务，转为 user 消息追加到对话历史
+                    new_messages.append({
+                        "role": "user",
+                        "content": msg.get("task_prompt", msg.get("text", "")),
+                        "_ccserver_team_new_task": True,
+                        "task_id": msg.get("task_id"),
+                    })
 
-            elif msg_type == "shutdown_request":
-                new_messages.append({
-                    "role": "system",
-                    "content": "[Team Lead 请求你优雅退出，总结当前进度后结束。]",
-                    "_ccserver_team_shutdown": True,
-                })
+                case MsgType.SHUTDOWN_REQUEST:
+                    # 关闭请求：Team Lead 要求优雅退出，注入 system 消息让 LLM 总结后结束
+                    new_messages.append({
+                        "role": "system",
+                        "content": "[Team Lead 请求你优雅退出，总结当前进度后结束。]",
+                        "_ccserver_team_shutdown": True,
+                    })
 
-            elif msg_type == "chat":
-                new_messages.append({
-                    "role": "user",
-                    "content": f"[{msg.get('from_agent')}] {msg.get('text', '')}",
-                })
+                case MsgType.CHAT:
+                    # 聊天消息：来自其他 Agent 的即时通信，附上发送方标识
+                    new_messages.append({
+                        "role": "user",
+                        "content": f"[{msg.get('from_agent')}] {msg.get('text', '')}",
+                    })
 
-            elif msg_type == "permission_response":
-                # permission_response 由 _wait_permission_response 处理，
-                # 这里只是消费掉避免堆积；实际逻辑在 _handle_tools 的同步轮询中。
-                logger.debug(
-                    "Inbox permission_response consumed | agent={} request_id={}",
-                    self.aid_label,
-                    msg.get("request_id"),
-                )
+                case MsgType.PERMISSION_RESPONSE:
+                    # 权限响应：由 _wait_permission_response 轮询处理，这里只消费掉避免堆积
+                    logger.debug(
+                        "Inbox permission_response consumed | agent={} request_id={}",
+                        self.aid_label,
+                        msg.get("request_id"),
+                    )
+
+                case _:
+                    # 未知消息类型，记录警告但不中断循环
+                    logger.warning(
+                        "Inbox unknown msg type ignored | agent={} msg={}",
+                        self.aid_label,
+                        msg,
+                    )
 
         return new_messages
 
@@ -896,85 +921,98 @@ class Agent:
         )
 
         round_text = ""
-        for round_num in range(self.round_limit):
-            self.state.round_num = round_num + 1
-            # Path B: 处理积压的 status_request，写 progress 到 outbox
-            # 同时处理 Team Mailbox 消息（new_task, shutdown_request, chat 等）
-            team_messages = await self._drain_inbox_and_respond(outbox)
-            for tm in team_messages:
-                self._append(tm)
-            if any(m.get("_ccserver_team_shutdown") for m in team_messages):
-                self.state.phase = "done"
-                return round_text + "\n[shutdown by lead]"
-            await self._maybe_compact()
-            logger.debug("Round {}/{} | agent={}", round_num + 1, self.round_limit, self.aid_label)
-            # 调用前快照 messages（深拷贝，防止后续 append 污染记录）
-            input_messages_snapshot = [dict(m) for m in self.context.messages]
+        # 外层 while 支持用户选择"继续"后重入，避免递归调用 _loop()。
+        # _on_limit_ask_user 增加 round_limit 并设置 _continue_loop=True，
+        # 本循环检测到后重置计数器继续执行，否则直接 return。
+        self._continue_loop = False
+        while True:
+            self._continue_loop = False
+            for round_num in range(self.round_limit):
+                self.state.round_num = round_num + 1
+                # Path B: 处理积压的 status_request，写 progress 到 outbox
+                # 同时处理 Team Mailbox 消息（new_task, shutdown_request, chat 等）
+                team_messages = await self._drain_inbox_and_respond(outbox)
+                for tm in team_messages:
+                    self._append(tm)
+                if any(m.get("_ccserver_team_shutdown") for m in team_messages):
+                    self.state.phase = "done"
+                    return round_text + "\n[shutdown by lead]"
+                await self._maybe_compact()
+                logger.debug("Round {}/{} | agent={}", round_num + 1, self.round_limit, self.aid_label)
+                # 调用前快照 messages（深拷贝，防止后续 append 污染记录）
+                input_messages_snapshot = [dict(m) for m in self.context.messages]
 
-            # 根据 stream 模式选择调用方式
-            if self.stream:
-                response = await self._call_llm_stream()
-            else:
-                response = await self._call_llm_sync()
+                # 根据 stream 模式选择调用方式
+                if self.stream:
+                    response = await self._call_llm_stream()
+                else:
+                    response = await self._call_llm_sync()
 
-            if response is None:
-                # LLM 永久失败（重试耗尽）
-                self.state.phase = "error"
-                self.state.last_error = "LLM call failed after retries"
-                await self.session.hooks.emit_void(
-                    "agent:stop:failure",
-                    {"error": self.state.last_error},
-                    self._build_hook_ctx(),
-                )
-                return ""
-
-            content = normalize_content_blocks(response.content)
-            self.recorder.record(
-                round_num + 1,
-                input_messages=input_messages_snapshot,
-                response_content=content,
-                stop_reason=response.stop_reason,
-            )
-            self._append({"role": "assistant", "content": content})
-
-            round_text = "".join(b["text"] for b in content if b.get("type") == "text")
-            if round_text:
-                # hook: prompt:llm:output — 每轮 LLM 完成后（observing，纯观测）
-                await self.session.hooks.emit_void(
-                    "prompt:llm:output",
-                    {"reply": round_text},
-                    self._build_hook_ctx(),
-                )
-
-            if response.stop_reason != "tool_use":
-                logger.debug("Loop done  | agent={} rounds={} reply_len={}", self.aid_label, round_num + 1, len(round_text))
-                logger.debug("Loop final_text | agent={} text={!r}", self.aid_label, round_text)
-                self.state.phase = "done"
-                # 子代理发 subagent_done，根代理发 done，语义区分
-                if self.context.is_orchestrator:
-                    # hook: agent:stop — 根代理最终完成（observing）
+                if response is None:
+                    # LLM 永久失败（重试耗尽）
+                    self.state.phase = "error"
+                    self.state.last_error = "LLM call failed after retries"
                     await self.session.hooks.emit_void(
-                        "agent:stop",
+                        "agent:stop:failure",
+                        {"error": self.state.last_error},
+                        self._build_hook_ctx(),
+                    )
+                    return ""
+
+                content = normalize_content_blocks(response.content)
+                self.recorder.record(
+                    round_num + 1,
+                    input_messages=input_messages_snapshot,
+                    response_content=content,
+                    stop_reason=response.stop_reason,
+                )
+                self._append({"role": "assistant", "content": content})
+
+                round_text = "".join(b["text"] for b in content if b.get("type") == "text")
+                if round_text:
+                    # hook: prompt:llm:output — 每轮 LLM 完成后（observing，纯观测）
+                    await self.session.hooks.emit_void(
+                        "prompt:llm:output",
                         {"reply": round_text},
                         self._build_hook_ctx(),
                     )
-                    await self.emitter.emit_done(round_text)
-                else:
-                    await self.emitter.emit_subagent_done(round_text)
-                return round_text
 
-            self.state.phase = "tool_executing"
-            tool_results, trigger_compact = await self._handle_tools(response.content)
-            self._append({"role": "user", "content": tool_results})
+                if response.stop_reason != "tool_use":
+                    logger.debug("Loop done  | agent={} rounds={} reply_len={}", self.aid_label, round_num + 1, len(round_text))
+                    logger.debug("Loop final_text | agent={} text={!r}", self.aid_label, round_text)
+                    self.state.phase = "done"
+                    # 子代理发 subagent_done，根代理发 done，语义区分
+                    if self.context.is_orchestrator:
+                        # hook: agent:stop — 根代理最终完成（observing）
+                        await self.session.hooks.emit_void(
+                            "agent:stop",
+                            {"reply": round_text},
+                            self._build_hook_ctx(),
+                        )
+                        await self.emitter.emit_done(round_text)
+                    else:
+                        await self.emitter.emit_subagent_done(round_text)
+                    return round_text
 
-            if trigger_compact:
-                await self._do_compact(reason="manual compact requested")
+                self.state.phase = "tool_executing"
+                tool_results, trigger_compact = await self._handle_tools(response.content)
+                self._append({"role": "user", "content": tool_results})
 
-            self.state.phase = "running"
+                if trigger_compact:
+                    await self._do_compact(reason="manual compact requested")
 
-        logger.warning("Round limit reached | agent={} limit={}", self.aid_label, self.round_limit)
-        self.state.phase = "limit_reached"
-        return await self._on_limit(round_text)
+                self.state.phase = "running"
+
+            # for 循环耗尽，达到轮次上限
+            logger.warning("Round limit reached | agent={} limit={}", self.aid_label, self.round_limit)
+            self.state.phase = "limit_reached"
+            result = await self._on_limit(round_text)
+            # _on_limit_ask_user 选择"继续"时设置 _continue_loop=True 并增加 round_limit
+            if self._continue_loop:
+                self.state.round_num = 0
+                self.state.phase = "running"
+                continue
+            return result
 
     async def _on_limit(self, last_text: str) -> str:
         """
@@ -1061,11 +1099,12 @@ class Agent:
             "multiSelect": False,
         }])
         if answer and "继续" in answer:
-            # 追加一条 user 消息触发下一轮，重置轮次上限
+            # 追加 user 消息触发下一轮；增加轮次上限，让外层 while 重入
             self.context.messages.append({"role": "user", "content": "继续执行未完成的任务。"})
-            self.round_limit = self.round_limit  # 保持不变，_loop 会重新进入
-            # 直接在此递归调用 _loop，让新的 round_limit 生效
-            return await self._loop()
+            self.round_limit += MAIN_ROUND_LIMIT
+            self._continue_loop = True
+            logger.info("User chose to continue | agent={} new_limit={}", self.aid_label, self.round_limit)
+            return ""
         return await self._finish_with_last_text(last_text)
 
     async def _on_limit_graceful(self, last_text: str) -> str:
