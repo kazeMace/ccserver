@@ -10,7 +10,7 @@
 
 ## [Unreleased] — 2026-04-23
 
-**会话**: 输出控制重构 + TUI 交互增强 + 日志系统优化
+**会话**: Agent Loop 缺陷修复 + 输出控制重构 + TUI 交互增强 + 日志系统优化
 
 ### Changed
 
@@ -40,7 +40,17 @@
 - `tui.py` / `clients/tui_http.py` — `/` 前缀自动补全（`prompt_toolkit.WordCompleter`）：
   - 输入 `/` 时弹出全部命令候选，`complete_while_typing=True` 边输边缩小列表
 
+### Added
+
+- `ccserver/team/protocol.py` — 新增 `MsgType(StrEnum)` 枚举，统一所有团队消息类型常量（`CHAT` / `NEW_TASK` / `SHUTDOWN_REQUEST` / `PERMISSION_REQUEST` / `PERMISSION_RESPONSE` / `IDLE_NOTIFICATION` / `STATUS_REQUEST`）；各消息子类 `msg_type` 默认值改为引用枚举值，与字符串完全兼容，无需修改序列化逻辑
+
+### Changed
+
+- `ccserver/agent.py` — `_drain_inbox_and_respond()` 中两处 `if/elif` 消息分发链改为 `match/case MsgType.XXX`，补充 `case _` 未知类型 warning；同步在 Teammate idle 循环中也使用 `match/case`
+
 ### Fixed
+
+- `ccserver/agent.py` — 修复 `_drain_inbox_and_respond()` 双重循环 bug：原先在 `outbox is not None` 时第一个循环会消费全部 inbox 消息（含 `new_task`/`shutdown_request` 等），导致第二个循环永远拿不到团队消息，团队协作完全失效；合并为单一循环修复此问题
 
 - `clients/tui_http.py` — `sys.stdout.write()` 错误传入 `flush=True` 关键字参数（`write` 不支持），拆分为 `write()` + `flush()`
 
