@@ -134,8 +134,8 @@ class PersonaChatGraph(Graph):
 
 async def create_graph(session_manager: SessionManager) -> PersonaChatGraph:
     """server.py 在应用启动时 await 此函数。"""
-    from ccserver.model import get_default_adapter
+    from ccserver.model import get_adapter
 
     mcp = MCPManager.from_config(MCP_CONFIG, project_dir=_HERE)
     await mcp.connect_all()
-    return PersonaChatGraph(session_manager=session_manager, mcp=mcp, adapter=get_default_adapter())
+    return PersonaChatGraph(session_manager=session_manager, mcp=mcp, adapter=get_adapter())

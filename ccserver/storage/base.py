@@ -64,3 +64,76 @@ class StorageAdapter(ABC):
 
     def create_conversation(self, session_id: str, conversation_id: str) -> None:
         """注册一次新的 HTTP 请求对话轮次。不支持的 adapter 忽略此调用。"""
+
+    # ── Task 存储 ─────────────────────────────────────────────────────────────
+
+    def create_task(self, session_id: str, task_data: dict) -> None:
+        """保存任务。默认未实现，由具体 adapter 覆盖。"""
+        raise NotImplementedError(f"{self.__class__.__name__} 未实现 create_task")
+
+    def load_task(self, session_id: str, task_id: str) -> dict | None:
+        """加载任务。默认未实现。"""
+        raise NotImplementedError(f"{self.__class__.__name__} 未实现 load_task")
+
+    def update_task(self, session_id: str, task_data: dict) -> None:
+        """更新任务。默认未实现。"""
+        raise NotImplementedError(f"{self.__class__.__name__} 未实现 update_task")
+
+    def list_tasks(self, session_id: str) -> list[dict]:
+        """列出所有任务。默认未实现。"""
+        raise NotImplementedError(f"{self.__class__.__name__} 未实现 list_tasks")
+
+    def get_task_counter(self, session_id: str) -> int:
+        """获取任务自增计数器。默认未实现。"""
+        raise NotImplementedError(f"{self.__class__.__name__} 未实现 get_task_counter")
+
+    def set_task_counter(self, session_id: str, value: int) -> None:
+        """设置任务自增计数器。默认未实现。"""
+        raise NotImplementedError(f"{self.__class__.__name__} 未实现 set_task_counter")
+
+    # ── Team 存储 ──────────────────────────────────────────────────────────────
+
+    def save_team(self, team_data: dict) -> None:
+        """保存或更新团队数据。默认未实现。"""
+        raise NotImplementedError(f"{self.__class__.__name__} 未实现 save_team")
+
+    def load_team(self, team_name: str) -> dict | None:
+        """加载团队数据。默认未实现。"""
+        raise NotImplementedError(f"{self.__class__.__name__} 未实现 load_team")
+
+    def delete_team(self, team_name: str) -> None:
+        """删除团队数据。默认未实现。"""
+        raise NotImplementedError(f"{self.__class__.__name__} 未实现 delete_team")
+
+    def list_teams(self) -> list[dict]:
+        """列出所有团队数据。默认未实现。"""
+        raise NotImplementedError(f"{self.__class__.__name__} 未实现 list_teams")
+
+    # ── Mailbox 存储（Agent Team 跨进程通信）────────────────────────────────────
+
+    def append_inbox_message(self, team_name: str, recipient: str, message: dict) -> None:
+        """
+        向指定团队的某个收件人追加一条 mailbox 消息。
+        默认未实现。
+        """
+        raise NotImplementedError(f"{self.__class__.__name__} 未实现 append_inbox_message")
+
+    def fetch_inbox_messages(
+        self,
+        team_name: str,
+        recipient: str,
+        unread_only: bool = False,
+        limit: int = 100,
+    ) -> list[dict]:
+        """
+        获取指定收件人的 mailbox 消息列表。
+        默认未实现。
+        """
+        raise NotImplementedError(f"{self.__class__.__name__} 未实现 fetch_inbox_messages")
+
+    def mark_inbox_read(self, team_name: str, recipient: str, message_ids: list[str]) -> None:
+        """
+        将指定消息标记为已读。
+        默认未实现。
+        """
+        raise NotImplementedError(f"{self.__class__.__name__} 未实现 mark_inbox_read")

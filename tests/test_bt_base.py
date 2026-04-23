@@ -16,7 +16,7 @@ import asyncio
 import pytest
 from pathlib import Path
 
-from ccserver.tools.bt_base import BaseTool, ToolParam, ToolResult
+from ccserver.builtins.tools import BuiltinTools, ToolParam, ToolResult
 
 
 # ─── ToolResult ───────────────────────────────────────────────────────────────
@@ -93,7 +93,7 @@ def test_tool_param_optional():
 # ─── BaseTool 具体实现 ────────────────────────────────────────────────────────
 
 
-class _SimpleTool(BaseTool):
+class _SimpleTool(BuiltinTools):
     name = "SimpleTool"
     description = "A simple tool for testing."
     params = {
@@ -105,7 +105,7 @@ class _SimpleTool(BaseTool):
         return ToolResult.ok(f"{arg1}:{arg2}")
 
 
-class _ErrorTool(BaseTool):
+class _ErrorTool(BuiltinTools):
     name = "ErrorTool"
     description = "A tool that always errors."
     params = {"x": ToolParam(type="string", description="Param")}
@@ -114,7 +114,7 @@ class _ErrorTool(BaseTool):
         return ToolResult.error("always fails")
 
 
-class _RaisingTool(BaseTool):
+class _RaisingTool(BuiltinTools):
     name = "RaisingTool"
     description = "A tool whose run() raises an exception."
     params = {"x": ToolParam(type="string", description="Param")}
@@ -147,7 +147,7 @@ def test_to_schema_required_only_includes_required_params():
 
 
 def test_to_schema_no_required_params_omits_required_key():
-    class _AllOptional(BaseTool):
+    class _AllOptional(BuiltinTools):
         name = "AllOptional"
         description = "All optional."
         params = {"x": ToolParam(type="string", description="...", required=False)}
@@ -158,7 +158,7 @@ def test_to_schema_no_required_params_omits_required_key():
 
 
 def test_to_schema_missing_name_raises():
-    class _NoName(BaseTool):
+    class _NoName(BuiltinTools):
         name = ""
         description = "Has description."
         params = {}
@@ -169,7 +169,7 @@ def test_to_schema_missing_name_raises():
 
 
 def test_to_schema_missing_description_raises():
-    class _NoDesc(BaseTool):
+    class _NoDesc(BuiltinTools):
         name = "NoDesc"
         description = ""
         params = {}

@@ -8,6 +8,53 @@
 
 ---
 
+## [Unreleased] — 2026-04-23
+
+**会话**: 输出控制重构 + TUI 交互增强 + 日志系统优化
+
+### Changed
+
+- `ccserver/emitters/filter.py` — `FilterEmitter` 重写，将旧的单一 `mode` 参数拆分为三个独立参数：
+  - `verbosity: "verbose" | "final_only"` — 展示详细程度；`verbose` 透传全部事件，`final_only` 只透传 `done`/`error`
+  - `stream: bool` — 控制 `token` 事件是否透传，默认 `True`
+  - `interactive: bool` — 控制交互行为；`False` 时 `emit_ask_user` 直接返回 `""`，`emit_permission_request` 直接返回 `False`，不阻塞
+  - 约束：`verbosity=final_only` 时强制 `interactive=False`
+  - 移除旧 `streaming` / `interactive` 模式分支（已被新参数组合覆盖）
+
+- `server.py` — `ChatRequest` 字段同步更新（`output_mode` + `run_mode` → `verbosity` + `stream` + `interactive`）；`_wrap_emitter` 签名对齐；WebSocket 端点从 payload 读取新三字段
+
+- `tui.py` — 新增以下 slash 命令：
+  - `/verbosity [verbose|final_only]` — 查看或切换展示详细程度
+  - `/stream` — toggle token 流（on/off）
+  - `/interactive` — toggle 交互模式（on/off）；`verbosity=final_only` 时提示无法开启
+  - `/status` — 打印当前 session、model、workdir 及三个输出参数的值
+
+- `clients/tui_http.py` — 同步上述 slash 命令；主循环从同步 `pt_prompt + asyncio.run` 改为全异步 `PromptSession.prompt_async()`
+
+### Added
+
+- `tui.py` / `clients/tui_http.py` — ESC 键绑定（`prompt_toolkit.KeyBindings`）：
+  - 有正在运行的 agent/SSE task 时，ESC 调用 `task.cancel()`，打印 `⏹ 已中断`
+  - 无 task 运行时，ESC 清空当前输入行
+
+- `tui.py` / `clients/tui_http.py` — `/` 前缀自动补全（`prompt_toolkit.WordCompleter`）：
+  - 输入 `/` 时弹出全部命令候选，`complete_while_typing=True` 边输边缩小列表
+
+### Fixed
+
+- `clients/tui_http.py` — `sys.stdout.write()` 错误传入 `flush=True` 关键字参数（`write` 不支持），拆分为 `write()` + `flush()`
+
+- `ccserver/log.py` — 修复第三方子 logger（如 `mcp.server.db`）绕过 handler 导致原始 logging 格式漏出的问题：
+  - 改为只在顶层 logger（`mcp`、`uvicorn`、`fastapi`）安装单例 `_InterceptHandler`，子 logger 通过 `propagate=True`（默认）自然冒泡，无需逐一注册动态创建的子 logger
+  - 新增 `_prefix_to_tag()`：按最长前缀匹配规则将 `record.name` 映射为来源标签，子模块显示为 `TAG:suffix`（如 `MCP:server.db`），suffix 超出列宽时从末尾截取保留最有区分度的部分
+  - `_INTERCEPT_LOGGERS` 从 8 条精确条目精简为 3 条前缀条目（`mcp` / `uvicorn` / `fastapi`）
+
+- `server.py` — uvicorn 启动时传入 `log_config=None`，禁止 uvicorn 在启动后用 `dictConfig` 覆盖已安装的 loguru handler，修复 `uvicorn.access` 日志以原始 `INFO: 127.0.0.1 -` 格式漏出的问题
+
+- `ccserver/emitters/__init__.py` / `ccserver/managers/agents/manager.py` — 修复 `VALID_MODES` 改名为 `VALID_VERBOSITY` 后未同步导致的 `ImportError`
+
+---
+
 ## [0.3.0] — 2026-04-10
 
 **会话**: Hook 系统重构与 roleplay_agent_neo 示例

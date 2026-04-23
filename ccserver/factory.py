@@ -9,11 +9,11 @@ from loguru import logger
 
 from .config import MODEL, MAIN_ROUND_LIMIT, PROMPT_LIB
 from .session import Session
-from .core.emitter import BaseEmitter
-from .tools import build_tools
-from .tools.bt_agent import BTAgent
+from .emitters import BaseEmitter
+from .managers.tools import ToolManager
+from .builtins.tools import BTAgent
 from .agent import Agent, AgentContext
-from .model import ModelAdapter, get_default_adapter
+from .model import ModelAdapter, get_adapter
 
 
 # ─── AgentFactory ─────────────────────────────────────────────────────────────
@@ -35,6 +35,8 @@ class AgentFactory:
         append_system: bool = False,
         run_mode: str | None = None,   # None 时从 session.settings.run_mode 读取
         on_limit=None,                 # round limit 回调：async def handler(agent, last_text) -> str
+        stream: bool = True,           # True=实时 emit token，False=非流式
+        env_vars: dict[str, str] | None = None,
     ) -> Agent:
         """
         构建根 agent。
@@ -46,15 +48,32 @@ class AgentFactory:
         settings = session.settings
 
         injected_system = system if system else None
-        resolved_adapter = adapter or get_default_adapter()
-        all_tools = build_tools(
-            session.project_root, session.tasks, settings,
-            resolved_adapter._client,
+
+        # adapter 解析优先级：显式传入 > settings > 环境变量 > 默认 anthropic
+        if adapter is None:
+            provider = settings.provider if isinstance(settings.provider, str) else "anthropic"
+            provider_config = settings.provider_config or {}
+            resolved_adapter = get_adapter(provider, **provider_config)
+        else:
+            resolved_adapter = adapter
+
+        # 由 PromptLib 构建工具集
+        from ccserver.prompts_lib.adapter import get_lib
+        lib = get_lib(lib_id)
+        built_tools = lib.build_tools(session, resolved_adapter, settings, emitter=emitter)
+
+        tool_manager = ToolManager(
+            session.project_root,
+            session.tasks,
+            settings,
+            tools=built_tools,
         )
+        all_tools = tool_manager.get_all_tools()
+        tools = settings.filter_tools(all_tools)
+
+        # Agent 工具始终保留，不受 permissions 过滤
         agent_catalog = session.agents.build_catalog()
         bt_agent = BTAgent(agent_catalog=agent_catalog)
-        tools = settings.filter_tools(all_tools)
-        # Agent 工具始终保留，不受 permissions.allow 过滤
         tools[BTAgent.name] = bt_agent
         disabled_tools = {k: v for k, v in all_tools.items() if k not in tools}
 
@@ -79,14 +98,15 @@ class AgentFactory:
             system=injected_system,
             append_system=append_system,
             run_mode=run_mode,  # None = 从 session.settings.run_mode 读取
+            stream=stream,
+            env_vars=env_vars,
         )
 
         # MCP schema 过滤后追加（__init__ 不持有 settings，无法过滤，由此处补全）
         agent._schemas += settings.filter_mcp_schemas(session.mcp.schemas())
 
         # 让 prompt lib 对 schema 描述做后处理（如 cc_reverse 替换为 CC 原版描述）
-        from ccserver.prompts_lib.adapter import get_lib
-        agent._schemas = get_lib(lib_id).patch_tool_schemas(agent._schemas)
+        agent._schemas = lib.patch_tool_schemas(agent._schemas)
 
         logger.info(
             "Root agent created | session={} model={} lib={} tools={} mcp_tools={}",

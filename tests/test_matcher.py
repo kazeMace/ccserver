@@ -8,8 +8,8 @@ tests/test_matcher.py — HookMatcher 单元测试
 import sys
 from pathlib import Path
 
-# 让 import matcher 直接从 ccserver/hooks/ 加载
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "ccserver" / "hooks"))
+# 让 import matcher 直接从 ccserver/managers/hooks/ 加载
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "ccserver" / "managers" / "hooks"))
 import matcher
 
 

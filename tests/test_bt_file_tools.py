@@ -38,11 +38,11 @@ import asyncio
 import pytest
 from pathlib import Path
 
-from ccserver.tools.bt_read import BTRead
-from ccserver.tools.bt_write import BTWrite
-from ccserver.tools.bt_edit import BTEdit
-from ccserver.tools.bt_glob import BTGlob
-from ccserver.tools.bt_grep import BTGrep
+from ccserver.builtins.tools import BTRead
+from ccserver.builtins.tools import BTWrite
+from ccserver.builtins.tools import BTEdit
+from ccserver.builtins.tools import BTGlob
+from ccserver.builtins.tools import BTGrep
 
 
 def _run(coro):

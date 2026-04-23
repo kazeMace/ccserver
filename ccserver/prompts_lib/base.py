@@ -6,6 +6,10 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ccserver.session import Session
+    from ccserver.settings import ProjectSettings
+    from ccserver.model import ModelAdapter
+    from ccserver.builtins.tools import BuiltinTools
+    from ccserver.emitters.base import BaseEmitter
 
 
 class PromptLib:
@@ -121,6 +125,77 @@ class PromptLib:
         返回修改后的列表（可以是原列表 in-place 修改后返回）。
         """
         return schemas
+
+    def build_tools(
+        self,
+        session: "Session",
+        adapter: "ModelAdapter",
+        settings: "ProjectSettings",
+        emitter: "BaseEmitter | None" = None,
+    ) -> dict[str, "BuiltinTools"]:
+        """
+        返回该 PromptLib 所管理的内置工具字典。
+        在 factory.py 调用 AgentFactory.create_root() 时被调用。
+
+        子类可覆盖此方法：
+          1. 完全替换工具集（如某些 lib 不需要特定工具）
+          2. 自定义工具初始化参数（如 WebFetch 使用不同 model）
+          3. 注入额外的自定义工具
+
+        默认实现：返回 ccserver 内置工具的默认集合。
+        """
+        from ccserver.builtins.tools import (
+            BTBash,
+            BTRead,
+            BTWrite,
+            BTEdit,
+            BTGlob,
+            BTGrep,
+            BTCompact,
+            BTTaskCreate,
+            BTTaskUpdate,
+            BTTaskGet,
+            BTTaskList,
+            BTTaskStop,
+            BTAskUser,
+            BTWebFetch,
+            BTWebSearch,
+            BTAgent,
+            BTSendMessage,
+        )
+        from ccserver.model import AnthropicAdapter
+
+        # 基础工具（不需要 LLM client）
+        tools: dict[str, BuiltinTools] = {
+            "Bash": BTBash(session.project_root, settings, session=session, emitter=emitter),
+            "Read": BTRead(session.project_root),
+            "Write": BTWrite(session.project_root),
+            "Edit": BTEdit(session.project_root),
+            "Glob": BTGlob(session.project_root),
+            "Grep": BTGrep(session.project_root),
+            "Compact": BTCompact(),
+            "TaskCreate": BTTaskCreate(session.tasks),
+            "TaskUpdate": BTTaskUpdate(session.tasks),
+            "TaskGet": BTTaskGet(session.tasks),
+            "TaskList": BTTaskList(session.tasks),
+            "TaskStop": BTTaskStop(session.shell_tasks, session=session),
+            "AskUser": BTAskUser(),
+        }
+
+        # 需要 LLM client 的工具
+        if adapter is not None:
+            tools["WebFetch"] = BTWebFetch(adapter)
+            if isinstance(adapter, AnthropicAdapter):
+                tools["WebSearch"] = BTWebSearch(adapter)
+
+        # Agent 工具动态注入
+        tools["Agent"] = BTAgent(agent_catalog=session.agents.build_catalog())
+
+        # Agent Team 通信工具（仅在开启 team 功能时注册）
+        if session.settings.user_agent_team:
+            tools["SendMessage"] = BTSendMessage()
+
+        return tools
 
     def build_compact_messages(self, summary: str, transcript_ref: str) -> list:
         """

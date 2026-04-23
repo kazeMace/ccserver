@@ -12,7 +12,7 @@ import json
 from loguru import logger
 
 from .config import MODEL, THRESHOLD, KEEP_RECENT
-from .utils import _block_get, estimate_tokens
+from .utils import estimate_tokens, get_block_attr
 from .model import ModelAdapter
 
 
@@ -58,9 +58,9 @@ class Compactor:
         for msg in messages:
             if msg["role"] == "assistant":
                 for block in msg.get("content", []) if isinstance(msg.get("content"), list) else []:
-                    if _block_get(block, "type") == "tool_use":
-                        bid = _block_get(block, "id")
-                        bname = _block_get(block, "name")
+                    if get_block_attr(block, "type") == "tool_use":
+                        bid = get_block_attr(block, "id")
+                        bname = get_block_attr(block, "name")
                         if bid and bname:
                             tool_name_map[bid] = bname
 

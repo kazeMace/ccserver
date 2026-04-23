@@ -11,6 +11,11 @@ settings — 读取项目目录和全局目录下的配置文件。
   permissions.ask          — 需要运行时确认的工具列表（interactive 模式下弹出提示；auto 模式下直接拒绝）
   runMode                  — 运行模式："auto"（全自动）或 "interactive"（交互式），默认 "auto"
   enabledMcpjsonServers    — 允许连接的 MCP server 名称列表
+  provider                 — LLM 提供商：anthropic、openai、openrouter、ollama、lmstudio、oneapi、volcano、generic
+  model                    — 模型名称，如 claude-sonnet-4-6、gpt-4o
+  providerConfig           — 提供商专属配置字典，如 {"baseUrl": "...", "apiKey": "..."}
+  toolConfig               — 内置工具配置字典，如 {"WebFetch": {"model": "gpt-4o-mini"}}
+  userAgentTeam            — 是否启用 Agent Team 功能（true/false），可被 CCSERVER_USER_AGENT_TEAM 环境变量覆盖
 
 allow/deny 条目格式：
   "Bash(git:*)"            → 命令执行权限（限制 Bash 可执行的命令前缀）
@@ -37,6 +42,8 @@ from pathlib import Path
 from typing import Optional
 
 from loguru import logger
+
+from .config import CCSERVER_USER_AGENT_TEAM
 
 # 延迟 import HookLoader，避免循环依赖（settings → hooks → settings）
 # HookLoader 在需要时才导入（see build_hook_loader 方法）
@@ -97,6 +104,11 @@ class ProjectSettings:
         run_mode: str = "auto",                          # "auto" 或 "interactive"
         main_round_limit: Optional[int] = None,          # None = 使用 config.MAIN_ROUND_LIMIT
         main_limit_strategy: str = "last_text",           # round limit 兜底策略
+        provider: Optional[str] = None,                   # LLM 提供商
+        model: Optional[str] = None,                      # 模型名称
+        provider_config: Optional[dict] = None,           # 提供商专属配置
+        tool_config: Optional[dict] = None,               # 内置工具配置
+        user_agent_team: bool = False,                    # 是否启用 Agent Team
         # 保存原始 settings dict，用于构建 HookLoader
         # （HookLoader 需要完整的 settings 数据来解析 hooks 字段）
         _raw_project: Optional[dict] = None,
@@ -111,6 +123,11 @@ class ProjectSettings:
         self.run_mode = run_mode
         self.main_round_limit = main_round_limit
         self.main_limit_strategy = main_limit_strategy
+        self.provider = provider
+        self.model = model
+        self.provider_config = provider_config or {}
+        self.tool_config = tool_config or {}
+        self.user_agent_team = user_agent_team
         # 原始 dict 仅供 build_hook_loader() 使用，不对外暴露
         self._raw_project = _raw_project
         self._raw_global = _raw_global
@@ -124,7 +141,7 @@ class ProjectSettings:
 
         在 session.__post_init__ 里调用，替代原来的 HookLoader.from_workdir()。
         """
-        from ccserver.hooks.loader import HookLoader
+        from ccserver.managers.hooks import HookLoader
         return HookLoader.from_dirs(
             project_root=project_root,
             project_settings=self._raw_project,
@@ -255,9 +272,40 @@ class ProjectSettings:
             or "last_text"
         )
 
+        # provider / model / providerConfig / toolConfig
+        def get_dict(data: Optional[dict], key: str) -> Optional[dict]:
+            if data is None:
+                return None
+            val = data.get(key)
+            return val if isinstance(val, dict) else None
+
+        provider = get_str(project_data, "provider") or get_str(global_data, "provider")
+        model_name = get_str(project_data, "model") or get_str(global_data, "model")
+        provider_config = get_dict(project_data, "providerConfig") or get_dict(global_data, "providerConfig")
+        tool_config = get_dict(project_data, "toolConfig") or get_dict(global_data, "toolConfig")
+
+        # userAgentTeam：环境变量优先级最高，其次项目配置，再次全局配置
+        def _parse_bool(data: Optional[dict], key: str) -> Optional[bool]:
+            if data is None:
+                return None
+            val = data.get(key)
+            if val is None:
+                return None
+            return str(val).strip().lower() in ("true", "1", "yes")
+
+        # 环境变量 > settings.json
+        if CCSERVER_USER_AGENT_TEAM:
+            user_agent_team = True
+        else:
+            user_agent_team = (
+                _parse_bool(project_data, "userAgentTeam")
+                or _parse_bool(global_data, "userAgentTeam")
+                or False
+            )
+
         logger.debug(
-            "settings merged | allowed_tools={} denied_tools={} allowed_cmds={} denied_cmds={} mcp_servers={} ask={} run_mode={} main_round_limit={} main_limit_strategy={}",
-            allowed_tools, denied_tools, allowed_commands, denied_commands, enabled_mcp_servers, ask_tools, run_mode, main_round_limit, main_limit_strategy,
+            "settings merged | allowed_tools={} denied_tools={} allowed_cmds={} denied_cmds={} mcp_servers={} ask={} run_mode={} main_round_limit={} main_limit_strategy={} provider={} model={} user_agent_team={}",
+            allowed_tools, denied_tools, allowed_commands, denied_commands, enabled_mcp_servers, ask_tools, run_mode, main_round_limit, main_limit_strategy, provider, model_name, user_agent_team,
         )
         return cls(
             allowed_tools=allowed_tools,
@@ -269,6 +317,11 @@ class ProjectSettings:
             run_mode=run_mode,
             main_round_limit=main_round_limit,
             main_limit_strategy=main_limit_strategy,
+            provider=provider,
+            model=model_name,
+            provider_config=provider_config,
+            tool_config=tool_config,
+            user_agent_team=user_agent_team,
             _raw_project=project_data,
             _raw_global=global_data,
         )

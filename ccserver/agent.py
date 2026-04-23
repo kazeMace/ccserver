@@ -16,6 +16,7 @@ Agent — 统一的代理抽象，适用于根代理和子代理。
     agent.run(message)                                          → 执行循环
 """
 
+import asyncio
 import json
 import uuid
 from dataclasses import dataclass, field
@@ -24,18 +25,35 @@ from datetime import datetime, timezone
 from loguru import logger
 
 from .config import MODEL, MAIN_ROUND_LIMIT, SUB_ROUND_LIMIT, MAX_DEPTH, RECORD_DIR
-from .hooks.loader import HookContext
+from ccserver.managers.hooks import HookContext
 from .recorder import Recorder
 from .session import Session
 from .compactor import Compactor
-from .utils import _block_get, _normalize_content, gen_uuid
-from .tools import ToolResult
-from .tools.bt_base import BaseTool
-from .core.emitter import BaseEmitter
-from .core.emitter.filter_emitter import FilterEmitter
-from .model import ModelAdapter, get_default_adapter
+from .utils import get_block_attr, normalize_content_blocks, generate_message_id
+from ccserver.builtins.tools import ToolResult
+from ccserver.builtins.tools import BuiltinTools
+from ccserver.emitters import BaseEmitter
+from ccserver.emitters import FilterEmitter
+from ccserver.emitters.queue import QueueEmitter
+from .agent_handle import BackgroundAgentHandle, forward_agent_events, _poll_agent_progress
+from .agent_registry import register_handle, unregister_handle
+from .model import ModelAdapter, get_adapter
+from .emitters.queue import QueueEmitter
 
 from typing import List, Dict, Any, Optional, Callable
+
+# Agent Team 相关导入（延迟导入避免循环依赖）
+from ccserver.team.mailbox import TeamMailbox
+from ccserver.team.protocol import (
+    TeamMessage,
+    NewTaskMessage,
+    ShutdownRequestMessage,
+    PermissionRequestMessage,
+    PermissionResponseMessage,
+    ChatMessage,
+    IdleNotificationMessage,
+)
+from ccserver.team.helpers import format_agent_id
 
 
 # ─── AgentContext（代理上下文）────────────────────────────────────────────────
@@ -52,17 +70,44 @@ class AgentContext:
     depth 记录嵌套层级，防止无限递归生成子代理。
     """
 
-    agent_id: str = field(default_factory=lambda: str(gen_uuid()))
+    agent_id: str = field(default_factory=lambda: str(generate_message_id()))
     name: str = ""                  # 代理名称，用于日志标识
     messages: list = field(default_factory=list)
     depth: int = 0
     parent_id: str | None = None    # 父代理的 agent_id
     parent_name: str | None = None  # 父代理的 name，便于日志追踪
+    env_vars: dict[str, str] = field(default_factory=dict)  # 环境变量，子代理继承
+    inbox: asyncio.Queue = field(default_factory=asyncio.Queue)  # 外部消息队列（后台任务/ teammate 用）
 
     @property
     def is_orchestrator(self) -> bool:
         """根代理（depth=0）即编排者，无需显式标记。"""
         return self.depth == 0
+
+
+# ─── AgentState（代理运行时状态）──────────────────────────────────────────────
+
+
+@dataclass
+class AgentState:
+    """
+    代理运行时状态，用于外部系统查询 agent 当前的运行阶段。
+
+    phase 取值:
+        - idle          : 刚创建，未开始运行
+        - running       : 正在运行（循环中）
+        - llm_calling   : 正在调用 LLM
+        - tool_executing: 正在执行工具
+        - done          : 正常结束
+        - error         : 异常结束
+        - limit_reached : 达到轮次上限
+        - cancelled     : 被外部取消
+    """
+    phase: str = "idle"
+    round_num: int = 0
+    current_tool: str | None = None
+    start_time: datetime | None = None
+    last_error: str | None = None
 
 
 # ─── Agent（代理）─────────────────────────────────────────────────────────────
@@ -89,9 +134,9 @@ class Agent:
         session: Session,                       # 当前会话，包含 workdir / 元数据等
         adapter: ModelAdapter,                  # LLM 调用适配器
         emitter: BaseEmitter,                   # 事件发射器，向外推送 token，流式 token
-        tools: dict[str, BaseTool],             # 工具集，key 为工具名，value 为工具实例
+        tools: dict[str, BuiltinTools],             # 工具集，key 为工具名，value 为工具实例
         context: AgentContext,                  # 独立上下文，持有 name / depth / id 等身份信息
-        disabled_tools: dict[str, BaseTool] | None = None,  # 被禁用的工具，生成占位 schema 告知 LLM
+        disabled_tools: dict[str, BuiltinTools] | None = None,  # 被禁用的工具，生成占位 schema 告知 LLM
         model: str = MODEL,                     # 使用的 LLM 模型名称
         round_limit: int = MAIN_ROUND_LIMIT,    # 最大执行轮次，防止无限循环
         persist: bool = True,                   # 是否将消息持久化到磁盘（子代理为 False）
@@ -104,6 +149,8 @@ class Agent:
         run_mode: str | None = None,                 # "auto" 或 "interactive"；None 时从 session.settings 读取
         limit_strategy: str = "last_text",           # round limit 兜底策略
         on_limit_callback: Optional[Callable] = None, # 自定义接管回调，callback 策略时调用
+        stream: bool = True,                        # True=实时 emit token，False=非流式（只返回最终结果）
+        env_vars: dict[str, str] | None = None,     # 环境变量，会合并到 context.env_vars
     ):
         self.session:Session = session
         self.adapter:ModelAdapter = adapter
@@ -122,6 +169,11 @@ class Agent:
         self.aid_label:str = f"{_aid8}({_aname})"
         self.limit_strategy: str = limit_strategy
         self.on_limit_callback: Optional[Callable] = on_limit_callback
+        self.stream: bool = stream
+        self.state: AgentState = AgentState()
+        # 合并环境变量
+        if env_vars:
+            self.context.env_vars.update(env_vars)
         # run_mode：None 时从 session.settings 读取；子代理强制 "auto"（不允许阻塞等待用户）
         if run_mode is not None:
             self.run_mode: str = run_mode
@@ -155,8 +207,16 @@ class Agent:
 
     # ── 公共入口点 ────────────────────────────────────────────────────────────
 
-    async def run(self, message: str) -> str:
-        """追加用户消息并执行循环。"""
+    async def run(self, message: str, outbox: "QueueEmitter | None" = None) -> str:
+        """
+        追加用户消息并执行循环。
+
+        Args:
+            message: 用户输入的原始消息。
+            outbox:  可选的后台任务输出队列（QueueEmitter）。
+                    当通过 spawn_background() 调用时传入，用于向外部推送
+                    status_request 响应等事件。
+        """
         # hook: message:inbound:received — 可修改消息内容、注入 additional_context
         hook_result = await self.session.hooks.emit(
             "message:inbound:received",
@@ -174,7 +234,7 @@ class Agent:
             await self._handle_command(message)
         else:
             self._append({"role": "user", "content": message})
-        return await self._loop()
+        return await self._loop(outbox=outbox)
 
     async def _handle_command(self, raw: str):
         """
@@ -223,7 +283,7 @@ class Agent:
             return ""
         return ""
 
-    def spawn_child(self, prompt: str, agent_def=None, agent_name=None, prompt_version: str | None = None, model_override: str | None = None) -> "Agent":
+    def spawn_child(self, prompt: str, agent_def=None, agent_name=None, prompt_version: str | None = None, model_override: str | None = None, env_vars: dict[str, str] | None = None, agent_id_override: str | None = None) -> "Agent":
         """
         动态派生一个拥有独立上下文的子代理。
 
@@ -247,7 +307,7 @@ class Agent:
 
         子代理消息不持久化，拥有更低的轮次上限。
         """
-        from .tools.constants import CHILD_DISALLOWED_TOOLS, CHILD_DEFAULT_TOOLS, TEAMMATE_EXTRA_TOOLS
+        from ccserver.builtins.tools.constants import CHILD_DISALLOWED_TOOLS, CHILD_DEFAULT_TOOLS, TEAMMATE_EXTRA_TOOLS
 
         # ── skills：子代理默认无 skill catalog，除非 agent_def.skills 显式指定 ──
         if agent_def is not None and agent_def.skills is not None:
@@ -261,13 +321,18 @@ class Agent:
             {"role": "user", "content": prompt}, self.session, [],
             skills_override=child_skills_override,
         )
+        # 子代理继承父代理的环境变量
+        child_env_vars = dict(self.context.env_vars)
         child_context = AgentContext(
             name=agent_name,
             messages=[initial_message],
             depth=self.context.depth + 1,
             parent_id=self.context.agent_id,
             parent_name=self.context.name,
+            env_vars=child_env_vars,
         )
+        if agent_id_override:
+            child_context.agent_id = agent_id_override
 
         # ── 内置工具过滤（分层权限决策）────────────────────────────────────
         settings = self.session.settings
@@ -309,10 +374,13 @@ class Agent:
         # 优先级：model_override > agent_def.model > 继承父 agent 的 model
         child_model = model_override or (agent_def.model if agent_def and agent_def.model else None) or self.model
 
-        # emitter：根据 agent_def.output_mode 决定是否包装 FilterEmitter
-        child_emitter = self.emitter
-        if agent_def is not None and agent_def.output_mode:
-            child_emitter = FilterEmitter(self.emitter, mode=agent_def.output_mode)
+        # emitter：子 agent 默认屏蔽 token 流（stream=False），避免子 agent 的思考过程
+        # 直接透传到客户端与父 agent 输出混在一起。
+        # agent_def.output_mode 映射到 verbosity 参数：
+        #   None / "verbose"    → verbosity="verbose"（透传工具事件，但不流 token）
+        #   "final_only"        → verbosity="final_only"（只透传 done/error）
+        verbosity = (agent_def.output_mode if agent_def and agent_def.output_mode else "verbose")
+        child_emitter = FilterEmitter(self.emitter, verbosity=verbosity, stream=False, interactive=False)
 
         child = Agent(
             session=self.session,
@@ -330,6 +398,7 @@ class Agent:
             skills_override=child_skills_override,
             is_spawn=True,
             run_mode="auto",  # 子代理始终 auto，不允许阻塞等待用户确认
+            env_vars=env_vars,
         )
 
         # ── MCP schemas 过滤后追加（子代理 MCP 必须显式指定，agent_def.mcp is None 则无 MCP）──
@@ -345,29 +414,521 @@ class Agent:
 
         return child
 
+# ── 父 Agent 通知 ───────────────────────────────────────────────────────
+
+
+    async def _notify_parent_done(
+        parent_agent: "Agent",
+        agent_task_id: str,
+        agent_name: str,
+        result: str | None,
+        cancelled: bool = False,
+        error: str | None = None,
+    ) -> None:
+        """
+        后台 Agent 完成后，向父 Agent 的 messages 注入系统通知。
+
+        注入的消息为 system role 的 "background_agent_done" 类型，
+        父 Agent 的 _loop() 在 append_message 时感知到后，
+        自然进入下一轮 LLM 调用，将该信息纳入上下文。
+
+        Args:
+            parent_agent:  父 Agent 实例（spawn_background 的 self）。
+            agent_task_id: 后台任务的唯一 ID（"a" + uuid[:8]）。
+            agent_name:    后台 Agent 的名称。
+            result:        Agent 的最终输出（正常完成时）。
+            cancelled:     是否被取消。
+            error:         错误信息（异常结束时）。
+        """
+        if cancelled:
+            content = (
+                f"[Background agent '{agent_name}' (task_id={agent_task_id}) was cancelled.]"
+            )
+        elif error:
+            content = (
+                f"[Background agent '{agent_name}' (task_id={agent_task_id}) failed: {error}]"
+            )
+        else:
+            # 截断过长结果，避免污染上下文
+            summary = (result or "")[:500]
+            if len(result or "") > 500:
+                summary += " ...(truncated)"
+            content = (
+                f"[Background agent '{agent_name}' (task_id={agent_task_id}) completed]\n"
+                f"Result: {summary}"
+            )
+
+        done_message = {
+            "role": "system",
+            "content": content,
+            # 标注类型，供父 Agent 识别（不会被 compact 压缩掉）
+            "_ccserver_background_agent_done": True,
+            "agent_task_id": agent_task_id,
+            "agent_name": agent_name,
+        }
+
+        # 注入到父 Agent 的消息列表（即使父 Agent 正在运行，下一轮也会感知到）
+        parent_agent.context.messages.append(done_message)
+
+        # 持久化到 session storage（若父 session 有 storage）
+        if parent_agent.session.storage is not None:
+            parent_agent.session.storage.append_message(
+                parent_agent.session.id, done_message
+            )
+
+        # hook: background_agent:done — 可拦截通知、修改 content、甚至注入额外消息
+        # 以 fire-and-forget 方式执行，不阻塞后台协程
+        import asyncio as _asyncio
+        _hook_coro = parent_agent.session.hooks.emit_void(
+            "background_agent:done",
+            {
+                "agent_task_id": agent_task_id,
+                "agent_name": agent_name,
+                "result": result,
+                "cancelled": cancelled,
+                "error": error,
+            },
+            parent_agent._build_hook_ctx(),
+        )
+        if _asyncio.iscoroutine(_hook_coro):
+            _asyncio.create_task(_hook_coro)
+
+        logger.debug(
+            "Parent notified | agent={} task_id={} cancelled={} error={}",
+            parent_agent.aid_label, agent_task_id, cancelled, error
+        )
+
+    def spawn_background(
+        self,
+        prompt: str,
+        agent_def=None,
+        agent_name=None,
+        task_id: str = None,
+        model_override: str | None = None,
+        env_vars: dict[str, str] | None = None,
+        agent_id_override: str | None = None,
+        is_teammate: bool = False,
+    ) -> BackgroundAgentHandle:
+        """
+        启动后台 Agent（非阻塞）。
+
+        返回 BackgroundAgentHandle，外部可通过 handle 查询状态、发送消息、获取结果。
+        同时通过 self.emitter（父级 SSE/WebSocket emitter）推送：
+          - task_started：Agent 刚启动
+          - task_done：Agent 结束（completed / failed / cancelled）
+        """
+        # 0. 生成 Agent 任务 ID（"a" + uuid[:8]）
+        from ccserver.tasks import AgentTaskState, generate_agent_id
+        agent_task_id = generate_agent_id()
+
+        # 1. 创建子 Agent（后台不需要实时流式）
+        child = self.spawn_child(
+            prompt=prompt,
+            agent_def=agent_def,
+            agent_name=agent_name,
+            model_override=model_override,
+            env_vars=env_vars,
+            agent_id_override=agent_id_override,
+        )
+
+        # 2. 替换 Emitter 为 QueueEmitter（内部事件收集）
+        queue_emitter = QueueEmitter()
+        child.emitter = queue_emitter
+
+        # 3. 创建 AgentTaskState 并注册到 Session
+        agent_task_state = AgentTaskState(
+            id=agent_task_id,
+            agent_id=child.context.agent_id,
+            agent_name=agent_name or child.context.name or None,
+            description=f"[Agent] {agent_name or child.context.name or 'background'}: {prompt[:80]}",
+            prompt=prompt,
+        )
+        agent_task_state.inbox = asyncio.Queue()  # 绑定 Handle 的 inbox
+        agent_task_state.outbox = queue_emitter.queue  # 绑定 QueueEmitter 的队列
+        # 3.1 同步 child.context.inbox 与 handle.inbox，使外部消息能正确投递
+        #     （_drain_inbox_and_respond 读取 context.inbox，poll 协程写入 handle.inbox）
+        child.context.inbox = agent_task_state.inbox
+        self.session.agent_tasks.register(agent_task_state)
+        logger.debug(
+            "AgentTask registered | agent_task_id={} agent_id={}",
+            agent_task_id, child.context.agent_id[:8]
+        )
+
+        # 4. 创建 Handle（inbox 已由 agent_task_state 持有，outbox 同上）
+        handle = BackgroundAgentHandle(
+            agent_id=child.context.agent_id,
+            task_id=task_id,
+            agent_task_id=agent_task_id,
+            state=child.state,
+            inbox=agent_task_state.inbox,
+            outbox=agent_task_state.outbox,
+            agent_task_state=agent_task_state,
+        )
+
+        # 5. 通过父级 emitter 推送 task_started 事件（SSE/WebSocket）
+        #    注意：self.emitter 在根 Agent 运行时是 SSEEmitter / WSEmitter
+        if hasattr(self.emitter, "emit_task_started"):
+            # 构建描述：优先用 agent_name，其次用 context.name，最后用 prompt 前 80 字符
+            desc = agent_name or child.context.name or prompt[:80]
+            self.emitter.emit_task_started(
+                task_id=agent_task_id,
+                task_type="local_agent",
+                description=desc,
+                pid=None,  # Agent 无 OS 进程
+            )
+
+        # 6. 启动事件转发协程（监听 outbox → 推送 task_done/progress）
+        asyncio.create_task(
+            forward_agent_events(handle, self.emitter)
+        )
+
+        # 7. 启动 progress 轮询协程（Path B：定期向 inbox 注入 status_request）
+        #    _poll_agent_progress 从 outbox 读取 progress 响应并透传给父级 emitter
+        asyncio.create_task(
+            _poll_agent_progress(handle, self.emitter, interval=5.0)
+        )
+
+        # 8. 启动后台 Agent 协程（不阻塞）
+        async def _run_background():
+            try:
+                # 传入 queue_emitter 作为 outbox，使 _loop() 能向 outbox 写 progress 事件
+                result = await child.run(prompt, outbox=queue_emitter)
+                # 写入 outbox，由 forward_agent_events 消费并推送 task_done
+                await handle.outbox.put({"type": "done", "content": result})
+                # ── 通知父 Agent：向其 messages 注入完成通知 ─────────────────
+                # 这样父 Agent 的 _loop() 在 append_message 时能感知到结果，
+                # 自然触发下一轮 LLM 调用处理该结果（若需要）。
+                await self._notify_parent_done(
+                    agent_task_id=agent_task_id,
+                    agent_name=agent_name or child.context.name or "background",
+                    result=result,
+                )
+
+                # ── Teammate 空闲循环：任务完成后进入 idle，等待新任务 ───────
+                if is_teammate:
+                    registry = self.session.team_registry
+                    if registry is not None:
+                        from ccserver.team.models import TeamMemberState
+                        registry.update_member_state_by_agent_id(
+                            child.context.agent_id, TeamMemberState.IDLE
+                        )
+                        logger.info(
+                            "Teammate idle | agent_id={}", child.context.agent_id
+                        )
+
+                    while True:
+                        msg = await handle.inbox.get()
+                        msg_type = msg.get("msg_type")
+
+                        # 跳过 progress 轮询的 status_request
+                        if msg.get("type") == "status_request":
+                            continue
+
+                        if msg_type == "new_task":
+                            task_prompt = msg.get("task_prompt") or msg.get("text", "")
+                            if not task_prompt:
+                                continue
+                            if registry is not None:
+                                registry.update_member_state_by_agent_id(
+                                    child.context.agent_id, TeamMemberState.BUSY
+                                )
+                            logger.info(
+                                "Teammate new task | agent_id={} task_id={}",
+                                child.context.agent_id, msg.get("task_id")
+                            )
+                            result = await child.run(task_prompt, outbox=queue_emitter)
+                            await handle.outbox.put({"type": "done", "content": result})
+                            await self._notify_parent_done(
+                                agent_task_id=agent_task_id,
+                                agent_name=agent_name or child.context.name or "background",
+                                result=result,
+                            )
+                            if registry is not None:
+                                registry.update_member_state_by_agent_id(
+                                    child.context.agent_id, TeamMemberState.IDLE
+                                )
+
+                        elif msg_type == "shutdown_request":
+                            logger.info(
+                                "Teammate shutdown | agent_id={}",
+                                child.context.agent_id
+                            )
+                            await handle.outbox.put(
+                                {"type": "done", "content": "[shutdown by lead]"}
+                            )
+                            break
+
+                        elif msg_type == "chat":
+                            # chat 消息在下次 child.run() 时会被 _drain_inbox_and_respond 消费。
+                            # 如果当前处于 idle，暂时忽略，因为 teammate 没有正在运行的 _loop()。
+                            pass
+
+            except asyncio.CancelledError:
+                await handle.outbox.put({"type": "cancelled"})
+                await self._notify_parent_done(
+                    agent_task_id=agent_task_id,
+                    agent_name=agent_name or child.context.name or "background",
+                    result=None,
+                    cancelled=True,
+                )
+            except Exception as e:
+                await handle.outbox.put({"type": "error", "error": str(e)})
+                await self._notify_parent_done(
+                    agent_task_id=agent_task_id,
+                    agent_name=agent_name or child.context.name or "background",
+                    result=None,
+                    error=str(e),
+                )
+            finally:
+                # 任务终结后从全局注册表注销
+                unregister_handle(handle.agent_id)
+
+        handle._task = asyncio.create_task(_run_background())
+        # 注册到全局句柄表，使 server.py 可以按 agent_id 查找并 cancel
+        register_handle(handle)
+        logger.info(
+            "Background agent spawned | agent_task_id={} agent_id={} task_id={}",
+            agent_task_id, handle.agent_id[:8], task_id
+        )
+        return handle
+
+    async def _spawn_teammate(
+        self,
+        team_name: str,
+        name: str,
+        prompt: str,
+        agent_def=None,
+        model_override: str | None = None,
+    ) -> BackgroundAgentHandle:
+        """
+        在指定 Team 中启动一个后台 teammate Agent。
+
+        流程：
+          1. 查找或创建 Team
+          2. 注册 TeamMember（若不存在）
+          3. 设置成员状态为 BUSY
+          4. 使用确定性 agent_id 调用 spawn_background()
+          5. 启动 Mailbox Poller
+          6. 给 teammate 追加 Team 相关 system prompt
+        """
+        from ccserver.team.models import TeamMemberRole, TeamMemberState
+        from ccserver.team.helpers import format_agent_id
+        from ccserver.team.mailbox import TeamMailbox
+        from ccserver.team.poller import TeamMailboxPoller
+        from ccserver.team.prompts import build_teammate_system_addendum
+        import dataclasses
+
+        registry = self.session.team_registry
+        if registry is None:
+            raise RuntimeError("Team feature is not enabled.")
+
+        team = registry.get_team(team_name)
+        if team is None:
+            team = registry.create_team(team_name)
+            # 启动 Dispatcher 和 PermissionRelay（骨架，后续扩展）
+            from ccserver.team.dispatcher import TeamTaskDispatcher
+            from ccserver.team.permission_relay import TeamPermissionRelay
+            mailbox = TeamMailbox(team_name, self.session.storage)
+            dispatcher = TeamTaskDispatcher(team, mailbox, task_manager=self.session.tasks)
+            dispatcher.start()
+            relay = TeamPermissionRelay(team, mailbox)
+            relay.start()
+            # 反向挂载以便后续健康检查获取
+            team._dispatcher = dispatcher
+            team._relay = relay
+            team._mailbox = mailbox
+        else:
+            mailbox = getattr(team, "_mailbox", None)
+            if mailbox is None:
+                mailbox = TeamMailbox(team_name, self.session.storage)
+                team._mailbox = mailbox
+
+        agent_id = format_agent_id(name, team_name)
+
+        if agent_id not in team.members:
+            registry.add_member(team_name, name, role=TeamMemberRole.TEAMMATE)
+        registry.update_member_state(team_name, agent_id, TeamMemberState.BUSY)
+
+        # 构造带有 teammate addendum 的 agent_def 副本
+        teammate_addendum = build_teammate_system_addendum(team_name, agent_id)
+        effective_agent_def = agent_def
+        if effective_agent_def is not None:
+            new_system = effective_agent_def.system + teammate_addendum
+            effective_agent_def = dataclasses.replace(effective_agent_def, system=new_system)
+        else:
+            # 没有 agent_def 时，创建一个最小化的匿名定义，只携带 addendum
+            from ccserver.managers.agents.manager import AgentDef
+            effective_agent_def = AgentDef(
+                name=name,
+                description=f"Teammate {name} in team {team_name}",
+                system=teammate_addendum,
+                location=self.session.project_root,
+                is_teammate=True,
+                is_team_capable=True,
+            )
+
+        handle = self.spawn_background(
+            prompt=prompt,
+            agent_def=effective_agent_def,
+            agent_name=name,
+            model_override=model_override,
+            agent_id_override=agent_id,
+            is_teammate=True,
+        )
+
+        # 将 Team 名称挂载到 child Agent 上，供 _handle_send_message 读取
+        # 由于 spawn_background 内部 child 是局部变量，我们通过 session.agent_tasks 反查
+        agent_task = self.session.agent_tasks.get_by_agent_id(agent_id)
+        if agent_task is not None:
+            # agent_task.inbox 就是 handle.inbox，但这里不需要改 inbox
+            pass
+
+        # 设置当前 agent（如果是 Lead 自己）的 _team_name，供后续 SendMessage 使用
+        self._team_name = team_name
+
+        # 启动 Mailbox Poller，将持久化消息注入 handle.inbox
+        poller = TeamMailboxPoller(
+            mailbox=mailbox,
+            recipient=agent_id,
+            inbox=handle.inbox,
+            interval=3.0,
+        )
+        poller.start()
+        handle._team_poller = poller  # type: ignore[attr-defined]
+
+        logger.info(
+            "Teammate spawned | team={} name={} agent_id={} agent_task_id={}",
+            team_name, name, agent_id, handle.agent_task_id
+        )
+        return handle
+
     # ── 核心循环 ──────────────────────────────────────────────────────────────
 
-    async def _loop(self) -> str:
-        # 记录最近一次有内容的 (tokens, text)，供最终轮兜底使用
-        last_tokens: list[str] = []
-        last_text: str = ""
-        logger.debug("Loop start | agent={} depth={} msgs={}", self.aid_label, self.context.depth, len(self.context.messages))
+    async def _drain_inbox_and_respond(self, outbox: "QueueEmitter | None") -> list[dict]:
+        """
+        非阻塞读取 inbox，处理 status_request 并写入 progress 响应到 outbox。
+        同时处理 Agent Team 相关的 mailbox 消息（new_task, shutdown_request, chat 等）。
+
+        外部轮询协程（_poll_agent_progress）定期向 child.inbox 注入 status_request，
+        此方法在每轮回合开始时被调用，处理积压的请求。
+
+        Returns:
+            需要追加到 messages 的新消息列表（如 new_task, shutdown_request, chat）
+        """
+        new_messages: list[dict] = []
+        if outbox is not None:
+            while True:
+                try:
+                    msg = self.context.inbox.get_nowait()
+                except asyncio.QueueEmpty:
+                    break
+                if msg.get("type") == "status_request":
+                    # 构建进度摘要（基于 AgentState 可直接获取的字段）
+                    progress = {
+                        "round_num": self.state.round_num,
+                        "max_rounds": self.round_limit,
+                        "phase": self.state.phase,
+                        "current_tool": self.state.current_tool,
+                    }
+                    await outbox.put({"type": "progress", **progress})
+
+        # 处理 Team Mailbox 消息（由 TeamMailboxPoller 注入 inbox）
+        while True:
+            try:
+                msg = self.context.inbox.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+
+            msg_type = msg.get("msg_type")
+            if msg.get("type") == "status_request":
+                if outbox is not None:
+                    progress = {
+                        "round_num": self.state.round_num,
+                        "max_rounds": self.round_limit,
+                        "phase": self.state.phase,
+                        "current_tool": self.state.current_tool,
+                    }
+                    await outbox.put({"type": "progress", **progress})
+                continue
+
+            if msg_type == "new_task":
+                new_messages.append({
+                    "role": "user",
+                    "content": msg.get("task_prompt", msg.get("text", "")),
+                    "_ccserver_team_new_task": True,
+                    "task_id": msg.get("task_id"),
+                })
+
+            elif msg_type == "shutdown_request":
+                new_messages.append({
+                    "role": "system",
+                    "content": "[Team Lead 请求你优雅退出，总结当前进度后结束。]",
+                    "_ccserver_team_shutdown": True,
+                })
+
+            elif msg_type == "chat":
+                new_messages.append({
+                    "role": "user",
+                    "content": f"[{msg.get('from_agent')}] {msg.get('text', '')}",
+                })
+
+            elif msg_type == "permission_response":
+                # permission_response 由 _wait_permission_response 处理，
+                # 这里只是消费掉避免堆积；实际逻辑在 _handle_tools 的同步轮询中。
+                logger.debug(
+                    "Inbox permission_response consumed | agent={} request_id={}",
+                    self.aid_label,
+                    msg.get("request_id"),
+                )
+
+        return new_messages
+
+    async def _loop(self, outbox: "QueueEmitter | None" = None) -> str:
+        self.state.start_time = datetime.now(timezone.utc)
+        self.state.phase = "running"
+        logger.debug("Loop start | agent={} depth={} msgs={} stream={}", self.aid_label, self.context.depth, len(self.context.messages), self.stream)
+
+        # hook: agent:bootstrap — _loop 开始处，可动态裁剪 tools/schemas
+        await self.session.hooks.emit_void(
+            "agent:bootstrap",
+            {"schemas": self._schemas, "tools": list(self.tools.keys())},
+            self._build_hook_ctx(),
+        )
+
+        round_text = ""
         for round_num in range(self.round_limit):
+            self.state.round_num = round_num + 1
+            # Path B: 处理积压的 status_request，写 progress 到 outbox
+            # 同时处理 Team Mailbox 消息（new_task, shutdown_request, chat 等）
+            team_messages = await self._drain_inbox_and_respond(outbox)
+            for tm in team_messages:
+                self._append(tm)
+            if any(m.get("_ccserver_team_shutdown") for m in team_messages):
+                self.state.phase = "done"
+                return round_text + "\n[shutdown by lead]"
             await self._maybe_compact()
             logger.debug("Round {}/{} | agent={}", round_num + 1, self.round_limit, self.aid_label)
             # 调用前快照 messages（深拷贝，防止后续 append 污染记录）
             input_messages_snapshot = [dict(m) for m in self.context.messages]
-            collected_tokens, response = await self._call_llm_with_retry()
+
+            # 根据 stream 模式选择调用方式
+            if self.stream:
+                response = await self._call_llm_stream()
+            else:
+                response = await self._call_llm_sync()
+
             if response is None:
                 # LLM 永久失败（重试耗尽）
+                self.state.phase = "error"
+                self.state.last_error = "LLM call failed after retries"
                 await self.session.hooks.emit_void(
                     "agent:stop:failure",
-                    {"error": "LLM call failed after retries"},
+                    {"error": self.state.last_error},
                     self._build_hook_ctx(),
                 )
                 return ""
 
-            content = _normalize_content(response.content)
+            content = normalize_content_blocks(response.content)
             self.recorder.record(
                 round_num + 1,
                 input_messages=input_messages_snapshot,
@@ -378,8 +939,6 @@ class Agent:
 
             round_text = "".join(b["text"] for b in content if b.get("type") == "text")
             if round_text:
-                last_tokens = collected_tokens
-                last_text = round_text
                 # hook: prompt:llm:output — 每轮 LLM 完成后（observing，纯观测）
                 await self.session.hooks.emit_void(
                     "prompt:llm:output",
@@ -388,34 +947,36 @@ class Agent:
                 )
 
             if response.stop_reason != "tool_use":
-                # 最终轮：推送最近一次有文本的那轮 token
-                for token in last_tokens:
-                    await self.emitter.emit_token(token)
-                logger.debug("Loop done  | agent={} rounds={} reply_len={}", self.aid_label, round_num + 1, len(last_text))
-                logger.debug("Loop final_text | agent={} text={!r}", self.aid_label, last_text)
+                logger.debug("Loop done  | agent={} rounds={} reply_len={}", self.aid_label, round_num + 1, len(round_text))
+                logger.debug("Loop final_text | agent={} text={!r}", self.aid_label, round_text)
+                self.state.phase = "done"
                 # 子代理发 subagent_done，根代理发 done，语义区分
                 if self.context.is_orchestrator:
                     # hook: agent:stop — 根代理最终完成（observing）
                     await self.session.hooks.emit_void(
                         "agent:stop",
-                        {"reply": last_text},
+                        {"reply": round_text},
                         self._build_hook_ctx(),
                     )
-                    await self.emitter.emit_done(last_text)
+                    await self.emitter.emit_done(round_text)
                 else:
-                    await self.emitter.emit_subagent_done(last_text)
-                return last_text
+                    await self.emitter.emit_subagent_done(round_text)
+                return round_text
 
+            self.state.phase = "tool_executing"
             tool_results, trigger_compact = await self._handle_tools(response.content)
             self._append({"role": "user", "content": tool_results})
 
             if trigger_compact:
                 await self._do_compact(reason="manual compact requested")
 
-        logger.warning("Round limit reached | agent={} limit={}", self.aid_label, self.round_limit)
-        return await self._on_limit(last_text, last_tokens)
+            self.state.phase = "running"
 
-    async def _on_limit(self, last_text: str, last_tokens: list) -> str:
+        logger.warning("Round limit reached | agent={} limit={}", self.aid_label, self.round_limit)
+        self.state.phase = "limit_reached"
+        return await self._on_limit(round_text)
+
+    async def _on_limit(self, last_text: str) -> str:
         """
         round limit 到达时的兜底处理。
 
@@ -448,7 +1009,7 @@ class Agent:
             try:
                 result = await self.on_limit_callback(self, last_text)
                 if result:
-                    return await self._finish_with_last_text(result, [result])
+                    return await self._finish_with_last_text(result)
             except Exception as e:
                 logger.error("on_limit_callback failed | agent={} error={}", self.aid_label, e)
             # 回调失败或返回空，fallback 到 last_text 策略
@@ -456,24 +1017,22 @@ class Agent:
         strategy = self.limit_strategy
 
         if strategy == "ask_user":
-            return await self._on_limit_ask_user(last_text, last_tokens)
+            return await self._on_limit_ask_user(last_text)
         elif strategy == "graceful":
-            return await self._on_limit_graceful(last_text, last_tokens)
+            return await self._on_limit_graceful(last_text)
         elif strategy == "summarize":
-            return await self._on_limit_summarize(last_text, last_tokens)
+            return await self._on_limit_summarize(last_text)
         elif strategy == "report" and not self.context.is_orchestrator:
             rounds = self.round_limit
             report = f"[LIMIT_REACHED] 已执行 {rounds} 轮，部分结果：{last_text or '（无输出）'}"
             return report
         else:
             # last_text（默认）或 callback 无回调 fallback，或子 agent 用了主 agent 专属策略
-            return await self._finish_with_last_text(last_text, last_tokens)
+            return await self._finish_with_last_text(last_text)
 
-    async def _finish_with_last_text(self, last_text: str, last_tokens: list) -> str:
+    async def _finish_with_last_text(self, last_text: str) -> str:
         """兜底输出 last_text，走正常结束流程。无 last_text 时 emit_error。"""
         if last_text:
-            for token in last_tokens:
-                await self.emitter.emit_token(token)
             if self.context.is_orchestrator:
                 await self.session.hooks.emit_void(
                     "agent:stop",
@@ -488,10 +1047,10 @@ class Agent:
             await self.emitter.emit_error("Round limit reached with no output")
             return ""
 
-    async def _on_limit_ask_user(self, last_text: str, last_tokens: list) -> str:
+    async def _on_limit_ask_user(self, last_text: str) -> str:
         """向用户询问是否继续（仅主 agent 有意义）。"""
         if not self.context.is_orchestrator:
-            return await self._finish_with_last_text(last_text, last_tokens)
+            return await self._finish_with_last_text(last_text)
         answer = await self.emitter.emit_ask_user([{
             "question": f"已执行 {self.round_limit} 轮仍未完成，是否继续？",
             "header": "继续运行",
@@ -507,9 +1066,9 @@ class Agent:
             self.round_limit = self.round_limit  # 保持不变，_loop 会重新进入
             # 直接在此递归调用 _loop，让新的 round_limit 生效
             return await self._loop()
-        return await self._finish_with_last_text(last_text, last_tokens)
+        return await self._finish_with_last_text(last_text)
 
-    async def _on_limit_graceful(self, last_text: str, last_tokens: list) -> str:
+    async def _on_limit_graceful(self, last_text: str) -> str:
         """向用户输出固定提示后优雅结束。"""
         graceful_msg = "处理步骤超出限制，请重新提问或简化需求。"
         if last_text:
@@ -525,7 +1084,7 @@ class Agent:
             await self.emitter.emit_subagent_done(graceful_msg)
         return graceful_msg
 
-    async def _on_limit_summarize(self, last_text: str, last_tokens: list) -> str:
+    async def _on_limit_summarize(self, last_text: str) -> str:
         """调用 LLM 对当前消息做摘要，以摘要作为最终回复。"""
         try:
             import json as _json
@@ -540,7 +1099,7 @@ class Agent:
             summary = response.content[0].text
         except Exception as e:
             logger.error("_on_limit_summarize failed | agent={} error={}", self.aid_label, e)
-            return await self._finish_with_last_text(last_text, last_tokens)
+            return await self._finish_with_last_text(last_text)
 
         result = f"（步骤超限，以下为当前进度摘要）\n\n{summary}"
         if self.context.is_orchestrator:
@@ -556,42 +1115,61 @@ class Agent:
 
     # ── 工具处理 ──────────────────────────────────────────────────────────────
 
-    async def _call_llm_with_retry(self):
+    async def _call_llm_stream(self):
         """
-        调用 LLM，遇到网络临时错误时自动重试，最多 3 次。
-        返回 (collected_tokens, response)，失败时返回 ([], None)。
-
-        可重试的错误：连接断开、incomplete read、超时等网络层异常。
-        不可重试的错误：认证失败、参数错误等 API 错误（直接返回 None）。
+        流式调用 LLM，实时 emit token。用于 stream=True。
+        失败时返回 None。
         """
         import asyncio
+        import httpx
         from anthropic import APIConnectionError, APITimeoutError
 
         max_retries = 3
-        retry_delays = [2, 5, 10]  # 秒，递增等待
+        retry_delays = [2, 5, 10]
+
+        self.state.phase = "llm_calling"
         for attempt in range(max_retries):
             try:
-                collected_tokens: list[str] = []
+                # hook: prompt:build:before — 可修改 system/messages
+                build_hook = await self.session.hooks.emit(
+                    "prompt:build:before",
+                    {
+                        "system": self.system,
+                        "messages": [dict(m) for m in self.context.messages],
+                        "model": self.model,
+                    },
+                    self._build_hook_ctx(),
+                )
+                # hook 可修改 system（替换或追加）
+                effective_system = build_hook.system_message or self.system
+                # hook 可追加 additional_context 到最后一条 user 消息
+                if build_hook.additional_context:
+                    msgs = [dict(m) for m in self.context.messages]
+                    if msgs and msgs[-1].get("role") == "user":
+                        msgs[-1]["content"] = msgs[-1].get("content", "") + "\n\n" + build_hook.additional_context
+                    effective_messages = msgs
+                else:
+                    effective_messages = [dict(m) for m in self.context.messages]
+
                 # hook: prompt:llm:input — 观测即将发送给 LLM 的完整输入
                 await self.session.hooks.emit_void(
                     "prompt:llm:input",
-                    {"messages": [dict(m) for m in self.context.messages], "model": self.model},
+                    {"messages": effective_messages, "model": self.model},
                     self._build_hook_ctx(),
                 )
                 async with self.adapter.stream(
                     model=self.model,
-                    system=self.system,
-                    messages=self.context.messages,
+                    system=effective_system,
+                    messages=effective_messages,
                     tools=self._schemas,
                     max_tokens=8000,
                 ) as stream:
                     async for text in stream.text_stream:
-                        collected_tokens.append(text)
+                        await self.emitter.emit_token(text)
                     response = await stream.get_final_message()
-                return collected_tokens, response
+                return response
 
-            except (APIConnectionError, APITimeoutError) as e:
-                # 网络层临时错误，可以重试
+            except (APIConnectionError, APITimeoutError, httpx.RemoteProtocolError) as e:
                 if attempt < max_retries - 1:
                     delay = retry_delays[attempt]
                     logger.warning(
@@ -602,15 +1180,105 @@ class Agent:
                 else:
                     logger.error("LLM error after {} retries | agent={} error={}", max_retries, self.aid_label, e)
                     await self.emitter.emit_error(str(e))
-                    return [], None
+                    await self.session.hooks.emit_void(
+                        "prompt:llm:error",
+                        {"error": str(e), "model": self.model},
+                        self._build_hook_ctx(),
+                    )
+                    return None
 
             except Exception as e:
-                # 其他错误（认证、参数等）不重试
                 logger.error("LLM error | agent={} error={}", self.aid_label, e)
                 await self.emitter.emit_error(str(e))
-                return [], None
+                await self.session.hooks.emit_void(
+                    "prompt:llm:error",
+                    {"error": str(e), "model": self.model},
+                    self._build_hook_ctx(),
+                )
+                return None
 
-        return [], None  # 不会到达，但让类型检查满意
+        return None  # 不会到达
+
+    async def _call_llm_sync(self):
+        """
+        非流式调用 LLM，不 emit token。用于 stream=False。
+        失败时返回 None。
+        """
+        import asyncio
+        import httpx
+        from anthropic import APIConnectionError, APITimeoutError
+
+        max_retries = 3
+        retry_delays = [2, 5, 10]
+
+        self.state.phase = "llm_calling"
+        for attempt in range(max_retries):
+            try:
+                # hook: prompt:build:before — 可修改 system/messages
+                build_hook = await self.session.hooks.emit(
+                    "prompt:build:before",
+                    {
+                        "system": self.system,
+                        "messages": [dict(m) for m in self.context.messages],
+                        "model": self.model,
+                    },
+                    self._build_hook_ctx(),
+                )
+                # hook 可修改 system（替换或追加）
+                effective_system = build_hook.system_message or self.system
+                # hook 可追加 additional_context 到最后一条 user 消息
+                if build_hook.additional_context:
+                    msgs = [dict(m) for m in self.context.messages]
+                    if msgs and msgs[-1].get("role") == "user":
+                        msgs[-1]["content"] = msgs[-1].get("content", "") + "\n\n" + build_hook.additional_context
+                    effective_messages = msgs
+                else:
+                    effective_messages = [dict(m) for m in self.context.messages]
+
+                # hook: prompt:llm:input
+                await self.session.hooks.emit_void(
+                    "prompt:llm:input",
+                    {"messages": effective_messages, "model": self.model},
+                    self._build_hook_ctx(),
+                )
+                response = await self.adapter.create(
+                    model=self.model,
+                    system=effective_system,
+                    messages=effective_messages,
+                    tools=self._schemas,
+                    max_tokens=8000,
+                )
+                return response
+
+            except (APIConnectionError, APITimeoutError, httpx.RemoteProtocolError) as e:
+                if attempt < max_retries - 1:
+                    delay = retry_delays[attempt]
+                    logger.warning(
+                        "LLM network error, retrying ({}/{}) | agent={} delay={}s error={}",
+                        attempt + 1, max_retries, self.aid_label, delay, e,
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    logger.error("LLM error after {} retries | agent={} error={}", max_retries, self.aid_label, e)
+                    await self.emitter.emit_error(str(e))
+                    await self.session.hooks.emit_void(
+                        "prompt:llm:error",
+                        {"error": str(e), "model": self.model},
+                        self._build_hook_ctx(),
+                    )
+                    return None
+
+            except Exception as e:
+                logger.error("LLM error | agent={} error={}", self.aid_label, e)
+                await self.emitter.emit_error(str(e))
+                await self.session.hooks.emit_void(
+                    "prompt:llm:error",
+                    {"error": str(e), "model": self.model},
+                    self._build_hook_ctx(),
+                )
+                return None
+
+        return None  # 不会到达
 
     async def _handle_tools(self, blocks) -> tuple[list[dict], bool]:
         """
@@ -627,12 +1295,12 @@ class Agent:
         ask_tools = self.session.settings.ask_tools
 
         for block in blocks:
-            if _block_get(block, "type") != "tool_use":
+            if get_block_attr(block, "type") != "tool_use":
                 continue
 
-            name: str = _block_get(block, "name") or ""
-            input_: dict = _block_get(block, "input") or {}
-            block_id: str = _block_get(block, "id") or ""
+            name: str = get_block_attr(block, "name") or ""
+            input_: dict = get_block_attr(block, "input") or {}
+            block_id: str = get_block_attr(block, "id") or ""
 
             # ── 运行时权限检查 ────────────────────────────────────────────────
             if name in ask_tools:
@@ -717,13 +1385,15 @@ class Agent:
 
             if name == "Agent":
                 result = await self._handle_agent(input_)
+            elif name == "SendMessage":
+                result = await self._handle_send_message(input_)
             elif name == "AskUserQuestion":
                 result = await self._handle_ask_user(input_)
             elif name == "Compact":
                 trigger_compact = True
                 result = ToolResult.ok("Compressing...")
             elif name.startswith("mcp__"):
-                result = await self._handle_mcp_tool(name, input_)
+                result = await self._handle_mcp_tool(name, input_, block_id)
             else:
                 tool = self.tools.get(name)
                 if tool:
@@ -753,7 +1423,14 @@ class Agent:
         return results, trigger_compact
 
     async def _handle_agent(self, task_input: dict) -> ToolResult:
-        """派生子代理并运行至完成。"""
+        """
+        派生子代理并运行。
+
+        根据 run_in_background 参数分为两条路径：
+          - run_in_background=False（默认）：await child._loop() 阻塞等待，返回摘要。
+          - run_in_background=True        ：调用 spawn_background() 立即返回 task_id，
+                                           主 Agent 继续运行，后台 Agent 异步执行。
+        """
         if self.context.depth >= MAX_DEPTH:
             logger.warning("Max depth reached | agent={} depth={}", self.aid_label, self.context.depth)
             return ToolResult.error(
@@ -768,19 +1445,80 @@ class Agent:
         subagent_type = task_input.get("subagent_type", "")
         agent_name = task_input.get("description", "") or subagent_type
         model_override = task_input.get("model", "") or None
-        logger.info("Agent tool called  | parent={} subagent_type={} description={} model={}", self.aid_label, subagent_type or "(generic)", agent_name or "-", model_override or "inherit")
+        run_in_background = bool(task_input.get("run_in_background", False))
+        team_name = task_input.get("team_name", "")
+        teammate_name = task_input.get("name", "")
+        logger.info(
+            "Agent tool called  | parent={} subagent_type={} description={} "
+            "model={} run_in_background={} team_name={} teammate_name={}",
+            self.aid_label, subagent_type or "(generic)", agent_name or "-",
+            model_override or "inherit", run_in_background,
+            team_name or "-", teammate_name or "-",
+        )
         agent_def = self.session.agents.get(subagent_type) if subagent_type else None
         if subagent_type and agent_def is None:
             logger.warning("Agent def not found | subagent_type={}", subagent_type)
 
-        child = self.spawn_child(prompt, agent_def=agent_def, agent_name=agent_name, model_override=model_override)
-        agent_type_label = f"{subagent_type}(defined)" if agent_def else f"{subagent_type}(undefined)" if subagent_type else "(generic)"
-        logger.info("Child agent spawned | parent={} child={} depth={} type={}", self.aid_label, child.aid_label, child.context.depth, agent_type_label)
+        # ── Team 分支 ──
+        if team_name and teammate_name and self.session.settings.user_agent_team:
+            if agent_def and not agent_def.is_team_capable:
+                return ToolResult.error(
+                    f"Agent '{subagent_type}' is not team-capable. "
+                    f"Set is_team_capable=true in its frontmatter."
+                )
+            try:
+                handle = await self._spawn_teammate(
+                    team_name=team_name,
+                    name=teammate_name,
+                    prompt=prompt,
+                    agent_def=agent_def,
+                    model_override=model_override,
+                )
+            except Exception as e:
+                logger.error("Spawn teammate failed | error={}", e)
+                return ToolResult.error(f"Failed to spawn teammate: {e}")
+            return ToolResult.ok(
+                f"Teammate '{teammate_name}' spawned in team '{team_name}' (task_id={handle.agent_task_id})"
+            )
+
         # hook: subagent:spawning — 子代理即将启动（observing）
         await self.session.hooks.emit_void(
             "subagent:spawning",
             {},
-            child._build_hook_ctx(),
+            # 此时 child 尚未创建，传入父级 context
+            {"agent_id": self.context.agent_id, "depth": self.context.depth},
+        )
+
+        # ── 后台模式：spawn_background() 立即返回 ───────────────────────────
+        if run_in_background:
+            handle = self.spawn_background(
+                prompt=prompt,
+                agent_def=agent_def,
+                agent_name=agent_name,
+                model_override=model_override,
+                task_id=None,
+            )
+            logger.info(
+                "Agent background  | parent={} agent_task_id={} agent_id={}",
+                self.aid_label, handle.agent_task_id, handle.agent_id[:8]
+            )
+            # hook 已在 spawn_background 内部触发
+            return ToolResult.ok(
+                f"Agent started in background (agent_task_id={handle.agent_task_id})"
+            )
+
+        # ── 同步模式：spawn_child + _loop() 阻塞等待 ───────────────────────
+        child = self.spawn_child(
+            prompt, agent_def=agent_def, agent_name=agent_name, model_override=model_override
+        )
+        agent_type_label = (
+            f"{subagent_type}(defined)" if agent_def
+            else f"{subagent_type}(undefined)" if subagent_type
+            else "(generic)"
+        )
+        logger.info(
+            "Child agent spawned | parent={} child={} depth={} type={}",
+            self.aid_label, child.aid_label, child.context.depth, agent_type_label
         )
         # hook: subagent:spawned — 子代理已创建，即将运行（observing）
         await self.session.hooks.emit_void(
@@ -789,7 +1527,10 @@ class Agent:
             child._build_hook_ctx(),
         )
         summary = await child._loop()
-        logger.info("Child agent done   | child={} summary_len={}", child.context.agent_id[:8], len(summary))
+        logger.info(
+            "Child agent done   | child={} summary_len={}",
+            child.context.agent_id[:8], len(summary)
+        )
         # hook: subagent:ended — 子代理完成（observing）
         await self.session.hooks.emit_void(
             "subagent:ended",
@@ -797,6 +1538,70 @@ class Agent:
             child._build_hook_ctx(),
         )
         return ToolResult.ok(summary or "(no summary)")
+
+    async def _handle_send_message(self, input_: dict) -> ToolResult:
+        """
+        处理 SendMessage 工具调用，将消息写入目标 teammate 的 Mailbox。
+
+        仅当当前 Agent 属于某个已激活的 Team 时才允许调用。
+        """
+        to = input_.get("to", "")
+        message = input_.get("message", "")
+        summary = input_.get("summary", "")
+
+        if not to or not message:
+            return ToolResult.error("SendMessage requires 'to' and 'message' parameters.")
+
+        # 检查当前 agent 是否属于某个 team
+        team_name = getattr(self, "_team_name", None)
+        if not team_name:
+            return ToolResult.error(
+                "SendMessage is only available for agents running inside a team."
+            )
+
+        registry = self.session.team_registry
+        if registry is None:
+            return ToolResult.error("Team feature is not enabled.")
+
+        team = registry.get_team(team_name)
+        if team is None:
+            return ToolResult.error(f"Team '{team_name}' not found.")
+
+        mailbox = TeamMailbox(team_name, self.session.storage)
+        from_agent = self.context.agent_id
+
+        if to == "*":
+            # 广播给所有成员（排除自己）
+            recipients = [m.agent_id for m in team.members.values() if m.agent_id != from_agent]
+            chat_msg = ChatMessage(
+                from_agent=from_agent,
+                to_agent="*",
+                text=message,
+                summary=summary or None,
+            )
+            mailbox.broadcast(chat_msg, recipients=recipients, exclude=from_agent)
+            logger.info(
+                "SendMessage broadcast | agent={} team={} recipients={}",
+                self.aid_label, team_name, len(recipients)
+            )
+            return ToolResult.ok(f"Message broadcast to {len(recipients)} teammate(s).")
+        else:
+            # 单播给指定成员
+            to_agent = format_agent_id(to, team_name)
+            if to_agent not in team.members:
+                return ToolResult.error(f"Teammate '{to}' not found in team '{team_name}'.")
+            chat_msg = ChatMessage(
+                from_agent=from_agent,
+                to_agent=to_agent,
+                text=message,
+                summary=summary or None,
+            )
+            mailbox.send(chat_msg)
+            logger.info(
+                "SendMessage sent | agent={} team={} to={}",
+                self.aid_label, team_name, to_agent
+            )
+            return ToolResult.ok(f"Message sent to {to}.")
 
     async def _handle_ask_user(self, input_: dict) -> ToolResult:
         """
@@ -817,7 +1622,7 @@ class Agent:
 
         return ToolResult.ok(answer if answer else "(user did not answer)")
 
-    async def _handle_mcp_tool(self, name: str, input_: dict) -> ToolResult:
+    async def _handle_mcp_tool(self, name: str, input_: dict, block_id: str) -> ToolResult:
         """转发 mcp__<server>__<tool> 调用到对应的 MCP server。"""
         parts = name.split("__", 2)
         if len(parts) != 3:
@@ -827,8 +1632,27 @@ class Agent:
         if client is None:
             return ToolResult.error(f"MCP server not found: {server_name}")
         logger.debug("MCP call | agent={} server={} tool={} input={}", self.aid_label, server_name, tool_name, input_)
-        output = await client.call(tool_name, input_)
-        return ToolResult.ok(output)
+        outcome = await client.call(tool_name, input_)
+        # client.call() 返回 MCPOutcome，用 is_error 判断，不再依赖字符串前缀
+        if outcome.is_error:
+            logger.error(
+                "MCP tool failed | agent={} server={} tool={} error={}",
+                self.aid_label, server_name, tool_name, outcome.content,
+            )
+            # mcp:call:failure — MCP 工具调用失败，payload 额外带 server_name
+            await self.session.hooks.emit_void(
+                "mcp:call:failure",
+                {
+                    "server": server_name,
+                    "tool": tool_name,
+                    "tool_use_id": block_id,
+                    "tool_input": input_,
+                    "error": outcome.content,
+                },
+                self._build_hook_ctx(),
+            )
+            return ToolResult.error(outcome.content)
+        return ToolResult.ok(outcome.content)
 
     # ── 上下文管理 ────────────────────────────────────────────────────────────
 

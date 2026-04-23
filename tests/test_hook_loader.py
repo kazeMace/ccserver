@@ -14,8 +14,8 @@ import asyncio
 import pytest
 from pathlib import Path
 
-from ccserver.hooks.matcher import AlwaysMatcher
-from ccserver.hooks.loader import (
+from ccserver.managers.hooks import AlwaysMatcher
+from ccserver.managers.hooks import (
     HookLoader,
     HookEntry,
     HookContext,
@@ -305,7 +305,7 @@ def test_resolve_strategy_empty_fallback():
 
 @pytest.mark.asyncio
 async def test_permission_behavior_deny_wins_over_allow():
-    from ccserver.hooks.loader import _merge_results
+    from ccserver.managers.hooks import _merge_results
 
     base = HookResult(permission_behavior="allow")
     new = HookResult(permission_behavior="deny")
@@ -315,7 +315,7 @@ async def test_permission_behavior_deny_wins_over_allow():
 
 @pytest.mark.asyncio
 async def test_permission_behavior_ask_wins_over_allow():
-    from ccserver.hooks.loader import _merge_results
+    from ccserver.managers.hooks import _merge_results
 
     base = HookResult(permission_behavior="allow")
     new = HookResult(permission_behavior="ask")
@@ -325,7 +325,7 @@ async def test_permission_behavior_ask_wins_over_allow():
 
 @pytest.mark.asyncio
 async def test_permission_behavior_passthrough_lowest():
-    from ccserver.hooks.loader import _merge_results
+    from ccserver.managers.hooks import _merge_results
 
     base = HookResult(permission_behavior="deny")
     new = HookResult(permission_behavior="passthrough")
@@ -342,7 +342,7 @@ async def test_permission_behavior_passthrough_lowest():
 async def test_run_command_cwd_is_project_root(tmp_path, monkeypatch):
     """command hook 应以 ctx.project_root 为 cwd 执行。"""
     monkeypatch.chdir(tmp_path)
-    from ccserver.hooks.loader import HookLoader, HookEntry, HookContext, HookResult
+    from ccserver.managers.hooks import HookLoader, HookEntry, HookContext, HookResult
 
     # 在 project_root 下写一个脚本，输出 cwd
     project_root = tmp_path / "project"

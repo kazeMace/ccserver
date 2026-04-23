@@ -44,6 +44,37 @@ class CachedStorageAdapter(StorageAdapter):
     async def create_conversation(self, session_id: str, conversation_id: str) -> None:
         await self._inner.create_conversation(session_id, conversation_id)
 
+    # ── Team 存储代理 ──────────────────────────────────────────────────────────
+
+    async def save_team(self, team_data: dict) -> None:
+        await self._inner.save_team(team_data)
+
+    async def load_team(self, team_name: str) -> dict | None:
+        return await self._inner.load_team(team_name)
+
+    async def delete_team(self, team_name: str) -> None:
+        await self._inner.delete_team(team_name)
+
+    async def list_teams(self) -> list[dict]:
+        return await self._inner.list_teams()
+
+    # ── Mailbox 存储代理 ───────────────────────────────────────────────────────
+
+    async def append_inbox_message(self, team_name: str, recipient: str, message: dict) -> None:
+        await self._inner.append_inbox_message(team_name, recipient, message)
+
+    async def fetch_inbox_messages(
+        self,
+        team_name: str,
+        recipient: str,
+        unread_only: bool = False,
+        limit: int = 100,
+    ) -> list[dict]:
+        return await self._inner.fetch_inbox_messages(team_name, recipient, unread_only, limit)
+
+    async def mark_inbox_read(self, team_name: str, recipient: str, message_ids: list[str]) -> None:
+        await self._inner.mark_inbox_read(team_name, recipient, message_ids)
+
     # ── 带缓存逻辑的方法 ──────────────────────────────────────────────────────
 
     async def load_session(self, session_id: str) -> SessionRecord | None:

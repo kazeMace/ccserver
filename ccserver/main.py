@@ -8,10 +8,10 @@ from loguru import logger
 
 from .config import MODEL
 from .session import Session
-from .core.emitter import BaseEmitter
-from .model import ModelAdapter, get_default_adapter
+from .emitters import BaseEmitter
+from .model import ModelAdapter, get_adapter
 from .factory import AgentFactory
-from .hooks.loader import HookContext
+from .managers.hooks import HookContext
 
 
 # ─── AgentRunner ──────────────────────────────────────────────────────────────
@@ -38,7 +38,7 @@ class AgentRunner:
         append_system: bool = False,
     ):
         self.model = model
-        self.adapter = adapter or get_default_adapter()
+        self.adapter = adapter
         self.system = system
         self.append_system = append_system
 
@@ -54,11 +54,19 @@ class AgentRunner:
         # 首次调用时连接 MCP server（lazy connect，避免 session 创建时就启动所有进程）
         if session.mcp:
             await session.mcp.connect_all()
+
+        # adapter 解析：显式传入 > session.settings > get_adapter() 默认
+        resolved_adapter = self.adapter
+        if resolved_adapter is None:
+            provider = session.settings.provider or "anthropic"
+            provider_config = session.settings.provider_config or {}
+            resolved_adapter = get_adapter(provider, **provider_config)
+
         agent = AgentFactory.create_root(
             session,
             emitter,
             model=self.model,
-            adapter=self.adapter,
+            adapter=resolved_adapter,
             prompt_version=prompt_version,
             system=self.system,
             append_system=self.append_system,

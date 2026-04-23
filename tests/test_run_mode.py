@@ -17,10 +17,10 @@ from pathlib import Path
 from unittest.mock import MagicMock, AsyncMock
 
 from ccserver.agent import Agent, AgentContext
-from ccserver.agents.loader import AgentDef
+from ccserver.managers.agents import AgentDef
 from ccserver.settings import ProjectSettings
-from ccserver.core.emitter import BaseEmitter
-from ccserver.core.emitter.filter_emitter import FilterEmitter
+from ccserver.emitters import BaseEmitter
+from ccserver.emitters.filter import FilterEmitter
 
 
 # ─── 辅助 ────────────────────────────────────────────────────────────────────
@@ -41,11 +41,13 @@ def _make_settings(
     )
 
 
-def _make_hook_result(block=False):
+def _make_hook_result(block=False, permission_behavior="passthrough"):
     """返回模拟 hook emit 结果，block=False 表示不阻断。"""
     r = MagicMock()
     r.block = block
     r.block_reason = ""
+    r.permission_behavior = permission_behavior
+    r.updated_input = None
     return r
 
 
@@ -204,6 +206,8 @@ def test_auto_mode_ask_tool_denied(tmp_path):
     session.mcp.schemas.return_value = []
     session.skills = MagicMock()
     session.project_root = tmp_path
+    session.hooks.emit = AsyncMock(return_value=_make_hook_result(block=False))
+    session.hooks.emit_void = AsyncMock(return_value=None)
 
     emitter = MagicMock(spec=BaseEmitter)
     emitter.emit_permission_request = AsyncMock(return_value=True)
@@ -333,6 +337,8 @@ def test_interactive_mode_ask_tool_denied(tmp_path):
     session.mcp.schemas.return_value = []
     session.skills = MagicMock()
     session.project_root = tmp_path
+    session.hooks.emit = AsyncMock(return_value=_make_hook_result(block=False))
+    session.hooks.emit_void = AsyncMock(return_value=None)
 
     emitter = MagicMock(spec=BaseEmitter)
     emitter.emit_permission_request = AsyncMock(return_value=False)  # 用户拒绝
