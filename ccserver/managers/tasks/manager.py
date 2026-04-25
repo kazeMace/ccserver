@@ -25,7 +25,7 @@ from ccserver.storage.base import StorageAdapter
 class Task:
     """单条任务记录。"""
 
-    VALID_STATUSES = ("pending", "in_progress", "completed", "failed", "deleted")
+    VALID_STATUSES = frozenset({"pending", "in_progress", "completed", "failed", "deleted"})
 
     def __init__(
         self,

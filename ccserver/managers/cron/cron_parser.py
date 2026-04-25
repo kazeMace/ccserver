@@ -21,7 +21,6 @@ from datetime import datetime, timezone, timedelta
 import calendar
 from typing import Optional
 
-from loguru import logger
 
 
 # ─── 字段范围定义 ─────────────────────────────────────────────────────────────

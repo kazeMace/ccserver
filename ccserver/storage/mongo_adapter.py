@@ -204,8 +204,9 @@ class MongoStorageAdapter(StorageAdapter):
 
     # ── conversation 管理 ─────────────────────────────────────────────────────
 
-    # session_id → 当前活跃 conversation_id 的内存映射
-    _current_conv: dict[str, str] = {}
+    # session_id → 当前活跃 conversation_id 的内存映射（实例级别，非类级别）
+    # 注意：不得放在类级别，否则多实例场景下会内存污染
+    _current_conv: dict[str, str] = field(default_factory=dict)
 
     async def create_conversation(self, session_id: str, conversation_id: str) -> None:
         now = datetime.now(timezone.utc).isoformat()
