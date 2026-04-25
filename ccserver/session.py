@@ -18,6 +18,8 @@ from .managers.hooks import HookLoader
 from .managers.commands import CommandLoader
 from .agent_scheduler import AgentScheduler
 from .agent_bus import SessionAgentBus
+from .event_bus import EventBus
+from .managers.cron import CronScheduler
 from .tasks import ShellTaskRegistry, AgentTaskRegistry
 from .mcp import MCPManager
 from .settings import ProjectSettings
@@ -45,10 +47,13 @@ class Session:
     _mcp: Any = field(default=None, repr=False)
     _settings: Any = field(default=None, repr=False)
     _scheduler: Any = field(default=None, repr=False)
-    _bus: Any = field(default=None, repr=False)
+    _cron_scheduler: Any = field(default=None, repr=False)  # CronScheduler，定时任务调度器
+    _bus: Any = field(default=None, repr=False)          # SessionAgentBus（旧点对点总线，保留兼容）
+    _event_bus: Any = field(default=None, repr=False)    # EventBus（新 fan-out 广播总线）
     _shell_tasks: Any = field(default=None, repr=False)  # ShellTaskRegistry，后台 shell 任务注册表
     _agent_tasks: Any = field(default=None, repr=False)  # AgentTaskRegistry，后台 Agent 任务注册表
     _team_registry: Any = field(default=None, repr=False)  # TeamRegistry，Agent Team 注册表（可选）
+    _root_agent: Any = field(default=None, repr=False)      # 根 Agent 引用，由 AgentFactory.create_root() 设置
 
     def __post_init__(self):
         if self._settings is None:
@@ -75,8 +80,14 @@ class Session:
             )
         if self._scheduler is None:
             self._scheduler = AgentScheduler(self)
+        if self._cron_scheduler is None:
+            self._cron_scheduler = CronScheduler(self)
+            # 从磁盘恢复所有 durable=True 的任务
+            self._cron_scheduler.load_durable_tasks()
         if self._bus is None:
             self._bus = SessionAgentBus()
+        if self._event_bus is None:
+            self._event_bus = EventBus()
         if self._shell_tasks is None:
             self._shell_tasks = ShellTaskRegistry()
         if self._agent_tasks is None:
@@ -122,8 +133,19 @@ class Session:
         return self._scheduler
 
     @property
+    def cron_scheduler(self) -> "CronScheduler":
+        """Session 级别的定时任务调度器。"""
+        return self._cron_scheduler
+
+    @property
     def bus(self) -> SessionAgentBus:
+        """旧的点对点 Agent 邮箱总线，保留兼容。新代码请使用 event_bus。"""
         return self._bus
+
+    @property
+    def event_bus(self) -> EventBus:
+        """Session 级广播事件总线，支持 fan-out 多订阅者。"""
+        return self._event_bus
 
     @property
     def shell_tasks(self) -> ShellTaskRegistry:
@@ -139,6 +161,11 @@ class Session:
     def team_registry(self) -> TeamRegistry | None:
         """Session 级别的 TeamRegistry。仅当 userAgentTeam=True 时初始化。"""
         return self._team_registry
+
+    @property
+    def root_agent(self) -> Any | None:
+        """根 Agent 实例引用，由 AgentFactory.create_root() 设置。"""
+        return self._root_agent
 
     # ── 消息持久化（委托给 storage adapter）──────────────────────────────────
 

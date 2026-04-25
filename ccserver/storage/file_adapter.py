@@ -8,9 +8,13 @@ storage.file_adapter — 基于本地文件系统的 StorageAdapter 实现。
         messages.jsonl      ← append-only，一行一条
         workdir/
         transcripts/
-        tasks/              ← 新增：任务存储
+        tasks/              ← 任务存储
           1.json
           2.json
+          .highwatermark
+        crontab/            ← cron 任务存储
+          ct3f2a1c0.json
+          ...
           .highwatermark
 """
 
@@ -158,6 +162,97 @@ class FileStorageAdapter(StorageAdapter):
         hw = self._tasks_dir(session_id)
         hw.mkdir(parents=True, exist_ok=True)
         (hw / ".highwatermark").write_text(str(value))
+
+    # ── Cron 任务存储 ──────────────────────────────────────────────────────────
+
+    def _crontab_dir(self, session_id: str) -> Path:
+        """返回 crontab 目录路径。"""
+        return self._session_dir(session_id) / "crontab"
+
+    def _cron_file(self, session_id: str, task_id: str) -> Path:
+        """返回单个 cron 任务文件路径。"""
+        return self._crontab_dir(session_id) / f"{task_id}.json"
+
+    def create_cron_task(self, session_id: str, task_data: dict) -> None:
+        """
+        创建或覆盖一个 cron 任务文件。
+
+        Args:
+            session_id: 所属 session ID
+            task_data:  CronTask.to_dict() 序列化后的字典，必须包含 task_id
+        """
+        path = self._cron_file(session_id, task_data["task_id"])
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(task_data, indent=2, ensure_ascii=False))
+        logger.debug(
+            "Cron task saved | session_id={} task_id={}",
+            session_id[:8], task_data["task_id"],
+        )
+
+    def load_cron_task(self, session_id: str, task_id: str) -> dict | None:
+        """
+        按 task_id 加载单个 cron 任务。
+
+        Returns:
+            任务字典，不存在则返回 None。
+        """
+        path = self._cron_file(session_id, task_id)
+        if not path.exists():
+            return None
+        return json.loads(path.read_text())
+
+    def update_cron_task(self, session_id: str, task_data: dict) -> None:
+        """
+        更新一个 cron 任务（直接覆盖文件）。
+        """
+        self.create_cron_task(session_id, task_data)
+
+    def delete_cron_task(self, session_id: str, task_id: str) -> None:
+        """
+        删除一个 cron 任务文件。
+
+        Args:
+            session_id: 所属 session ID
+            task_id:    要删除的任务 ID
+        """
+        path = self._cron_file(session_id, task_id)
+        if path.exists():
+            path.unlink()
+            logger.debug("Cron task deleted | session_id={} task_id={}", session_id[:8], task_id)
+
+    def list_cron_tasks(self, session_id: str) -> list[dict]:
+        """
+        列出指定 session 的所有 cron 任务。
+
+        Returns:
+            CronTask.to_dict() 字典列表，按 task_id 排序。
+        """
+        crontab_dir = self._crontab_dir(session_id)
+        if not crontab_dir.exists():
+            return []
+        tasks = []
+        for f in crontab_dir.glob("*.json"):
+            data = json.loads(f.read_text())
+            if data:
+                tasks.append(data)
+        return sorted(tasks, key=lambda t: t.get("task_id", ""))
+
+    def get_cron_highwatermark(self, session_id: str) -> int:
+        """
+        读取 crontab 自增计数器。
+        """
+        hw = self._crontab_dir(session_id) / ".highwatermark"
+        if hw.exists():
+            return int(hw.read_text())
+        return 0
+
+    def set_cron_highwatermark(self, session_id: str, value: int) -> None:
+        """
+        设置 crontab 自增计数器。
+        """
+        d = self._crontab_dir(session_id)
+        d.mkdir(parents=True, exist_ok=True)
+        (d / ".highwatermark").write_text(str(value))
 
     # ── 内部工具 ──────────────────────────────────────────────────────────────
 

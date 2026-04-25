@@ -108,6 +108,14 @@ class AgentFactory:
         # 让 prompt lib 对 schema 描述做后处理（如 cc_reverse 替换为 CC 原版描述）
         agent._schemas = lib.patch_tool_schemas(agent._schemas)
 
+        # 将根 Agent 挂载到 Session，供外部（如 Monitor）查询根 Agent 信息
+        session._root_agent = agent
+
+        # 启动定时任务调度器（若尚未启动）
+        cs = session.cron_scheduler
+        if not cs.is_alive:
+            cs.start()
+
         logger.info(
             "Root agent created | session={} model={} lib={} tools={} mcp_tools={}",
             session.id[:8], model, lib_id, list(tools.keys()),

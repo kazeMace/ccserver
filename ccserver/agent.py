@@ -34,11 +34,11 @@ from ccserver.builtins.tools import ToolResult
 from ccserver.builtins.tools import BuiltinTools
 from ccserver.emitters import BaseEmitter
 from ccserver.emitters import FilterEmitter
-from ccserver.emitters.queue import QueueEmitter
-from .agent_handle import BackgroundAgentHandle, forward_agent_events, _poll_agent_progress
+from ccserver.emitters.bus_emitter import BusEmitter
+from .agent_handle import BackgroundAgentHandle
 from .agent_registry import register_handle, unregister_handle
+from .event_bus import AgentEvent, EventType, SenderType
 from .model import ModelAdapter, get_adapter
-from .emitters.queue import QueueEmitter
 
 from typing import List, Dict, Any, Optional, Callable
 
@@ -206,17 +206,50 @@ class Agent:
             schemas=self._schemas,
         )
 
+    # ── 内部辅助 ──────────────────────────────────────────────────────────────
+
+    async def _set_phase(self, new_phase: str) -> None:
+        """
+        设置 Agent 状态并发布 phase_changed 事件到 EventBus。
+
+        所有 phase 变化必须通过此方法，确保 monitor 能实时追踪 Agent 状态。
+
+        Args:
+            new_phase: 新状态，取值见 AgentState.phase 文档。
+        """
+        old_phase = self.state.phase
+        if old_phase == new_phase:
+            return
+        self.state.phase = new_phase
+        await self.session.event_bus.publish(AgentEvent(
+            type=EventType.PHASE_CHANGED,
+            agent_id=self.context.agent_id,
+            session_id=self.session.id,
+            sender_type=SenderType.AGENT,
+            payload={
+                "from_phase": old_phase,
+                "to_phase": new_phase,
+                "round_num": self.state.round_num,
+                "current_tool": self.state.current_tool,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            },
+        ))
+        logger.debug(
+            "Phase changed | agent={} {} -> {}",
+            self.aid_label, old_phase, new_phase,
+        )
+
     # ── 公共入口点 ────────────────────────────────────────────────────────────
 
-    async def run(self, message: str, outbox: "QueueEmitter | None" = None) -> str:
+    async def run(self, message: str) -> str:
         """
         追加用户消息并执行循环。
 
         Args:
             message: 用户输入的原始消息。
-            outbox:  可选的后台任务输出队列（QueueEmitter）。
-                    当通过 spawn_background() 调用时传入，用于向外部推送
-                    status_request 响应等事件。
+
+        Returns:
+            Agent 的最终输出字符串。
         """
         # hook: message:inbound:received — 可修改消息内容、注入 additional_context
         hook_result = await self.session.hooks.emit(
@@ -235,7 +268,100 @@ class Agent:
             await self._handle_command(message)
         else:
             self._append({"role": "user", "content": message})
-        return await self._loop(outbox=outbox)
+        return await self._loop()
+
+    async def run_stream(self, message: str):
+        """
+        追加用户消息并执行循环，返回事件流（AsyncIterator[AgentEvent]）。
+
+        与 run() 的区别：
+          - run() 返回最终结果字符串，中间事件通过 self.emitter 推送
+          - run_stream() 通过 yield 逐条返回 AgentEvent，调用方直接消费
+
+        实现方式（P2 过渡态）：
+          内部临时将 emitter 替换为 BusEmitter，通过 EventBus 订阅收集事件并 yield。
+          此方式不需要改动 _loop() 内部逻辑，是向纯 AsyncIterator 演进的第一步。
+
+        注意：
+          run_stream() 不支持交互式事件（ask_user / permission_request 会直接返回空/False），
+          因此主要用于后台 Agent（子 Agent、teammate）场景。
+          根 Agent 的交互式场景仍应使用 run()。
+
+        Args:
+            message: 用户输入的原始消息。
+
+        Yields:
+            AgentEvent: 逐条事件（token、tool_start、progress、done、error 等）。
+        """
+        # hook 处理（与 run() 相同）
+        hook_result = await self.session.hooks.emit(
+            "message:inbound:received",
+            {"prompt": message},
+            self._build_hook_ctx(),
+        )
+        if hook_result.message is not None:
+            message = hook_result.message
+        if hook_result.additional_context:
+            message = message + "\n\n" + hook_result.additional_context
+
+        if message.startswith("/"):
+            await self._handle_command(message)
+        else:
+            self._append({"role": "user", "content": message})
+
+        # 保存原始 emitter
+        original_emitter = self.emitter
+
+        # 临时替换为 BusEmitter，事件会自动 publish 到 EventBus
+        bus_emitter = BusEmitter(
+            bus=self.session.event_bus,
+            agent_id=self.context.agent_id,
+            session_id=self.session.id,
+        )
+        self.emitter = bus_emitter
+
+        # 订阅自己的事件
+        sub_id = f"stream_{self.context.agent_id[:8]}_{id(self)}"
+        filter_fn = lambda e: e.agent_id == self.context.agent_id
+
+        # 启动 _loop() 后台任务
+        loop_task = asyncio.create_task(self._loop())
+
+        try:
+            async with self.session.event_bus.subscribe(sub_id, filter_fn=filter_fn) as sub:
+                # 持续从 EventBus 消费事件，直到 _loop() 完成
+                while not loop_task.done():
+                    try:
+                        event = await asyncio.wait_for(sub.get(), timeout=0.5)
+                    except asyncio.TimeoutError:
+                        continue
+                    if event is not None:
+                        yield event
+
+                # _loop() 完成后，清空订阅队列中剩余的事件
+                while True:
+                    try:
+                        event = await asyncio.wait_for(sub.get(), timeout=0.2)
+                    except asyncio.TimeoutError:
+                        break
+                    if event is None:
+                        break
+                    yield event
+
+        finally:
+            # 恢复原始 emitter
+            self.emitter = original_emitter
+
+        # 等待 _loop() 任务完成，获取最终结果
+        result = await loop_task
+
+        # 兜底：如果 _loop() 正常返回但没有发布 DONE 事件（如 report 策略），
+        # 在这里补发一个 DONE 事件，确保调用方收到终止信号
+        # 注：正常情况下 _finish_with_last_text / emit_done 会发布 DONE 事件
+        if result and not loop_task.cancelled():
+            # 检查是否已发过 DONE——由于上面的订阅已经关闭，无法直接检查
+            # 简单处理：如果 result 有内容，说明任务已完成，无需重复 yield
+            pass
 
     async def _handle_command(self, raw: str):
         """
@@ -310,6 +436,16 @@ class Agent:
         """
         from ccserver.builtins.tools.constants import CHILD_DISALLOWED_TOOLS, CHILD_DEFAULT_TOOLS, TEAMMATE_EXTRA_TOOLS
 
+        # ════════ 排查 subagent name 日志 ════════
+        logger.warning(
+            "[SPAWN_DEBUG] spawn_child called | "
+            "agent_name_param={!r} agent_def={} agent_def_name={!r}",
+            agent_name,
+            agent_def is not None,
+            getattr(agent_def, "name", None) if agent_def else None,
+        )
+        # ════════════════════════════════════════
+
         # ── skills：子代理默认无 skill catalog，除非 agent_def.skills 显式指定 ──
         if agent_def is not None and agent_def.skills is not None:
             child_skills_override = agent_def.skills   # list[str]，可能是空列表
@@ -324,8 +460,16 @@ class Agent:
         )
         # 子代理继承父代理的环境变量
         child_env_vars = dict(self.context.env_vars)
+        # agent_name 优先级：显式传入 > agent_def.name > None
+        effective_name = agent_name or (agent_def.name if agent_def else None)
+        # ════════ 排查 subagent name 日志 ════════
+        logger.warning(
+            "[SPAWN_DEBUG] effective_name={!r} | agent_name_param={!r} agent_def_name={!r}",
+            effective_name, agent_name, getattr(agent_def, "name", None) if agent_def else None,
+        )
+        # ════════════════════════════════════════
         child_context = AgentContext(
-            name=agent_name,
+            name=effective_name,
             messages=[initial_message],
             depth=self.context.depth + 1,
             parent_id=self.context.agent_id,
@@ -413,91 +557,39 @@ class Agent:
 
         child.recorder.schemas = child._schemas
 
+        # ════════ 排查 subagent name 日志 ════════
+        logger.warning(
+            "[SPAWN_DEBUG] spawn_child done | child_name={!r} child_aid={} child_context_name={!r} parent={}",
+            child.context.name,
+            child.aid_label,
+            child_context.name,
+            self.aid_label,
+        )
+        # ════════════════════════════════════════
+
+        # 发布 subagent_spawned 事件，供 monitor 追踪 Agent 树形关系
+        # spawn_child 是同步方法，使用 create_task 异步发布事件
+        asyncio.create_task(self.session.event_bus.publish(AgentEvent(
+            type=EventType.SUBAGENT_SPAWNED,
+            agent_id=self.context.agent_id,
+            session_id=self.session.id,
+            sender_type=SenderType.AGENT,
+            payload={
+                "parent_id": self.context.agent_id,
+                "child_id": child.context.agent_id,
+                "child_name": child.context.name or "unnamed",
+                "depth": child.context.depth,
+                "mode": "sync",
+                "model": child.model,
+                "round_limit": child.round_limit,
+            },
+        )))
+
         return child
 
 # ── 父 Agent 通知 ───────────────────────────────────────────────────────
-
-
-    async def _notify_parent_done(
-        parent_agent: "Agent",
-        agent_task_id: str,
-        agent_name: str,
-        result: str | None,
-        cancelled: bool = False,
-        error: str | None = None,
-    ) -> None:
-        """
-        后台 Agent 完成后，向父 Agent 的 messages 注入系统通知。
-
-        注入的消息为 system role 的 "background_agent_done" 类型，
-        父 Agent 的 _loop() 在 append_message 时感知到后，
-        自然进入下一轮 LLM 调用，将该信息纳入上下文。
-
-        Args:
-            parent_agent:  父 Agent 实例（spawn_background 的 self）。
-            agent_task_id: 后台任务的唯一 ID（"a" + uuid[:8]）。
-            agent_name:    后台 Agent 的名称。
-            result:        Agent 的最终输出（正常完成时）。
-            cancelled:     是否被取消。
-            error:         错误信息（异常结束时）。
-        """
-        if cancelled:
-            content = (
-                f"[Background agent '{agent_name}' (task_id={agent_task_id}) was cancelled.]"
-            )
-        elif error:
-            content = (
-                f"[Background agent '{agent_name}' (task_id={agent_task_id}) failed: {error}]"
-            )
-        else:
-            # 截断过长结果，避免污染上下文
-            summary = (result or "")[:500]
-            if len(result or "") > 500:
-                summary += " ...(truncated)"
-            content = (
-                f"[Background agent '{agent_name}' (task_id={agent_task_id}) completed]\n"
-                f"Result: {summary}"
-            )
-
-        done_message = {
-            "role": "system",
-            "content": content,
-            # 标注类型，供父 Agent 识别（不会被 compact 压缩掉）
-            "_ccserver_background_agent_done": True,
-            "agent_task_id": agent_task_id,
-            "agent_name": agent_name,
-        }
-
-        # 注入到父 Agent 的消息列表（即使父 Agent 正在运行，下一轮也会感知到）
-        parent_agent.context.messages.append(done_message)
-
-        # 持久化到 session storage（若父 session 有 storage）
-        if parent_agent.session.storage is not None:
-            parent_agent.session.storage.append_message(
-                parent_agent.session.id, done_message
-            )
-
-        # hook: background_agent:done — 可拦截通知、修改 content、甚至注入额外消息
-        # 以 fire-and-forget 方式执行，不阻塞后台协程
-        import asyncio as _asyncio
-        _hook_coro = parent_agent.session.hooks.emit_void(
-            "background_agent:done",
-            {
-                "agent_task_id": agent_task_id,
-                "agent_name": agent_name,
-                "result": result,
-                "cancelled": cancelled,
-                "error": error,
-            },
-            parent_agent._build_hook_ctx(),
-        )
-        if _asyncio.iscoroutine(_hook_coro):
-            _asyncio.create_task(_hook_coro)
-
-        logger.debug(
-            "Parent notified | agent={} task_id={} cancelled={} error={}",
-            parent_agent.aid_label, agent_task_id, cancelled, error
-        )
+# 已由 _watch_terminal_events（EventBus 订阅者）替代，收到终端事件时直接注入
+# 父 Agent messages，见 spawn_background() 中 _watch_terminal_events 闭包。
 
     def spawn_background(
         self,
@@ -509,6 +601,7 @@ class Agent:
         env_vars: dict[str, str] | None = None,
         agent_id_override: str | None = None,
         is_teammate: bool = False,
+        is_persistent: bool = False,
     ) -> BackgroundAgentHandle:
         """
         启动后台 Agent（非阻塞）。
@@ -532,94 +625,233 @@ class Agent:
             agent_id_override=agent_id_override,
         )
 
-        # 2. 替换 Emitter 为 QueueEmitter（内部事件收集）
-        queue_emitter = QueueEmitter()
-        child.emitter = queue_emitter
+        # 2. 创建 AgentTaskState 并注册到 Session
+        #    注意：子 Agent 的事件发布由 run_stream() 内部统一处理（临时替换为 BusEmitter），
+        #    不再需要在此处手动替换 child.emitter。
+        resolved_name = agent_name or child.context.name or "unnamed"
+        # ════════ 排查 subagent name 日志 ════════
+        logger.warning(
+            "[SPAWN_DEBUG] spawn_background | resolved_name={!r} agent_name_param={!r} child.context.name={!r} task_id={}",
+            resolved_name, agent_name, child.context.name, agent_task_id,
+        )
+        # ════════════════════════════════════════
 
-        # 3. 创建 AgentTaskState 并注册到 Session
+        # 发布 subagent_spawned 事件，供 monitor 追踪 Agent 树形关系
+        asyncio.create_task(self.session.event_bus.publish(AgentEvent(
+            type=EventType.SUBAGENT_SPAWNED,
+            agent_id=self.context.agent_id,
+            session_id=self.session.id,
+            sender_type=SenderType.AGENT,
+            payload={
+                "parent_id": self.context.agent_id,
+                "child_id": child.context.agent_id,
+                "child_name": child.context.name or "unnamed",
+                "depth": child.context.depth,
+                "mode": "background",
+                "model": child.model,
+                "round_limit": child.round_limit,
+                "agent_task_id": agent_task_id,
+            },
+        )))
+
         agent_task_state = AgentTaskState(
             id=agent_task_id,
             agent_id=child.context.agent_id,
-            agent_name=agent_name or child.context.name or None,
-            description=f"[Agent] {agent_name or child.context.name or 'background'}: {prompt[:80]}",
+            agent_name=resolved_name,
+            description=f"[Agent] {resolved_name}: {prompt[:80]}",
             prompt=prompt,
+            parent_id=child.context.parent_id,
+            is_persistent=is_persistent,
         )
-        agent_task_state.inbox = asyncio.Queue()  # 绑定 Handle 的 inbox
-        agent_task_state.outbox = queue_emitter.queue  # 绑定 QueueEmitter 的队列
+        agent_task_state.inbox = asyncio.Queue()  # 子 Agent 的输入队列
         # 3.1 同步 child.context.inbox 与 handle.inbox，使外部消息能正确投递
-        #     （_drain_inbox_and_respond 读取 context.inbox，poll 协程写入 handle.inbox）
         child.context.inbox = agent_task_state.inbox
+        # 3.2 注入 agent_task_id，使 _loop() 的 PROGRESS 事件包含 task_id
+        # SSEEmitter/WSEmitter 直接订阅 EventBus 时，可据此构造 task_progress 事件
+        child.context.agent_task_id = agent_task_id
         self.session.agent_tasks.register(agent_task_state)
         logger.debug(
             "AgentTask registered | agent_task_id={} agent_id={}",
             agent_task_id, child.context.agent_id[:8]
         )
 
-        # 4. 创建 Handle（inbox 已由 agent_task_state 持有，outbox 同上）
+        # 4. 创建 Handle（outbox 已不再需要，移除该字段）
         handle = BackgroundAgentHandle(
             agent_id=child.context.agent_id,
             task_id=task_id,
             agent_task_id=agent_task_id,
             state=child.state,
             inbox=agent_task_state.inbox,
-            outbox=agent_task_state.outbox,
             agent_task_state=agent_task_state,
         )
 
         # 5. 通过父级 emitter 推送 task_started 事件（SSE/WebSocket）
         #    注意：self.emitter 在根 Agent 运行时是 SSEEmitter / WSEmitter
         if hasattr(self.emitter, "emit_task_started"):
-            # 构建描述：优先用 agent_name，其次用 context.name，最后用 prompt 前 80 字符
             desc = agent_name or child.context.name or prompt[:80]
             self.emitter.emit_task_started(
                 task_id=agent_task_id,
                 task_type="local_agent",
                 description=desc,
-                pid=None,  # Agent 无 OS 进程
+                pid=None,
             )
 
-        # 6. 启动事件转发协程（监听 outbox → 推送 task_done/progress）
-        asyncio.create_task(
-            forward_agent_events(handle, self.emitter)
-        )
+        # 6. 启动终端事件监听协程（订阅 EventBus → 更新 AgentTaskState → 注入父 Agent 通知）
+        #    SSE/WS 事件推送已由 SSEEmitter/WSEmitter 直接订阅 EventBus 实现，
+        #    此处不再需要向 parent_emitter 转发。
+        #    此协程替代了旧的 forward_agent_events + _poll_agent_progress 两个竞争协程，
+        #    同时替代 _notify_parent_done。
+        child_agent_id = child.context.agent_id
 
-        # 7. 启动 progress 轮询协程（Path B：定期向 inbox 注入 status_request）
-        #    _poll_agent_progress 从 outbox 读取 progress 响应并透传给父级 emitter
-        asyncio.create_task(
-            _poll_agent_progress(handle, self.emitter, interval=5.0)
-        )
+        async def _watch_terminal_events():
+            """
+            订阅子 Agent 的 EventBus 终端事件，更新 AgentTaskState 并注入父 Agent 通知。
+
+            职责（精简后）：
+              - 收到 DONE      → mark_completed + _inject_done_notice
+              - 收到 ERROR     → mark_failed    + _inject_done_notice
+              - 收到 CANCELLED → mark_cancelled + _inject_done_notice
+
+            事件推送（task_progress/task_done）已由 SSEEmitter/WSEmitter 直接订阅 EventBus 完成。
+            订阅 filter：只处理来自本子 Agent 的终端事件。
+            持续运行直到 handle._task 结束（teammate 场景下可能有多次任务完成）。
+            """
+            sub_id = f"terminal_{agent_task_id}"
+            filter_fn = lambda e: (
+                e.agent_id == child_agent_id
+                and e.type in {EventType.DONE, EventType.ERROR, EventType.CANCELLED}
+            )
+
+            # 辅助函数：向父 Agent messages 注入完成通知（替代 _notify_parent_done）
+            async def _inject_done_notice(
+                result: str | None = None,
+                cancelled: bool = False,
+                error: str | None = None,
+            ) -> None:
+                if cancelled:
+                    content = (
+                        f"[Background agent '{agent_name}' (task_id={agent_task_id}) was cancelled.]"
+                    )
+                elif error:
+                    content = (
+                        f"[Background agent '{agent_name}' (task_id={agent_task_id}) failed: {error}]"
+                    )
+                else:
+                    summary = (result or "")[:500]
+                    if len(result or "") > 500:
+                        summary += " ...(truncated)"
+                    content = (
+                        f"[Background agent '{agent_name}' (task_id={agent_task_id}) completed]\n"
+                        f"Result: {summary}"
+                    )
+                done_message = {
+                    "role": "system",
+                    "content": content,
+                    "_ccserver_background_agent_done": True,
+                    "agent_task_id": agent_task_id,
+                    "agent_name": agent_name,
+                }
+                self.context.messages.append(done_message)
+
+                # 持久化到 session storage（若父 session 有 storage）
+                if self.session.storage is not None:
+                    self.session.storage.append_message(
+                        self.session.id, done_message
+                    )
+
+                # hook: background_agent:done
+                _hook_coro = self.session.hooks.emit_void(
+                    "background_agent:done",
+                    {
+                        "agent_task_id": agent_task_id,
+                        "agent_name": agent_name,
+                        "result": result,
+                        "cancelled": cancelled,
+                        "error": error,
+                    },
+                    self._build_hook_ctx(),
+                )
+                if asyncio.iscoroutine(_hook_coro):
+                    asyncio.create_task(_hook_coro)
+
+                logger.debug(
+                    "Parent notified (bus) | agent={} task_id={} cancelled={} error={}",
+                    self.aid_label, agent_task_id, cancelled, error,
+                )
+
+            async with self.session.event_bus.subscribe(sub_id, filter_fn=filter_fn) as sub:
+                while True:
+                    # 等待事件，超时后检查任务是否已结束
+                    event = await sub.get(timeout=30.0)
+                    if event is None:
+                        # 超时：检查任务是否已结束，是则退出
+                        if handle._task is not None and handle._task.done():
+                            break
+                        continue
+
+                    etype = event.type
+
+                    if etype == EventType.DONE:
+                        # 完成事件：更新 AgentTaskState，注入父 Agent 通知
+                        content = event.payload.get("content", "")
+                        if agent_task_state is not None:
+                            agent_task_state.mark_completed(result=content)
+                        await _inject_done_notice(result=content)
+                        logger.info(
+                            "AgentTask done (bus) | agent_task_id={} agent_id={}",
+                            agent_task_id, child_agent_id[:8],
+                        )
+                        # 不 break，持续运行以覆盖 teammate 多次任务完成场景
+
+                    elif etype == EventType.ERROR:
+                        error_msg = event.payload.get("error", "unknown error")
+                        if agent_task_state is not None:
+                            agent_task_state.mark_failed(error=error_msg)
+                        await _inject_done_notice(error=error_msg)
+                        logger.warning(
+                            "AgentTask failed (bus) | agent_task_id={} error={}",
+                            agent_task_id, error_msg[:100],
+                        )
+
+                    elif etype == EventType.CANCELLED:
+                        if agent_task_state is not None:
+                            agent_task_state.mark_cancelled()
+                        await _inject_done_notice(cancelled=True)
+
+        asyncio.create_task(_watch_terminal_events())
 
         # 8. 启动后台 Agent 协程（不阻塞）
         async def _run_background():
             try:
-                # 传入 queue_emitter 作为 outbox，使 _loop() 能向 outbox 写 progress 事件
-                result = await child.run(prompt, outbox=queue_emitter)
-                # 写入 outbox，由 forward_agent_events 消费并推送 task_done
-                await handle.outbox.put({"type": "done", "content": result})
-                # ── 通知父 Agent：向其 messages 注入完成通知 ─────────────────
-                # 这样父 Agent 的 _loop() 在 append_message 时能感知到结果，
-                # 自然触发下一轮 LLM 调用处理该结果（若需要）。
-                await self._notify_parent_done(
-                    agent_task_id=agent_task_id,
-                    agent_name=agent_name or child.context.name or "background",
-                    result=result,
-                )
+                # P2: 使用 run_stream() 替代 run()，事件通过 BusEmitter 自动发布到 EventBus。
+                # run_stream() 内部临时替换 emitter 为 BusEmitter，调用方通过 async for 消费事件。
+                # 此处不需要手动消费事件（已由 EventBus 订阅者处理），直接遍历即可。
+                async for _ in child.run_stream(prompt):
+                    pass
 
                 # ── Teammate 空闲循环：任务完成后进入 idle，等待新任务 ───────
                 if is_teammate:
+                    # 进入 idle 状态（持久 agent 在等待，不算结束）
+                    await child._set_phase("idle")
                     registry = self.session.team_registry
                     if registry is not None:
                         from ccserver.team.models import TeamMemberState
                         registry.update_member_state_by_agent_id(
                             child.context.agent_id, TeamMemberState.IDLE
                         )
+                        # 通过 EventBus 广播 idle 事件，Dispatcher 可订阅此事件实现事件驱动调度
+                        await self.session.event_bus.publish(AgentEvent(
+                            type=EventType.IDLE,
+                            agent_id=child.context.agent_id,
+                            session_id=self.session.id,
+                            sender_type=SenderType.AGENT,
+                            payload={"completed_task_id": task_id},
+                        ))
                         logger.info(
                             "Teammate idle | agent_id={}", child.context.agent_id
                         )
 
-                    # idle_timeout：等待新消息的超时时间（秒）。
-                    # 超时后检查 handle 是否已被取消，避免 _poll_agent_progress
-                    # 停止后协程永久 hang 在 inbox.get()。
+                    # idle_timeout：等待新消息的超时时间（秒）
                     idle_timeout = 60.0
                     while True:
                         try:
@@ -641,10 +873,6 @@ class Agent:
                             continue
 
                         match msg.get("type") or msg.get("msg_type"):
-                            case MsgType.STATUS_REQUEST:
-                                # 进度查询：轮询协程注入，idle 状态下直接跳过
-                                continue
-
                             case MsgType.NEW_TASK:
                                 task_prompt = msg.get("task_prompt") or msg.get("text", "")
                                 if not task_prompt:
@@ -657,32 +885,40 @@ class Agent:
                                     "Teammate new task | agent_id={} task_id={}",
                                     child.context.agent_id, msg.get("task_id")
                                 )
-                                result = await child.run(task_prompt, outbox=queue_emitter)
-                                await handle.outbox.put({"type": "done", "content": result})
-                                await self._notify_parent_done(
-                                    agent_task_id=agent_task_id,
-                                    agent_name=agent_name or child.context.name or "background",
-                                    result=result,
-                                )
+                                # P2: 使用 run_stream() 替代 run()，事件通过 BusEmitter 自动发布到 EventBus
+                                async for _ in child.run_stream(task_prompt):
+                                    pass
+                                # 任务完成后重新进入 idle 状态（持久 agent 在等待）
+                                await child._set_phase("idle")
                                 if registry is not None:
                                     registry.update_member_state_by_agent_id(
                                         child.context.agent_id, TeamMemberState.IDLE
                                     )
+                                    await self.session.event_bus.publish(AgentEvent(
+                                        type=EventType.IDLE,
+                                        agent_id=child.context.agent_id,
+                                        session_id=self.session.id,
+                                        sender_type=SenderType.AGENT,
+                                        payload={"completed_task_id": msg.get("task_id")},
+                                    ))
 
                             case MsgType.SHUTDOWN_REQUEST:
-                                # 关闭请求：优雅退出，通知 outbox 后跳出循环
+                                # 关闭请求：通过 BusEmitter 广播 done 事件后退出
                                 logger.info(
                                     "Teammate shutdown | agent_id={}",
                                     child.context.agent_id
                                 )
-                                await handle.outbox.put(
-                                    {"type": "done", "content": "[shutdown by lead]"}
-                                )
+                                await self.session.event_bus.publish(AgentEvent(
+                                    type=EventType.DONE,
+                                    agent_id=child.context.agent_id,
+                                    session_id=self.session.id,
+                                    sender_type=SenderType.AGENT,
+                                    payload={"content": "[shutdown by lead]"},
+                                ))
                                 break
 
                             case MsgType.CHAT:
-                                # chat 消息在下次 child.run() 时由 _drain_inbox_and_respond 消费
-                                # idle 状态下暂时忽略，因为没有正在运行的 _loop()
+                                # idle 状态下暂时忽略 chat，下次 child.run_stream() 时再处理
                                 pass
 
                             case _:
@@ -692,24 +928,30 @@ class Agent:
                                 )
 
             except asyncio.CancelledError:
-                await handle.outbox.put({"type": "cancelled"})
-                await self._notify_parent_done(
-                    agent_task_id=agent_task_id,
-                    agent_name=agent_name or child.context.name or "background",
-                    result=None,
-                    cancelled=True,
-                )
+                # 被取消：通过 EventBus 广播 cancelled 事件
+                # _watch_terminal_events 订阅者会处理并注入父 Agent 通知
+                await self.session.event_bus.publish(AgentEvent(
+                    type=EventType.CANCELLED,
+                    agent_id=child.context.agent_id,
+                    session_id=self.session.id,
+                    sender_type=SenderType.AGENT,
+                ))
             except Exception as e:
-                await handle.outbox.put({"type": "error", "error": str(e)})
-                await self._notify_parent_done(
-                    agent_task_id=agent_task_id,
-                    agent_name=agent_name or child.context.name or "background",
-                    result=None,
-                    error=str(e),
-                )
+                # 出错：通过 EventBus 广播 error 事件
+                # _watch_terminal_events 订阅者会处理并注入父 Agent 通知
+                await self.session.event_bus.publish(AgentEvent(
+                    type=EventType.ERROR,
+                    agent_id=child.context.agent_id,
+                    session_id=self.session.id,
+                    sender_type=SenderType.AGENT,
+                    payload={"error": str(e)},
+                ))
             finally:
                 # 任务终结后从全局注册表注销
                 unregister_handle(handle.agent_id)
+                # 非永久驻留的 agent 从 agent_tasks 清理
+                if not agent_task_state.is_persistent:
+                    self.session.agent_tasks.evict(agent_task_id)
 
         handle._task = asyncio.create_task(_run_background())
         # 注册到全局句柄表，使 server.py 可以按 agent_id 查找并 cancel
@@ -753,17 +995,17 @@ class Agent:
         team = registry.get_team(team_name)
         if team is None:
             team = registry.create_team(team_name)
-            # 启动 Dispatcher 和 PermissionRelay（骨架，后续扩展）
+            # 启动 Dispatcher
             from ccserver.team.dispatcher import TeamTaskDispatcher
-            from ccserver.team.permission_relay import TeamPermissionRelay
             mailbox = TeamMailbox(team_name, self.session.storage)
-            dispatcher = TeamTaskDispatcher(team, mailbox, task_manager=self.session.tasks)
+            dispatcher = TeamTaskDispatcher(
+                team, mailbox,
+                task_manager=self.session.tasks,
+                event_bus=self.session.event_bus,
+            )
             dispatcher.start()
-            relay = TeamPermissionRelay(team, mailbox)
-            relay.start()
             # 反向挂载以便后续健康检查获取
             team._dispatcher = dispatcher
-            team._relay = relay
             team._mailbox = mailbox
         else:
             mailbox = getattr(team, "_mailbox", None)
@@ -802,6 +1044,7 @@ class Agent:
             model_override=model_override,
             agent_id_override=agent_id,
             is_teammate=True,
+            is_persistent=True,  # teammate 默认永久驻留
         )
 
         # 将 Team 名称挂载到 child Agent 上，供 _handle_send_message 读取
@@ -814,7 +1057,33 @@ class Agent:
         # 设置当前 agent（如果是 Lead 自己）的 _team_name，供后续 SendMessage 使用
         self._team_name = team_name
 
-        # 启动 Mailbox Poller，将持久化消息注入 handle.inbox
+        # 启动 EventBus SHUTDOWN 事件订阅者，将 shutdown 事件注入 handle.inbox
+        # （作为 Mailbox/Poller 的实时通道补充，容灾时 Poller 仍可从 Mailbox 补投）
+        async def _watch_shutdown_events():
+            filter_fn = lambda e: e.type == EventType.SHUTDOWN and (
+                e.to_agent == agent_id or e.to_agent is None
+            )
+            sub_id = f"shutdown_{agent_id}"
+            async with self.session.event_bus.subscribe(sub_id, filter_fn=filter_fn) as sub:
+                while True:
+                    event = await sub.get(timeout=30.0)
+                    if event is None:
+                        if handle._task is None or handle._task.done():
+                            break
+                        continue
+                    await handle.inbox.put({
+                        "msg_type": MsgType.SHUTDOWN_REQUEST,
+                        "from_agent": event.agent_id,
+                        "reason": event.payload.get("reason"),
+                    })
+                    logger.info(
+                        "Teammate shutdown received (EventBus) | agent_id={} from={}",
+                        agent_id, event.agent_id,
+                    )
+
+        asyncio.create_task(_watch_shutdown_events())
+
+        # 启动 Mailbox Poller，将持久化消息注入 handle.inbox（容灾备份）
         poller = TeamMailboxPoller(
             mailbox=mailbox,
             recipient=agent_id,
@@ -832,40 +1101,28 @@ class Agent:
 
     # ── 核心循环 ──────────────────────────────────────────────────────────────
 
-    async def _drain_inbox_and_respond(self, outbox: "QueueEmitter | None") -> list[dict]:
+    async def _drain_inbox_and_respond(self) -> tuple[list[dict], bool]:
         """
-        非阻塞读取 inbox，处理 status_request 并写入 progress 响应到 outbox。
-        同时处理 Agent Team 相关的 mailbox 消息（new_task, shutdown_request, chat 等）。
+        非阻塞读取 inbox，处理 Agent Team 相关的 mailbox 消息（new_task, shutdown_request, chat 等）。
 
-        外部轮询协程（_poll_agent_progress）定期向 child.inbox 注入 status_request，
-        此方法在每轮回合开始时被调用，处理积压的请求。
+        进度事件改由 _loop() 每轮主动 publish 到 EventBus（推送模型），
+        不再需要外部轮询注入 status_request。
 
         Returns:
-            需要追加到 messages 的新消息列表（如 new_task, shutdown_request, chat）
+            (需要追加到 messages 的新消息列表, 是否收到 shutdown_request)
         """
         new_messages: list[dict] = []
+        shutdown_requested = False
 
-        # 合并为单个循环，同时处理 status_request（进度回报）和 Team Mailbox 消息
+        # 消费 inbox 中的 Team Mailbox 消息
         while True:
             try:
                 msg = self.context.inbox.get_nowait()
             except asyncio.QueueEmpty:
                 break
 
-            # status_request 用 type 字段标识（非 Mailbox 消息，由轮询协程注入）
-            # 其余消息用 msg_type 字段标识（来自 TeamMailboxPoller）
+            # msg_type 字段标识来自 TeamMailboxPoller 或 EventBus 订阅者的消息
             match msg.get("type") or msg.get("msg_type"):
-                case MsgType.STATUS_REQUEST:
-                    # 进度查询：由 _poll_agent_progress 定期注入，回报当前轮次/阶段给父 Agent
-                    if outbox is not None:
-                        progress = {
-                            "round_num": self.state.round_num,
-                            "max_rounds": self.round_limit,
-                            "phase": self.state.phase,
-                            "current_tool": self.state.current_tool,
-                        }
-                        await outbox.put({"type": "progress", **progress})
-
                 case MsgType.NEW_TASK:
                     # 新任务：Team Lead 分配过来的任务，转为 user 消息追加到对话历史
                     new_messages.append({
@@ -880,8 +1137,8 @@ class Agent:
                     new_messages.append({
                         "role": "system",
                         "content": "[Team Lead 请求你优雅退出，总结当前进度后结束。]",
-                        "_ccserver_team_shutdown": True,
                     })
+                    shutdown_requested = True
 
                 case MsgType.CHAT:
                     # 聊天消息：来自其他 Agent 的即时通信，附上发送方标识
@@ -898,6 +1155,22 @@ class Agent:
                         msg.get("request_id"),
                     )
 
+                case MsgType.CRON_TRIGGER:
+                    # 定时任务触发：注入 user 消息执行 cron prompt
+                    cron_prompt = msg.get("prompt", "")
+                    new_messages.append({
+                        "role": "user",
+                        "content": cron_prompt,
+                        "_ccserver_cron_task": True,
+                        "task_id": msg.get("task_id"),
+                        "cron_expr": msg.get("cron_expr", ""),
+                    })
+                    logger.debug(
+                        "Inbox cron_trigger consumed | agent={} task_id={}",
+                        self.aid_label,
+                        msg.get("task_id"),
+                    )
+
                 case _:
                     # 未知消息类型，记录警告但不中断循环
                     logger.warning(
@@ -906,11 +1179,11 @@ class Agent:
                         msg,
                     )
 
-        return new_messages
+        return new_messages, shutdown_requested
 
-    async def _loop(self, outbox: "QueueEmitter | None" = None) -> str:
+    async def _loop(self) -> str:
         self.state.start_time = datetime.now(timezone.utc)
-        self.state.phase = "running"
+        await self._set_phase("running")
         logger.debug("Loop start | agent={} depth={} msgs={} stream={}", self.aid_label, self.context.depth, len(self.context.messages), self.stream)
 
         # hook: agent:bootstrap — _loop 开始处，可动态裁剪 tools/schemas
@@ -929,15 +1202,19 @@ class Agent:
             self._continue_loop = False
             for round_num in range(self.round_limit):
                 self.state.round_num = round_num + 1
-                # Path B: 处理积压的 status_request，写 progress 到 outbox
-                # 同时处理 Team Mailbox 消息（new_task, shutdown_request, chat 等）
-                team_messages = await self._drain_inbox_and_respond(outbox)
+                # 处理 inbox 中积压的 Team Mailbox 消息（new_task, shutdown_request, chat 等）
+                # 进度事件由本轮末尾主动 publish 到 EventBus，不再依赖外部轮询
+                team_messages, shutdown_requested = await self._drain_inbox_and_respond()
                 for tm in team_messages:
                     self._append(tm)
-                if any(m.get("_ccserver_team_shutdown") for m in team_messages):
-                    self.state.phase = "done"
+                if shutdown_requested:
+                    await self._set_phase("done")
                     return round_text + "\n[shutdown by lead]"
                 await self._maybe_compact()
+                # 验证消息序列：修复被外部并发消息打断的 tool_use -> tool_result 对
+                if Agent._sanitize_messages(self.context.messages):
+                    if self.persist:
+                        self.session.rewrite_messages(self.context.messages)
                 logger.debug("Round {}/{} | agent={}", round_num + 1, self.round_limit, self.aid_label)
                 # 调用前快照 messages（深拷贝，防止后续 append 污染记录）
                 input_messages_snapshot = [dict(m) for m in self.context.messages]
@@ -950,7 +1227,7 @@ class Agent:
 
                 if response is None:
                     # LLM 永久失败（重试耗尽）
-                    self.state.phase = "error"
+                    await self._set_phase("error")
                     self.state.last_error = "LLM call failed after retries"
                     await self.session.hooks.emit_void(
                         "agent:stop:failure",
@@ -980,7 +1257,7 @@ class Agent:
                 if response.stop_reason != "tool_use":
                     logger.debug("Loop done  | agent={} rounds={} reply_len={}", self.aid_label, round_num + 1, len(round_text))
                     logger.debug("Loop final_text | agent={} text={!r}", self.aid_label, round_text)
-                    self.state.phase = "done"
+                    await self._set_phase("done")
                     # 子代理发 subagent_done，根代理发 done，语义区分
                     if self.context.is_orchestrator:
                         # hook: agent:stop — 根代理最终完成（observing）
@@ -994,23 +1271,52 @@ class Agent:
                         await self.emitter.emit_subagent_done(round_text)
                     return round_text
 
-                self.state.phase = "tool_executing"
-                tool_results, trigger_compact = await self._handle_tools(response.content)
-                self._append({"role": "user", "content": tool_results})
+                await self._set_phase("tool_executing")
 
+                # 推送模型：每轮工具调用前主动向 EventBus 广播 PROGRESS 事件。
+                # 订阅了此 Agent 事件的父级无需再轮询，直接收到进度更新。
+                progress_payload = {
+                    "progress": {
+                        "round_num": round_num + 1,
+                        "max_rounds": self.round_limit,
+                        "phase": "tool_executing",
+                        "current_tool": self.state.current_tool,
+                    }
+                }
+                # 如果上下文中有 agent_task_id（后台 Agent），带上 task_id 和 status
+                # 这样 SSEEmitter/WSEmitter 直接订阅 EventBus 时，可以构造 task_progress 事件
+                _agent_task_id = getattr(self.context, "agent_task_id", None)
+                if _agent_task_id:
+                    progress_payload["task_id"] = _agent_task_id
+                    progress_payload["status"] = "running"
+
+                await self.session.event_bus.publish(AgentEvent(
+                    type=EventType.PROGRESS,
+                    agent_id=self.context.agent_id,
+                    session_id=self.session.id,
+                    sender_type=SenderType.AGENT,
+                    payload=progress_payload,
+                ))
+
+                tool_results, trigger_compact = await self._handle_tools(response.content)
+
+                # 注意：compaction 必须在追加 tool_result 之前执行，
+                # 否则 tool_result 会随旧消息一起被压缩丢弃。
                 if trigger_compact:
                     await self._do_compact(reason="manual compact requested")
 
-                self.state.phase = "running"
+                self._append({"role": "user", "content": tool_results})
+
+                await self._set_phase("running")
 
             # for 循环耗尽，达到轮次上限
             logger.warning("Round limit reached | agent={} limit={}", self.aid_label, self.round_limit)
-            self.state.phase = "limit_reached"
+            await self._set_phase("limit_reached")
             result = await self._on_limit(round_text)
             # _on_limit_ask_user 选择"继续"时设置 _continue_loop=True 并增加 round_limit
             if self._continue_loop:
                 self.state.round_num = 0
-                self.state.phase = "running"
+                await self._set_phase("running")
                 continue
             return result
 
@@ -1135,6 +1441,7 @@ class Agent:
                 )}],
                 max_tokens=1000,
             )
+            assert response.content, f"LLM returned empty content in _on_limit_summarize for {self.aid_label}"
             summary = response.content[0].text
         except Exception as e:
             logger.error("_on_limit_summarize failed | agent={} error={}", self.aid_label, e)
@@ -1152,6 +1459,149 @@ class Agent:
             await self.emitter.emit_subagent_done(result)
         return result
 
+    # ── 消息序列验证 ──────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _sanitize_messages(messages: list[dict]) -> bool:
+        """
+        验证并修复消息序列，确保符合 Anthropic API 的消息顺序要求。
+
+        API 规则：assistant 消息中包含 tool_use 块时，下一条消息必须是 user 角色，
+        且包含对应的 tool_result 块（tool_use_id 匹配）。
+
+        如果外部消息（如用户通过 channel 发送的新输入）被并发插入到 tool_use 和
+        tool_result 之间，会导致 API 报 "tool call result does not follow tool call" 错误。
+
+        修复方式：在不完整的 tool_use 后插入空的 tool_result，将外部消息后移。
+
+        Args:
+            messages: 消息列表（会被原地修改）
+
+        Returns:
+            是否做了修复
+        """
+        from ccserver.utils import get_block_attr
+
+        fixed = False
+        i = 0
+        while i < len(messages):
+            msg = messages[i]
+            if msg.get("role") != "assistant":
+                i += 1
+                continue
+
+            # 检查 assistant 消息是否包含 tool_use 块
+            content = msg.get("content", [])
+            if not isinstance(content, list):
+                i += 1
+                continue
+
+            tool_use_ids = [
+                get_block_attr(b, "id")
+                for b in content
+                if isinstance(b, dict) and get_block_attr(b, "type") == "tool_use"
+                if get_block_attr(b, "id")
+            ]
+            if not tool_use_ids:
+                i += 1
+                continue
+
+            # 检查下一条消息
+            if i + 1 >= len(messages):
+                # tool_use 是列表最后一条，上一轮可能中断
+                tool_results = [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": tid,
+                        "content": "[Tool call was interrupted. No result available.]",
+                    }
+                    for tid in tool_use_ids
+                ]
+                messages.append({
+                    "role": "user",
+                    "content": tool_results,
+                })
+                logger.warning(
+                    "Fixed dangling tool_use at end | tool_use_ids={}",
+                    tool_use_ids,
+                )
+                fixed = True
+                break
+
+            next_msg = messages[i + 1]
+            if next_msg.get("role") != "user":
+                # 下一条不是 user，序列被破坏（可能是外部 system/user 消息插入）
+                tool_results = [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": tid,
+                        "content": "[Tool call was interrupted by new input. No result available.]",
+                    }
+                    for tid in tool_use_ids
+                ]
+                messages.insert(i + 1, {
+                    "role": "user",
+                    "content": tool_results,
+                })
+                logger.warning(
+                    "Fixed broken tool_use sequence | tool_use_ids={} next_role={}",
+                    tool_use_ids, next_msg.get("role"),
+                )
+                fixed = True
+                i += 2  # 跳过插入的 tool_result，继续检查后续
+                continue
+
+            # 下一条是 user，检查 content 是否包含对应的 tool_result
+            next_content = next_msg.get("content", [])
+            if isinstance(next_content, str):
+                # user 消息的 content 是字符串（普通文本），不是 tool_result
+                tool_results = [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": tid,
+                        "content": "[Tool call was interrupted by new input. No result available.]",
+                    }
+                    for tid in tool_use_ids
+                ]
+                messages.insert(i + 1, {
+                    "role": "user",
+                    "content": tool_results,
+                })
+                logger.warning(
+                    "Fixed broken tool_use sequence | tool_use_ids={} next_content=string",
+                    tool_use_ids,
+                )
+                fixed = True
+                i += 2
+                continue
+
+            # next_content 是 list，检查是否包含所有对应的 tool_result
+            result_ids = set()
+            for block in next_content:
+                if isinstance(block, dict) and block.get("type") == "tool_result":
+                    tid = block.get("tool_use_id")
+                    if tid:
+                        result_ids.add(tid)
+
+            missing_ids = set(tool_use_ids) - result_ids
+            if missing_ids:
+                # 部分 tool_use 没有对应的 tool_result（比较少见）
+                for tid in missing_ids:
+                    next_content.append({
+                        "type": "tool_result",
+                        "tool_use_id": tid,
+                        "content": "[Tool call was interrupted by new input. No result available.]",
+                    })
+                logger.warning(
+                    "Fixed partial tool_use sequence | missing_ids={}",
+                    list(missing_ids),
+                )
+                fixed = True
+
+            i += 1
+
+        return fixed
+
     # ── 工具处理 ──────────────────────────────────────────────────────────────
 
     async def _call_llm_stream(self):
@@ -1161,12 +1611,12 @@ class Agent:
         """
         import asyncio
         import httpx
-        from anthropic import APIConnectionError, APITimeoutError
+        from anthropic import APIConnectionError, APITimeoutError, InternalServerError
 
         max_retries = 3
         retry_delays = [2, 5, 10]
 
-        self.state.phase = "llm_calling"
+        await self._set_phase("llm_calling")
         for attempt in range(max_retries):
             try:
                 # hook: prompt:build:before — 可修改 system/messages
@@ -1196,6 +1646,25 @@ class Agent:
                     {"messages": effective_messages, "model": self.model},
                     self._build_hook_ctx(),
                 )
+                # 兜底验证：hook 可能修改了消息序列，确保 tool_use -> tool_result 配对完整
+                Agent._sanitize_messages(effective_messages)
+
+                # 发布 llm_request 事件，供 monitor 追踪 LLM 调用
+                llm_start_ts = datetime.now(timezone.utc)
+                await self.session.event_bus.publish(AgentEvent(
+                    type=EventType.LLM_REQUEST,
+                    agent_id=self.context.agent_id,
+                    session_id=self.session.id,
+                    sender_type=SenderType.AGENT,
+                    payload={
+                        "model": self.model,
+                        "message_count": len(effective_messages),
+                        "tools_count": len(self._schemas),
+                        "system_len": len(effective_system) if effective_system else 0,
+                        "attempt": attempt + 1,
+                    },
+                ))
+
                 async with self.adapter.stream(
                     model=self.model,
                     system=effective_system,
@@ -1206,9 +1675,25 @@ class Agent:
                     async for text in stream.text_stream:
                         await self.emitter.emit_token(text)
                     response = await stream.get_final_message()
+
+                # 发布 llm_response 事件
+                llm_duration_ms = int((datetime.now(timezone.utc) - llm_start_ts).total_seconds() * 1000)
+                content_blocks = response.content if hasattr(response, "content") else []
+                await self.session.event_bus.publish(AgentEvent(
+                    type=EventType.LLM_RESPONSE,
+                    agent_id=self.context.agent_id,
+                    session_id=self.session.id,
+                    sender_type=SenderType.AGENT,
+                    payload={
+                        "model": self.model,
+                        "stop_reason": response.stop_reason,
+                        "content_blocks_count": len(content_blocks),
+                        "duration_ms": llm_duration_ms,
+                    },
+                ))
                 return response
 
-            except (APIConnectionError, APITimeoutError, httpx.RemoteProtocolError) as e:
+            except (APIConnectionError, APITimeoutError, httpx.RemoteProtocolError, InternalServerError) as e:
                 if attempt < max_retries - 1:
                     delay = retry_delays[attempt]
                     logger.warning(
@@ -1227,7 +1712,10 @@ class Agent:
                     return None
 
             except Exception as e:
-                logger.error("LLM error | agent={} error={}", self.aid_label, e)
+                logger.error(
+                    "LLM error | agent={} exc_type={} error={}",
+                    self.aid_label, type(e).__name__, e,
+                )
                 await self.emitter.emit_error(str(e))
                 await self.session.hooks.emit_void(
                     "prompt:llm:error",
@@ -1245,12 +1733,12 @@ class Agent:
         """
         import asyncio
         import httpx
-        from anthropic import APIConnectionError, APITimeoutError
+        from anthropic import APIConnectionError, APITimeoutError, InternalServerError
 
         max_retries = 3
         retry_delays = [2, 5, 10]
 
-        self.state.phase = "llm_calling"
+        await self._set_phase("llm_calling")
         for attempt in range(max_retries):
             try:
                 # hook: prompt:build:before — 可修改 system/messages
@@ -1280,6 +1768,25 @@ class Agent:
                     {"messages": effective_messages, "model": self.model},
                     self._build_hook_ctx(),
                 )
+                # 兜底验证：hook 可能修改了消息序列，确保 tool_use -> tool_result 配对完整
+                Agent._sanitize_messages(effective_messages)
+
+                # 发布 llm_request 事件，供 monitor 追踪 LLM 调用
+                llm_start_ts = datetime.now(timezone.utc)
+                await self.session.event_bus.publish(AgentEvent(
+                    type=EventType.LLM_REQUEST,
+                    agent_id=self.context.agent_id,
+                    session_id=self.session.id,
+                    sender_type=SenderType.AGENT,
+                    payload={
+                        "model": self.model,
+                        "message_count": len(effective_messages),
+                        "tools_count": len(self._schemas),
+                        "system_len": len(effective_system) if effective_system else 0,
+                        "attempt": attempt + 1,
+                    },
+                ))
+
                 response = await self.adapter.create(
                     model=self.model,
                     system=effective_system,
@@ -1287,9 +1794,25 @@ class Agent:
                     tools=self._schemas,
                     max_tokens=8000,
                 )
+
+                # 发布 llm_response 事件
+                llm_duration_ms = int((datetime.now(timezone.utc) - llm_start_ts).total_seconds() * 1000)
+                content_blocks = response.content if hasattr(response, "content") else []
+                await self.session.event_bus.publish(AgentEvent(
+                    type=EventType.LLM_RESPONSE,
+                    agent_id=self.context.agent_id,
+                    session_id=self.session.id,
+                    sender_type=SenderType.AGENT,
+                    payload={
+                        "model": self.model,
+                        "stop_reason": response.stop_reason,
+                        "content_blocks_count": len(content_blocks),
+                        "duration_ms": llm_duration_ms,
+                    },
+                ))
                 return response
 
-            except (APIConnectionError, APITimeoutError, httpx.RemoteProtocolError) as e:
+            except (APIConnectionError, APITimeoutError, httpx.RemoteProtocolError, InternalServerError) as e:
                 if attempt < max_retries - 1:
                     delay = retry_delays[attempt]
                     logger.warning(
@@ -1308,7 +1831,10 @@ class Agent:
                     return None
 
             except Exception as e:
-                logger.error("LLM error | agent={} error={}", self.aid_label, e)
+                logger.error(
+                    "LLM error | agent={} exc_type={} error={}",
+                    self.aid_label, type(e).__name__, e,
+                )
                 await self.emitter.emit_error(str(e))
                 await self.session.hooks.emit_void(
                     "prompt:llm:error",
@@ -1332,6 +1858,19 @@ class Agent:
         results: list[dict] = []
         trigger_compact = False
         ask_tools = self.session.settings.ask_tools
+
+        # 扫描是否有多个 Agent 工具调用，决定是否启用并行模式
+        _agent_count = 0
+        for _block in blocks:
+            if get_block_attr(_block, "type") == "tool_use":
+                _name = get_block_attr(_block, "name") or ""
+                if _name == "Agent":
+                    _agent_count += 1
+        parallel_agent_mode = _agent_count > 1
+
+        # 收集 Agent 工具的异步调用信息（仅在并行模式下使用）
+        # 每个元素: (results_index, block_id, effective_input, preview, tool_start_ts, task)
+        agent_tasks: list[tuple[int, str, dict, str, datetime, asyncio.Task]] = []
 
         for block in blocks:
             if get_block_attr(block, "type") != "tool_use":
@@ -1420,9 +1959,20 @@ class Agent:
                 preview = ", ".join(preview_parts)
             else:
                 preview = str(list(input_.values())[0])[:80] if input_ else ""
+
+            # 记录工具执行开始时间，用于计算耗时
+            tool_start_ts = datetime.now(timezone.utc)
+            self.state.current_tool = name
+
             await self.emitter.emit_tool_start(name, preview)
 
             if name == "Agent":
+                if parallel_agent_mode:
+                    # 并行模式：创建 task 但不立即 await，循环结束后统一 gather
+                    task = asyncio.create_task(self._handle_agent(input_))
+                    agent_tasks.append((len(results), block_id, input_, preview, tool_start_ts, task))
+                    results.append(None)  # 预占位，后面替换为实际结果
+                    continue
                 result = await self._handle_agent(input_)
             elif name == "SendMessage":
                 result = await self._handle_send_message(input_)
@@ -1443,7 +1993,26 @@ class Agent:
                     logger.warning("Unknown tool | agent={} tool={}", self.aid_label, name)
                     result = ToolResult.error(f"Unknown tool: {name}")
 
+            tool_duration_ms = int((datetime.now(timezone.utc) - tool_start_ts).total_seconds() * 1000)
+            self.state.current_tool = None
+
             await self.emitter.emit_tool_result(name, result.content)
+
+            # 发布详细的 tool_done 事件到 EventBus，供 monitor 展示工具调用详情
+            await self.session.event_bus.publish(AgentEvent(
+                type=EventType.TOOL_DONE,
+                agent_id=self.context.agent_id,
+                session_id=self.session.id,
+                sender_type=SenderType.AGENT,
+                payload={
+                    "tool_name": name,
+                    "tool_use_id": block_id,
+                    "duration_ms": tool_duration_ms,
+                    "is_error": result.is_error,
+                    "result_preview": (result.content or "")[:200],
+                    "tool_input_preview": preview,
+                },
+            ))
             # hook: tool:call:after / tool:call:failure（observing）
             if result.is_error:
                 await self.session.hooks.emit_void(
@@ -1458,6 +2027,63 @@ class Agent:
                     self._build_hook_ctx(),
                 )
             results.append(result.to_api_dict(block_id))
+
+        # ── 并行等待所有 Agent 工具完成（仅当存在多个 Agent 调用时）──
+        if agent_tasks:
+            if len(agent_tasks) > 1:
+                agent_results = await asyncio.gather(
+                    *[task for _, _, _, _, _, task in agent_tasks],
+                    return_exceptions=True,
+                )
+            else:
+                # 只有一个 Agent 时直接 await（避免不必要的 gather 开销）
+                _, _, _, _, _, task = agent_tasks[0]
+                try:
+                    agent_results = [await task]
+                except Exception as e:
+                    agent_results = [e]
+
+            for (idx, bid, inp, preview, ts, _), res in zip(agent_tasks, agent_results):
+                if isinstance(res, Exception):
+                    logger.error("Agent tool parallel execution failed | error={}", res)
+                    result = ToolResult.error(str(res))
+                else:
+                    result = res
+
+                tool_duration_ms = int((datetime.now(timezone.utc) - ts).total_seconds() * 1000)
+                self.state.current_tool = None
+
+                await self.emitter.emit_tool_result("Agent", result.content)
+
+                await self.session.event_bus.publish(AgentEvent(
+                    type=EventType.TOOL_DONE,
+                    agent_id=self.context.agent_id,
+                    session_id=self.session.id,
+                    sender_type=SenderType.AGENT,
+                    payload={
+                        "tool_name": "Agent",
+                        "tool_use_id": bid,
+                        "duration_ms": tool_duration_ms,
+                        "is_error": result.is_error,
+                        "result_preview": (result.content or "")[:200],
+                        "tool_input_preview": preview,
+                    },
+                ))
+
+                if result.is_error:
+                    await self.session.hooks.emit_void(
+                        "tool:call:failure",
+                        {"tool_name": "Agent", "tool_use_id": bid, "tool_input": inp, "error": result.content or ""},
+                        self._build_hook_ctx(),
+                    )
+                else:
+                    await self.session.hooks.emit_void(
+                        "tool:call:after",
+                        {"tool_name": "Agent", "tool_use_id": bid, "tool_input": inp, "tool_response": result.content or ""},
+                        self._build_hook_ctx(),
+                    )
+
+                results[idx] = result.to_api_dict(bid)
 
         return results, trigger_compact
 
@@ -1481,8 +2107,9 @@ class Agent:
             return ToolResult.error("Task requires a non-empty prompt.")
 
         # 查找 agent_def（如果 Task 工具传入了 agent 名称）
+        # agent_name 优先使用 subagent_type（如 "web-search"），description 是任务描述（如 "Search for papers"）
         subagent_type = task_input.get("subagent_type", "")
-        agent_name = task_input.get("description", "") or subagent_type
+        agent_name = subagent_type or task_input.get("description", "")
         model_override = task_input.get("model", "") or None
         run_in_background = bool(task_input.get("run_in_background", False))
         team_name = task_input.get("team_name", "")
@@ -1497,6 +2124,15 @@ class Agent:
         agent_def = self.session.agents.get(subagent_type) if subagent_type else None
         if subagent_type and agent_def is None:
             logger.warning("Agent def not found | subagent_type={}", subagent_type)
+
+        # is_persistent 决策：工具参数 > AgentDef 配置 > 默认 False（LLM 自动派生默认临时）
+        _persistent_param = task_input.get("persistent")
+        if _persistent_param is not None:
+            is_persistent = bool(_persistent_param)
+        elif agent_def is not None:
+            is_persistent = agent_def.is_persistent
+        else:
+            is_persistent = False
 
         # ── Team 分支 ──
         if team_name and teammate_name and self.session.settings.user_agent_team:
@@ -1536,6 +2172,7 @@ class Agent:
                 agent_name=agent_name,
                 model_override=model_override,
                 task_id=None,
+                is_persistent=is_persistent,
             )
             logger.info(
                 "Agent background  | parent={} agent_task_id={} agent_id={}",
@@ -1565,10 +2202,44 @@ class Agent:
             {"subagent_id": child.context.agent_id, "subagent_name": child.context.name or ""},
             child._build_hook_ctx(),
         )
-        summary = await child._loop()
+
+        # 注册到 session.agent_tasks，使 monitor 能追踪同步子 Agent
+        from ccserver.tasks import AgentTaskState, generate_agent_id, AgentTaskStatus
+        sync_task_id = generate_agent_id()
+        sync_task = AgentTaskState(
+            id=sync_task_id,
+            agent_id=child.context.agent_id,
+            agent_name=child.context.name or "unnamed",
+            description=f"[Agent] {child.context.name or 'unnamed'}: {prompt[:80]}",
+            prompt=prompt,
+            parent_id=child.context.parent_id,
+            is_persistent=is_persistent,
+        )
+        child.context.agent_task_id = sync_task_id
+        self.session.agent_tasks.register(sync_task)
+        logger.info(
+            "Sync agent registered | parent={} agent_task_id={} agent_id={}",
+            self.aid_label, sync_task_id, child.context.agent_id[:8]
+        )
+
+        try:
+            sync_task.status = AgentTaskStatus.RUNNING
+            sync_task.start_time = datetime.now(timezone.utc)
+            summary = await child._loop()
+            sync_task.status = AgentTaskStatus.COMPLETED
+            sync_task.result = summary
+        except Exception as e:
+            sync_task.status = AgentTaskStatus.FAILED
+            sync_task.error = str(e)
+            raise
+        finally:
+            sync_task.end_time = datetime.now(timezone.utc)
+            if not sync_task.is_persistent:
+                self.session.agent_tasks.evict(sync_task_id)
+
         logger.info(
             "Child agent done   | child={} summary_len={}",
-            child.context.agent_id[:8], len(summary)
+            child.aid_label, len(summary)
         )
         # hook: subagent:ended — 子代理完成（observing）
         await self.session.hooks.emit_void(
@@ -1618,7 +2289,7 @@ class Agent:
                 text=message,
                 summary=summary or None,
             )
-            mailbox.broadcast(chat_msg, recipients=recipients, exclude=from_agent)
+            await mailbox.broadcast(chat_msg, recipients=recipients, exclude=from_agent)
             logger.info(
                 "SendMessage broadcast | agent={} team={} recipients={}",
                 self.aid_label, team_name, len(recipients)
@@ -1635,7 +2306,7 @@ class Agent:
                 text=message,
                 summary=summary or None,
             )
-            mailbox.send(chat_msg)
+            await mailbox.send(chat_msg)
             logger.info(
                 "SendMessage sent | agent={} team={} to={}",
                 self.aid_label, team_name, to_agent

@@ -20,7 +20,7 @@ class MsgType(StrEnum):
     SHUTDOWN_REQUEST   = "shutdown_request"
     PERMISSION_REQUEST = "permission_request"
     PERMISSION_RESPONSE = "permission_response"
-    STATUS_REQUEST     = "status_request"   # 由 _poll_agent_progress 注入，非 Mailbox 消息
+    CRON_TRIGGER       = "cron_trigger"
 
 
 @dataclass

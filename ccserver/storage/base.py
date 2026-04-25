@@ -137,3 +137,65 @@ class StorageAdapter(ABC):
         默认未实现。
         """
         raise NotImplementedError(f"{self.__class__.__name__} 未实现 mark_inbox_read")
+
+    # ── Cron 任务存储 ──────────────────────────────────────────────────────────
+
+    def create_cron_task(self, session_id: str, task_data: dict) -> None:
+        """
+        创建或覆盖一个 cron 任务。
+
+        Args:
+            session_id: 所属 session ID
+            task_data:  CronTask.to_dict() 序列化后的字典
+        """
+        raise NotImplementedError(f"{self.__class__.__name__} 未实现 create_cron_task")
+
+    def load_cron_task(self, session_id: str, task_id: str) -> dict | None:
+        """
+        按 task_id 加载单个 cron 任务。
+
+        Returns:
+            任务字典，不存在则返回 None。
+        """
+        raise NotImplementedError(f"{self.__class__.__name__} 未实现 load_cron_task")
+
+    def update_cron_task(self, session_id: str, task_data: dict) -> None:
+        """
+        更新一个 cron 任务（持久化 next_run_at / trigger_count 等字段）。
+
+        Args:
+            session_id: 所属 session ID
+            task_data:  CronTask.to_dict() 序列化后的字典
+        """
+        raise NotImplementedError(f"{self.__class__.__name__} 未实现 update_cron_task")
+
+    def delete_cron_task(self, session_id: str, task_id: str) -> None:
+        """
+        删除一个 cron 任务。
+
+        Args:
+            session_id: 所属 session ID
+            task_id:    要删除的任务 ID
+        """
+        raise NotImplementedError(f"{self.__class__.__name__} 未实现 delete_cron_task")
+
+    def list_cron_tasks(self, session_id: str) -> list[dict]:
+        """
+        列出指定 session 的所有 cron 任务。
+
+        Returns:
+            CronTask.to_dict() 字典列表。
+        """
+        raise NotImplementedError(f"{self.__class__.__name__} 未实现 list_cron_tasks")
+
+    def get_cron_highwatermark(self, session_id: str) -> int:
+        """
+        获取 crontab 目录的自增计数器（下一个可用的纯数字 task_id）。
+        """
+        raise NotImplementedError(f"{self.__class__.__name__} 未实现 get_cron_highwatermark")
+
+    def set_cron_highwatermark(self, session_id: str, value: int) -> None:
+        """
+        设置 crontab 目录的自增计数器。
+        """
+        raise NotImplementedError(f"{self.__class__.__name__} 未实现 set_cron_highwatermark")
