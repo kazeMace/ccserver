@@ -386,17 +386,24 @@ class MonitorCollector:
                         "member_count": len(team.members),
                     })
 
-            # Cron 定时任务
+            # ScheduledTask 定时任务
             cron_scheduler = getattr(session, "cron_scheduler", None)
             if cron_scheduler is not None:
                 for task in cron_scheduler.list_all():
                     cron_tasks_data.append({
                         "task_id": task.task_id,
                         "session_id": session.id,
-                        "mode": task.mode,
-                        "cron_expr": task.cron_expr,
+                        "trigger_type": task.trigger_type,
+                        "schedule": (
+                            task.cron_expr
+                            if task.is_cron
+                            else (f"every {task.interval_seconds}s" if task.is_interval else "")
+                        ),
                         "next_run_at": task.next_run_at.isoformat() if task.next_run_at else None,
                         "trigger_count": task.trigger_count,
+                        "max_triggers": task.max_triggers,
+                        "end_time": task.end_time.isoformat() if task.end_time else None,
+                        "enabled": task.enabled,
                         "status": task.status,
                         "durable": task.durable,
                         "jitter_max": task.jitter_max,

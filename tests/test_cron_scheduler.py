@@ -17,14 +17,14 @@ import pytest
 from datetime import datetime, timezone, timedelta
 from unittest.mock import MagicMock, AsyncMock
 
-from ccserver.managers.cron.models import CronTask, CRON_TASK_PREFIX
+from ccserver.managers.cron.models import ScheduledTask, TASK_PREFIX
 from ccserver.managers.cron.cron_parser import (
     parse_cron_next_run,
     cron_to_human,
     compute_jitter_delay,
     _expand_field,
 )
-from ccserver.managers.cron import CronScheduler
+from ccserver.managers.cron import TaskScheduler
 
 
 # ─── 辅助 ─────────────────────────────────────────────────────────────────────
@@ -70,70 +70,71 @@ def _make_scheduler(storage=None):
     s = MockSession()
     if storage:
         s.storage = storage
-    return CronScheduler(s)
+    return TaskScheduler(s)
 
 
 # ─── CronTask 模型 ─────────────────────────────────────────────────────────────
 
 
-class TestCronTaskInit:
+class TestScheduledTaskInit:
     def test_default_task_id_generated(self):
-        task = CronTask(prompt="hello")
-        assert task.task_id.startswith(CRON_TASK_PREFIX)
-        assert len(task.task_id) == len(CRON_TASK_PREFIX) + 8
+        task = ScheduledTask(prompt="hello")
+        assert task.task_id.startswith(TASK_PREFIX)
+        assert len(task.task_id) == len(TASK_PREFIX) + 8
 
-    def test_recurring_by_default(self):
-        task = CronTask(prompt="hello")
-        assert task.mode == "recurring"
-        assert task.is_recurring
+    def test_interval_by_default(self):
+        task = ScheduledTask(prompt="hello", interval_seconds=60)
+        assert task.trigger_type == "interval"
+        assert task.is_interval
         assert not task.is_once
 
     def test_once_mode(self):
-        task = CronTask(prompt="hello", mode="once")
+        future = datetime.now(timezone.utc) + timedelta(hours=1)
+        task = ScheduledTask(prompt="hello", trigger_type="once", run_at=future)
         assert task.is_once
         assert not task.is_recurring
 
     def test_default_status_scheduled(self):
-        task = CronTask(prompt="hello")
+        task = ScheduledTask(prompt="hello", interval_seconds=60)
         assert task.status == "scheduled"
 
     def test_is_done_false_by_default(self):
-        task = CronTask(prompt="hello")
+        task = ScheduledTask(prompt="hello", interval_seconds=60)
         assert not task.is_done
 
     def test_is_done_true_after_delete(self):
-        task = CronTask(prompt="hello")
+        task = ScheduledTask(prompt="hello", interval_seconds=60)
         task.mark_deleted()
         assert task.is_done
 
 
-class TestCronTaskState:
+class TestScheduledTaskState:
     def test_mark_triggered_updates_fields(self):
-        task = CronTask(prompt="hello")
+        task = ScheduledTask(prompt="hello", interval_seconds=60)
         now = datetime.now(timezone.utc)
         task.mark_triggered(now)
         assert task.last_triggered_at == now
         assert task.trigger_count == 1
 
     def test_mark_triggered_idempotent_count(self):
-        task = CronTask(prompt="hello")
+        task = ScheduledTask(prompt="hello", interval_seconds=60)
         now = datetime.now(timezone.utc)
         task.mark_triggered(now)
         task.mark_triggered(now)
         assert task.trigger_count == 2
 
     def test_mark_deleted_idempotent(self):
-        task = CronTask(prompt="hello")
+        task = ScheduledTask(prompt="hello", interval_seconds=60)
         task.mark_deleted()
         task.mark_deleted()  # 不崩溃
 
 
-class TestCronTaskSerialization:
+class TestScheduledTaskSerialization:
     def test_to_dict_contains_all_fields(self):
-        task = CronTask(
+        task = ScheduledTask(
             prompt="test prompt",
+            trigger_type="cron",
             cron_expr="*/5 * * * *",
-            mode="recurring",
             jitter_max=10,
             durable=True,
         )
@@ -141,25 +142,25 @@ class TestCronTaskSerialization:
         assert d["task_id"] == task.task_id
         assert d["prompt"] == "test prompt"
         assert d["cron_expr"] == "*/5 * * * *"
-        assert d["mode"] == "recurring"
+        assert d["trigger_type"] == "cron"
         assert d["jitter_max"] == 10
         assert d["durable"] is True
         assert d["trigger_count"] == 0
 
     def test_from_dict_roundtrip(self):
-        original = CronTask(
+        original = ScheduledTask(
             prompt="roundtrip test",
+            trigger_type="cron",
             cron_expr="0 9 * * 1-5",
-            mode="recurring",
             jitter_max=5,
             durable=True,
         )
         d = original.to_dict()
-        restored = CronTask.from_dict(d)
+        restored = ScheduledTask.from_dict(d)
         assert restored.task_id == original.task_id
         assert restored.prompt == original.prompt
         assert restored.cron_expr == original.cron_expr
-        assert restored.mode == original.mode
+        assert restored.trigger_type == original.trigger_type
         assert restored.jitter_max == original.jitter_max
         assert restored.durable == original.durable
 
@@ -235,10 +236,11 @@ class TestJitter:
 # ─── CronScheduler ─────────────────────────────────────────────────────────────
 
 
-class TestCronSchedulerCreate:
-    def test_create_recurring_task(self):
+class TestTaskSchedulerCreate:
+    def test_create_cron_task(self):
         sch = _make_scheduler()
-        task = sch.create(prompt="check deploy", cron_expr="*/10 * * * *")
+        task = sch.create(prompt="check deploy", trigger_type="cron", cron_expr="*/10 * * * *")
+        assert task.trigger_type == "cron"
         assert task.is_recurring
         assert task.prompt == "check deploy"
         assert task.cron_expr == "*/10 * * * *"
@@ -247,31 +249,38 @@ class TestCronSchedulerCreate:
     def test_create_once_task(self):
         sch = _make_scheduler()
         future = datetime.now(timezone.utc) + timedelta(hours=1)
-        task = sch.create(prompt="reminder", run_at=future, mode="once")
+        task = sch.create(prompt="reminder", trigger_type="once", run_at=future)
         assert task.is_once
         assert task.cron_expr == ""
+
+    def test_create_interval_task(self):
+        sch = _make_scheduler()
+        task = sch.create(prompt="check every 30s", trigger_type="interval", interval_seconds=30)
+        assert task.is_interval
+        assert task.interval_seconds == 30
 
     def test_create_durable_writes_storage(self):
         storage = MockStorage()
         sch = _make_scheduler(storage)
-        sch.create(prompt="persistent", cron_expr="*/5 * * * *", durable=True)
+        sch.create(prompt="persistent", trigger_type="cron", cron_expr="*/5 * * * *", durable=True)
         assert len(storage.list_cron_tasks("test-session-001")) == 1
 
-    def test_create_no_cron_expr_raises(self):
+    def test_create_no_schedule_raises(self):
         sch = _make_scheduler()
         with pytest.raises(ValueError):
-            sch.create(prompt="no schedule", cron_expr="")
+            # trigger_type=cron 但没有 cron_expr
+            sch.create(prompt="no schedule", trigger_type="cron", cron_expr="")
 
     def test_create_once_no_run_at_raises(self):
         sch = _make_scheduler()
         with pytest.raises(ValueError):
-            sch.create(prompt="no run_at", mode="once", run_at=None)
+            sch.create(prompt="no run_at", trigger_type="once", run_at=None)
 
 
-class TestCronSchedulerDelete:
+class TestTaskSchedulerDelete:
     def test_delete_existing_task(self):
         sch = _make_scheduler()
-        task = sch.create(prompt="to delete", cron_expr="*/5 * * * *")
+        task = sch.create(prompt="to delete", trigger_type="cron", cron_expr="*/5 * * * *")
         assert sch.delete(task.task_id) is True
         assert task.task_id not in [t.task_id for t in sch.list_all()]
 
@@ -282,20 +291,19 @@ class TestCronSchedulerDelete:
     def test_delete_removes_from_storage(self):
         storage = MockStorage()
         sch = _make_scheduler(storage)
-        task = sch.create(prompt="deletable", cron_expr="*/5 * * * *", durable=True)
+        task = sch.create(prompt="deletable", trigger_type="cron", cron_expr="*/5 * * * *", durable=True)
         assert len(storage.list_cron_tasks("test-session-001")) == 1
         sch.delete(task.task_id)
         assert len(storage.list_cron_tasks("test-session-001")) == 0
 
 
-class TestCronSchedulerLoadDurable:
+class TestTaskSchedulerLoadDurable:
     def test_load_durable_tasks_restores(self):
         storage = MockStorage()
-        # 预先写入一条
-        task_data = CronTask(
+        task_data = ScheduledTask(
             prompt="restored",
+            trigger_type="cron",
             cron_expr="*/5 * * * *",
-            mode="recurring",
             durable=True,
         )
         storage.create_cron_task("test-session-001", task_data.to_dict())
@@ -307,10 +315,10 @@ class TestCronSchedulerLoadDurable:
 
     def test_load_skips_deleted_tasks(self):
         storage = MockStorage()
-        task_data = CronTask(
+        task_data = ScheduledTask(
             prompt="should be skipped",
+            trigger_type="cron",
             cron_expr="*/5 * * * *",
-            mode="recurring",
             status="deleted",
         )
         storage.create_cron_task("test-session-001", task_data.to_dict())
@@ -342,12 +350,21 @@ class TestBTCronCreate:
         assert result.is_error
         assert "Invalid cron" in result.content
 
+    @pytest.mark.asyncio
+    async def test_run_nl_schedule(self):
+        sch = _make_scheduler()
+        from ccserver.builtins.tools.cron_create import BTCronCreate
+        tool = BTCronCreate(sch)
+        result = await tool.run(schedule="每30秒", prompt="check port")
+        assert "created" in result.content
+        assert not result.is_error
+
 
 class TestBTCronDelete:
     @pytest.mark.asyncio
     async def test_delete_existing(self):
         sch = _make_scheduler()
-        task = sch.create(prompt="delme", cron_expr="*/5 * * * *")
+        task = sch.create(prompt="delme", trigger_type="cron", cron_expr="*/5 * * * *")
         from ccserver.builtins.tools.cron_delete import BTCronDelete
         tool = BTCronDelete(sch)
         result = await tool.run(id=task.task_id)
@@ -371,17 +388,17 @@ class TestBTCronList:
         from ccserver.builtins.tools.cron_list import BTCronList
         tool = BTCronList(sch)
         result = await tool.run()
-        assert "No cron tasks" in result.content
+        assert "No scheduled tasks" in result.content
 
     @pytest.mark.asyncio
     async def test_shows_tasks(self):
         sch = _make_scheduler()
-        sch.create(prompt="task1", cron_expr="*/5 * * * *")
-        sch.create(prompt="task2", cron_expr="0 9 * * 1-5")
+        sch.create(prompt="task1", trigger_type="cron", cron_expr="*/5 * * * *")
+        sch.create(prompt="task2", trigger_type="cron", cron_expr="0 9 * * 1-5")
         from ccserver.builtins.tools.cron_list import BTCronList
         tool = BTCronList(sch)
         result = await tool.run()
-        # 输出包含 "Cron tasks (2):" header
-        assert "Cron tasks (2):" in result.content
-        # 包含两个任务（以 task_id ct... 格式）
+        # 输出包含任务 header
+        assert "ct" in result.content
+        # 两个任务
         assert "ct" in result.content

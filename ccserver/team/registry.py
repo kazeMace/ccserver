@@ -35,7 +35,7 @@ class TeamRegistry:
     def _load_from_storage(self) -> None:
         """从 StorageAdapter 加载所有团队数据到内存。"""
         assert self._adapter is not None
-        teams_data = self._maybe_await(self._adapter.list_teams())
+        teams_data = _maybe_await(self._adapter.list_teams())
         loaded = 0
         failed = 0
         for data in teams_data:
@@ -61,13 +61,13 @@ class TeamRegistry:
         """将团队数据持久化到 StorageAdapter。"""
         if self._adapter is None:
             return
-        self._maybe_await(self._adapter.save_team(team.to_dict()))
+        _maybe_await(self._adapter.save_team(team.to_dict()))
 
     def _delete_team_from_storage(self, team_name: str) -> None:
         """从 StorageAdapter 删除团队数据。"""
         if self._adapter is None:
             return
-        self._maybe_await(self._adapter.delete_team(team_name))
+        _maybe_await(self._adapter.delete_team(team_name))
 
     # ── 公共接口 ───────────────────────────────────────────────────────────────
 

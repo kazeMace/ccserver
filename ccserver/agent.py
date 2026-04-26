@@ -1188,20 +1188,21 @@ class Agent:
                         msg.get("request_id"),
                     )
 
-                case MsgType.CRON_TRIGGER:
-                    # 定时任务触发：注入 user 消息执行 cron prompt
+                case MsgType.CRON_TRIGGER | MsgType.SCHEDULED_TASK_TRIGGER:
+                    # 定时任务触发（兼容旧 cron_trigger 和新的 scheduled_task_trigger）
                     cron_prompt = msg.get("prompt", "")
                     new_messages.append({
                         "role": "user",
                         "content": cron_prompt,
-                        "_ccserver_cron_task": True,
+                        "_ccserver_scheduled_task": True,
                         "task_id": msg.get("task_id"),
-                        "cron_expr": msg.get("cron_expr", ""),
+                        "trigger_type": msg.get("trigger_type", "cron"),
                     })
                     logger.debug(
-                        "Inbox cron_trigger consumed | agent={} task_id={}",
+                        "Inbox scheduled_task_trigger consumed | agent={} task_id={} type={}",
                         self.aid_label,
                         msg.get("task_id"),
+                        msg.get("trigger_type", "cron"),
                     )
 
                 case _:

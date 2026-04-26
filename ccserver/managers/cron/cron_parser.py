@@ -309,6 +309,394 @@ def cron_to_human(cron_expr: str) -> str:
     return cron_expr
 
 
+# ─── 自然语言解析 ───────────────────────────────────────────────────────────────
+
+from dataclasses import dataclass
+from typing import Literal
+
+
+@dataclass
+class ScheduleSpec:
+    """
+    自然语言解析后的调度规范。
+
+    Attributes:
+        trigger_type: 触发类型（interval / countdown / once / cron）
+        cron_expr:    cron 表达式，trigger_type=cron 时有效
+        interval_seconds: 间隔/倒计时秒数，trigger_type=interval/countdown 时有效
+        run_at:       绝对触发时间，trigger_type=once 时有效
+        max_triggers: 最大触发次数（用户指定时）
+        end_time:     截止时间（用户指定时）
+    """
+    trigger_type: Literal["interval", "countdown", "once", "cron"] = "interval"
+    cron_expr: str = ""
+    interval_seconds: int = 0
+    run_at: datetime | None = None
+    max_triggers: int | None = None
+    end_time: datetime | None = None
+
+
+def _parse_zh_number(text: str) -> int | None:
+    """
+    尝试解析中文数字或阿拉伯数字。
+
+    Examples:
+        "10" → 10
+        "三十" → 30
+        "五" → 5
+    """
+    text = text.strip()
+    if text.isdigit():
+        return int(text)
+
+    # 中文数字映射
+    zh_map = {
+        "一": 1, "二": 2, "三": 3, "四": 4, "五": 5,
+        "六": 6, "七": 7, "八": 8, "九": 9, "十": 10,
+        "两": 2, "半": 30,  # 半小时=30分钟
+    }
+
+    # 简单中文数字处理（仅支持个位数和十位数）
+    result = 0
+    for ch in text:
+        if ch in zh_map:
+            v = zh_map[ch]
+            if v == 10 and result > 0:
+                result *= 10
+            else:
+                result += v
+        elif ch not in ("个", "第", " "):
+            return None
+
+    return result if result > 0 else None
+
+
+def _resolve_relative_time(
+    num: int,
+    unit: str,
+    base: datetime,
+) -> datetime:
+    """
+    根据数量和单位计算相对于 base 的未来时间。
+
+    Args:
+        num: 数量
+        unit: 单位（秒/分/小时/天/周/月/年）
+        base: 基准时间
+
+    Returns:
+        目标时间（UTC）
+    """
+    unit = unit.strip().lower()
+    if unit in ("秒", "s", "sec", "secs", "second", "seconds"):
+        return base + timedelta(seconds=num)
+    if unit in ("分", "分钟", "m", "min", "mins", "minute", "minutes"):
+        return base + timedelta(minutes=num)
+    if unit in ("小时", "时", "h", "hr", "hrs", "hour", "hours"):
+        return base + timedelta(hours=num)
+    if unit in ("天", "日", "d", "day", "days"):
+        return base + timedelta(days=num)
+    if unit in ("周", "星期", "礼拜", "w", "week", "weeks"):
+        return base + timedelta(weeks=num)
+    if unit in ("月", "month", "months"):
+        # 简单处理：每月按 30 天
+        return base + timedelta(days=num * 30)
+    if unit in ("年", "y", "year", "years"):
+        return base + timedelta(days=num * 365)
+    return base + timedelta(seconds=num)
+
+
+def _resolve_absolute_time(text: str, base: datetime) -> datetime | None:
+    """
+    解析绝对时间点（如"明天早上9点"、"今天下午3点"）。
+
+    注意：不处理"每天"/"每周"/"每月"等重复调度词（由调用方在调用前排除）。
+
+    Args:
+        text: 时间描述文本
+        base: 基准时间
+
+    Returns:
+        解析成功返回 UTC datetime，失败返回 None。
+    """
+    text = text.strip().lower()
+
+    # 排除重复调度词（否则"每天早上10点"会被误识别为 once）
+    recurring_patterns = (
+        "每天", "每周", "每月", "每年",
+        "every day", "every week", "every month", "every year",
+        "daily", "weekly", "monthly",
+    )
+    if any(p in text for p in recurring_patterns):
+        return None
+
+    result = base.replace(minute=0, second=0, microsecond=0)
+
+    # 日期偏移
+    day_offset = 0
+    if "明天" in text or "明日" in text:
+        day_offset = 1
+    elif "后天" in text:
+        day_offset = 2
+    elif "今天" in text or "今日" in text:
+        day_offset = 0
+    elif "大后天" in text:
+        day_offset = 3
+    else:
+        # 既没有明确日期词（如"明天"），也没有重复调度词（如"每天"），
+        # 但有具体时间词（如"早上9点"）——此时应交给 cron 处理，不作为 once
+        # 只有当包含"早上"/"下午"等时间段词（但没有具体小时数字）时，
+        # 才能构成明确的 once
+        has_time_indicator = any(k in text for k in ("早上", "中午", "下午", "晚上", "凌晨", "午夜", "上午", "下午", "傍晚"))
+        has_hour_number = re.search(r'\d{1,2}\s*[:点]', text)
+        if has_time_indicator and not has_hour_number:
+            # 有时间段但无具体小时：可用
+            pass
+        elif has_hour_number:
+            # 有具体小时但没有日期词（不是"明天"/"今天"/"后天"）：交给 cron
+            return None
+
+    result = result + timedelta(days=day_offset)
+
+    # 时段词
+    if "早上" in text or "早晨" in text or "上午" in text or "am" in text:
+        result = result.replace(hour=9)
+    elif "中午" in text or "午间" in text:
+        result = result.replace(hour=12)
+    elif "下午" in text or "傍晚" in text:
+        result = result.replace(hour=15)
+    elif "晚上" in text or "夜晚" in text or "pm" in text:
+        result = result.replace(hour=20)
+    elif "凌晨" in text:
+        result = result.replace(hour=4)
+    elif "午夜" in text or "半夜" in text or "零点" in text:
+        result = result.replace(hour=0)
+
+    # 提取具体小时数字
+    import re
+    # 匹配 "X点" 或 "X点Y分" 或 "X:Y"
+    hour_match = re.search(r'(\d{1,2})\s*[:点]\s*(\d{1,2})?\s*(分)?', text)
+    if hour_match:
+        hour = int(hour_match.group(1))
+        minute = int(hour_match.group(2)) if hour_match.group(2) else 0
+        if 0 <= hour <= 23 and 0 <= minute <= 59:
+            result = result.replace(hour=hour, minute=minute)
+
+    # 如果没有匹配到任何时间信息，返回 None
+    if day_offset == 0 and not hour_match and not any(k in text for k in ("早上", "中午", "下午", "晚上", "凌晨", "午夜")):
+        return None
+
+    return result
+
+
+def _resolve_duration(text: str, base: datetime) -> tuple[int | None, datetime | None]:
+    """
+    解析持续时间或截止条件（如"持续1小时"、"执行3次"）。
+
+    Returns:
+        (max_triggers, end_time) 元组，未解析到返回 (None, None)。
+    """
+    import re
+
+    # 匹配 "持续N单位"
+    duration_match = re.search(r'持续\s*(\d+)\s*(秒|分钟|分|小时|时|天|日|周|星期|月|年)', text)
+    if duration_match:
+        num = int(duration_match.group(1))
+        unit = duration_match.group(2)
+        end_time = _resolve_relative_time(num, unit, base)
+        return None, end_time
+
+    # 匹配 "执行N次" / "N次" / "触发N次"
+    count_match = re.search(r'(?:执行|触发)?\s*(\d+)\s*次', text)
+    if count_match:
+        return int(count_match.group(1)), None
+
+    # 匹配 "永久" / "一直" / "无限"
+    if any(k in text for k in ("永久", "一直", "无限", "永远")):
+        return None, None
+
+    return None, None
+
+
+def parse_natural_language_schedule(text: str, base: datetime | None = None) -> ScheduleSpec | None:
+    """
+    将自然语言描述解析为 ScheduleSpec。
+
+    支持格式：
+      - 每10秒/每10s/每十秒 → interval, interval_seconds=10
+      - every 10 seconds → interval, interval_seconds=10
+      - 每5分钟 → interval, interval_seconds=300
+      - 30秒后/30s后 → countdown, interval_seconds=30
+      - 5分钟后 → countdown, interval_seconds=300
+      - 明天早上9点/明天9点 → once, run_at=明天9:00
+      - 今天下午3点 → once, run_at=今天15:00
+      - 每天早上10点 → cron, cron_expr="0 10 * * *"
+      - 持续1小时 / 执行3次 → 附加 end_time / max_triggers（与主模式组合）
+
+    Args:
+        text: 用户自然语言输入。
+        base: 基准时间，默认 UTC now。
+
+    Returns:
+        ScheduleSpec 或 None（无法解析时）。
+    """
+    import re
+
+    if base is None:
+        base = datetime.now(timezone.utc)
+
+    original_text = text.strip()
+    text_lower = original_text.lower()
+    if not text_lower:
+        return None
+
+    # ── 0. 先提取全局修饰符（可出现在字符串任意位置） ──
+    # "持续N单位" → end_time
+    duration_match = re.search(r'持续\s*(\d+)\s*(秒|分钟|分|小时|时|天|日|周|月|年|个)', text_lower)
+    modifier_end_time = None
+    if duration_match:
+        num = int(duration_match.group(1))
+        unit = duration_match.group(2)
+        modifier_end_time = _resolve_relative_time(num, unit, base)
+
+    # "执行/触发/最多N次" → max_triggers
+    count_match = re.search(r'(?:执行|触发|最多)?\s*(\d+)\s*次', text_lower)
+    modifier_max_triggers = None
+    if count_match:
+        modifier_max_triggers = int(count_match.group(1))
+
+    # ── 1. 解析 "每N单位"（interval，中文+英文） ──
+    # 中文：每10秒  英文：every 10 seconds / every 10s
+    interval_match = re.match(
+        r'(?:每|every)\s*(\d+)\s*(秒|秒钟|秒s|s|分钟|分|m|小时|时|h|天|日|d|周|星期|w)',
+        text_lower,
+        re.IGNORECASE,
+    )
+    if interval_match:
+        num = int(interval_match.group(1))
+        unit = interval_match.group(2)
+        seconds = _resolve_relative_time(num, unit, base) - base
+        interval_seconds = int(seconds.total_seconds())
+        return ScheduleSpec(
+            trigger_type="interval",
+            interval_seconds=interval_seconds,
+            max_triggers=modifier_max_triggers,
+            end_time=modifier_end_time,
+        )
+
+    # ── 2. 解析 "N单位后"（countdown） ──
+    countdown_match = re.match(
+        r'(\d+)\s*(秒|s|分钟|分|m|小时|时|h|天|日|d|周|星期|w)\s*后',
+        text_lower,
+        re.IGNORECASE,
+    )
+    if countdown_match:
+        num = int(countdown_match.group(1))
+        unit = countdown_match.group(2)
+        seconds = _resolve_relative_time(num, unit, base) - base
+        interval_seconds = int(seconds.total_seconds())
+        return ScheduleSpec(
+            trigger_type="countdown",
+            interval_seconds=interval_seconds,
+            max_triggers=modifier_max_triggers,
+            end_time=modifier_end_time,
+        )
+
+    # ── 3. 解析 "X分钟后"（中文） ──
+    zh_countdown_match = re.match(r'(\d+)\s*分钟?\s*后', text_lower)
+    if zh_countdown_match:
+        num = int(zh_countdown_match.group(1))
+        interval_seconds = num * 60
+        return ScheduleSpec(
+            trigger_type="countdown",
+            interval_seconds=interval_seconds,
+            max_triggers=modifier_max_triggers,
+            end_time=modifier_end_time,
+        )
+
+    # ── 4. 解析 "每天/每周/每月 X点"（cron，优先于 once） ──
+    # 每天X点（如"每天早上10点"、"每天10点"、"每天10:30"）
+    daily_match = re.search(
+        r'每天\s*(?:(?:早上|上午|中午|下午|晚上|凌晨)?\s*)?(\d{1,2})\s*[:点]\s*(\d{1,2})?\s*(分)?',
+        text_lower,
+    )
+    if daily_match:
+        hour = int(daily_match.group(1))
+        minute = int(daily_match.group(2)) if daily_match.group(2) else 0
+        cron_expr = f"{minute} {hour} * * *"
+        return ScheduleSpec(
+            trigger_type="cron",
+            cron_expr=cron_expr,
+            max_triggers=modifier_max_triggers,
+            end_time=modifier_end_time,
+        )
+
+    # ── 5. 解析 "明天/今天/后天 X点"（once，必须有明确日期词） ──
+    # 注意：不要在有"每天/每周/每月"等重复词的情况下调用，
+    # 否则"每天早上10点"会被错误识别为 once
+    once_time = _resolve_absolute_time(original_text, base)
+    if once_time is not None:
+        return ScheduleSpec(
+            trigger_type="once",
+            run_at=once_time,
+            max_triggers=modifier_max_triggers,
+            end_time=modifier_end_time,
+        )
+
+    # ── 6. 兜底：纯数字秒数（如 "30" 或 "30s"） → 每 N 秒 interval ──
+    simple_seconds = re.match(r'(\d+)\s*(秒|s)$', text_lower)
+    if simple_seconds:
+        interval_seconds = int(simple_seconds.group(1))
+        return ScheduleSpec(
+            trigger_type="interval",
+            interval_seconds=interval_seconds,
+            max_triggers=modifier_max_triggers,
+            end_time=modifier_end_time,
+        )
+
+    # ── 7. 每周X / 每月X号（cron 模式）──
+    # 每周X（如"每周一9点"）
+    weekday_map = {
+        "周一": 1, "星期一": 1,
+        "周二": 2, "星期二": 2,
+        "周三": 3, "星期三": 3,
+        "周四": 4, "星期四": 4,
+        "周五": 5, "星期五": 5,
+        "周六": 6, "星期六": 6,
+        "周日": 0, "星期日": 0, "周天": 0,
+    }
+    for zh_day, dow in weekday_map.items():
+        if zh_day in text_lower:
+            hour_match = re.search(r'(\d{1,2})\s*[:点]\s*(\d{1,2})?\s*(分)?', text_lower)
+            hour = int(hour_match.group(1)) if hour_match else 9
+            minute = int(hour_match.group(2)) if hour_match and hour_match.group(2) else 0
+            cron_expr = f"{minute} {hour} * * {dow}"
+            return ScheduleSpec(
+                trigger_type="cron",
+                cron_expr=cron_expr,
+                max_triggers=modifier_max_triggers,
+                end_time=modifier_end_time,
+            )
+
+    # 每月X号（如"每月1号9点"）
+    monthly_match = re.search(r'每月\s*(\d{1,2})\s*号?\s*(\d{1,2})?\s*[:点]?\s*(\d{1,2})?\s*(分)?', text_lower)
+    if monthly_match:
+        dom = int(monthly_match.group(1))
+        hour = int(monthly_match.group(2)) if monthly_match.group(2) else 9
+        minute = int(monthly_match.group(3)) if monthly_match.group(3) else 0
+        if 1 <= dom <= 31:
+            cron_expr = f"{minute} {hour} {dom} * *"
+            return ScheduleSpec(
+                trigger_type="cron",
+                cron_expr=cron_expr,
+                max_triggers=modifier_max_triggers,
+                end_time=modifier_end_time,
+            )
+
+    # 无法解析
+    return None
+
+
 # ─── Jitter ───────────────────────────────────────────────────────────────────
 
 def compute_jitter_delay(jitter_max: int, seed: str) -> int:

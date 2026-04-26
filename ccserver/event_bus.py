@@ -440,9 +440,12 @@ class BackpressureMonitor:
     告警级别
     ─────────
     - normal    : 一切正常
-    - warning   : 队列 >= 70% 或堆积速率 >= 50 evt/s
+    - warning   : 队列 >= 70%（真正开始堆积时才告警）
     - critical  : 队列 >= 90% 或溢出缓冲区激活
     - emergency : 队列满且溢出缓冲区也满（开始丢弃事件）
+
+    注意：堆积速率（evt/s）作为指标记录和输出，但不单独触发告警，
+    避免 LLM 流式输出时的高频 token 事件产生无意义警告。
 
     去抖：同一级别每 30 秒最多触发一次，避免日志风暴。
     """
@@ -513,7 +516,7 @@ class BackpressureMonitor:
             alert_level = "emergency"
         elif fill_ratio >= self.CRITICAL_RATIO or overflow_active:
             alert_level = "critical"
-        elif fill_ratio >= self.WARNING_RATIO or events_per_sec >= self.ACCUMULATION_THRESHOLD:
+        elif fill_ratio >= self.WARNING_RATIO:
             alert_level = "warning"
         else:
             alert_level = "normal"

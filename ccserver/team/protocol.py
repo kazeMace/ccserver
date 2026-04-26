@@ -20,7 +20,8 @@ class MsgType(StrEnum):
     SHUTDOWN_REQUEST   = "shutdown_request"
     PERMISSION_REQUEST = "permission_request"
     PERMISSION_RESPONSE = "permission_response"
-    CRON_TRIGGER       = "cron_trigger"
+    CRON_TRIGGER           = "cron_trigger"
+    SCHEDULED_TASK_TRIGGER = "scheduled_task_trigger"
 
 
 @dataclass

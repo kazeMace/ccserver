@@ -121,12 +121,12 @@ class TaskManager:
         """启动时从 StorageAdapter 加载所有任务与计数器。"""
         assert self._adapter is not None
 
-        tasks_data = self._maybe_await(self._adapter.list_tasks(self.session_id))
+        tasks_data = _maybe_await(self._adapter.list_tasks(self.session_id))
         for data in tasks_data:
             task = Task.from_dict(data)
             self._tasks[task.id] = task
 
-        self._counter = self._maybe_await(
+        self._counter = _maybe_await(
             self._adapter.get_task_counter(self.session_id)
         )
         logger.debug(
@@ -138,13 +138,13 @@ class TaskManager:
         """将单个任务持久化到 adapter。"""
         if self._adapter is None:
             return
-        self._maybe_await(self._adapter.update_task(self.session_id, task.to_dict()))
+        _maybe_await(self._adapter.update_task(self.session_id, task.to_dict()))
 
     def _persist_counter(self) -> None:
         """持久化自增计数器。"""
         if self._adapter is None:
             return
-        self._maybe_await(
+        _maybe_await(
             self._adapter.set_task_counter(self.session_id, self._counter)
         )
 
@@ -307,7 +307,7 @@ class TaskManager:
             if dep is None:
                 # 若内存中没有，尝试从存储加载（使用 adapter 时）
                 if self._adapter is not None:
-                    dep_data = self._maybe_await(
+                    dep_data = _maybe_await(
                         self._adapter.load_task(self.session_id, str(dep_id))
                     )
                     if dep_data is None:
@@ -332,7 +332,7 @@ class TaskManager:
         # 从存储加载所有相关任务到内存（确保 _tasks 中有完整数据）
         for dep_id in new_blocked_by:
             if str(dep_id) not in self._tasks and self._adapter is not None:
-                dep_data = self._maybe_await(
+                dep_data = _maybe_await(
                     self._adapter.load_task(self.session_id, str(dep_id))
                 )
                 if dep_data is not None:

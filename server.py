@@ -33,6 +33,7 @@ else:
 import asyncio
 import json
 import uuid
+from datetime import datetime, timezone
 from typing import AsyncIterator, Optional
 
 from fastapi import FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
@@ -335,6 +336,27 @@ class MarkReadRequest(BaseModel):
     msg_ids: list[str]
 
 
+class CreateScheduledTaskRequest(BaseModel):
+    prompt: str
+    schedule: str = ""                      # 自然语言描述（优先）
+    trigger_type: str = ""                  # cron / interval / countdown / once
+    cron: str = ""                          # 5 字段 cron 表达式
+    interval_seconds: int = 0
+    run_at: str = ""                        # ISO datetime
+    durable: bool = False
+    max_triggers: int = 0                   # 0 = unlimited
+    end_time: str = ""                      # ISO datetime
+
+
+class UpdateScheduledTaskRequest(BaseModel):
+    prompt: str = ""
+    enabled: bool = True
+    max_triggers: int = -1                  # -1 = no change
+    end_time: str = ""
+    cron: str = ""
+    interval_seconds: int = 0
+
+
 # ─── Session routes ───────────────────────────────────────────────────────────
 
 
@@ -459,6 +481,256 @@ def get_shell_task(session_id: str, task_id: str) -> dict:
             detail=f"Task '{task_id}' not found in session '{session_id}'.",
         )
     return task.to_dict()
+
+
+# ─── Scheduled Task REST API ──────────────────────────────────────────────────
+
+
+def _get_cron_scheduler(session_id: str):
+    """辅助函数：获取 session 的 cron_scheduler，若不存在返回 404。"""
+    session = _get_or_404(session_id)
+    scheduler = getattr(session, "cron_scheduler", None)
+    if scheduler is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Scheduled task scheduler not available for this session.",
+        )
+    return scheduler
+
+
+@app.post(
+    "/sessions/{session_id}/scheduled-tasks",
+    summary="Create a scheduled task",
+)
+def create_scheduled_task(session_id: str, req: CreateScheduledTaskRequest) -> dict:
+    """
+    创建定时任务。支持自然语言或显式参数。
+
+    自然语言示例：
+        { "prompt": "check port 8000", "schedule": "every 30 seconds" }
+    显式参数示例：
+        { "prompt": "check port 8000", "trigger_type": "interval", "interval_seconds": 30 }
+    """
+    scheduler = _get_cron_scheduler(session_id)
+
+    # 优先使用自然语言解析
+    from ccserver.managers.cron import parse_natural_language_schedule, ScheduleSpec
+
+    spec: ScheduleSpec | None = None
+    if req.schedule:
+        spec = parse_natural_language_schedule(req.schedule)
+        if spec is None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Could not parse schedule: {req.schedule!r}",
+            )
+
+    trigger_type = spec.trigger_type if spec else req.trigger_type
+    cron_expr = spec.cron_expr if spec else req.cron
+    interval_seconds = spec.interval_seconds if spec else req.interval_seconds
+    run_at = spec.run_at if spec else None
+    max_triggers = spec.max_triggers if (spec and spec.max_triggers is not None) else (
+        req.max_triggers if req.max_triggers > 0 else None
+    )
+    end_time = spec.end_time if (spec and spec.end_time is not None) else None
+
+    # 解析 run_at 字符串
+    if req.run_at and not run_at:
+        try:
+            run_at = datetime.fromisoformat(req.run_at.replace("Z", "+00:00"))
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid run_at: {req.run_at!r}")
+
+    # 解析 end_time 字符串
+    if req.end_time and not end_time:
+        try:
+            end_time = datetime.fromisoformat(req.end_time.replace("Z", "+00:00"))
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid end_time: {req.end_time!r}")
+
+    # 如果没有 trigger_type，根据参数推断
+    if not trigger_type:
+        if req.cron:
+            trigger_type = "cron"
+        elif req.interval_seconds > 0:
+            trigger_type = "interval"
+        elif req.run_at:
+            trigger_type = "once"
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="Either 'schedule' or 'trigger_type' + schedule fields must be provided.",
+            )
+
+    try:
+        task = scheduler.create(
+            prompt=req.prompt,
+            trigger_type=trigger_type,  # type: ignore[arg-type]
+            cron_expr=cron_expr,
+            interval_seconds=interval_seconds,
+            run_at=run_at,
+            durable=req.durable,
+            max_triggers=max_triggers,
+            end_time=end_time,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return {
+        "task_id": task.task_id,
+        "trigger_type": task.trigger_type,
+        "next_run_at": task.next_run_at.isoformat() if task.next_run_at else None,
+        "enabled": task.enabled,
+        "status": task.status,
+    }
+
+
+@app.get(
+    "/sessions/{session_id}/scheduled-tasks",
+    summary="List all scheduled tasks for a session",
+)
+def list_scheduled_tasks(session_id: str) -> dict:
+    """返回当前 Session 中所有定时任务列表。"""
+    scheduler = _get_cron_scheduler(session_id)
+    tasks = scheduler.list_all()
+    return {
+        "tasks": [
+            {
+                "task_id": t.task_id,
+                "trigger_type": t.trigger_type,
+                "prompt": t.prompt[:100] + "..." if len(t.prompt) > 100 else t.prompt,
+                "next_run_at": t.next_run_at.isoformat() if t.next_run_at else None,
+                "enabled": t.enabled,
+                "status": t.status,
+                "trigger_count": t.trigger_count,
+                "max_triggers": t.max_triggers,
+                "end_time": t.end_time.isoformat() if t.end_time else None,
+                "durable": t.durable,
+            }
+            for t in tasks
+        ],
+        "count": len(tasks),
+    }
+
+
+@app.get(
+    "/sessions/{session_id}/scheduled-tasks/{task_id}",
+    summary="Get a scheduled task by ID",
+)
+def get_scheduled_task(session_id: str, task_id: str) -> dict:
+    """根据 task_id 获取单个定时任务详情。"""
+    scheduler = _get_cron_scheduler(session_id)
+    task = scheduler.get(task_id)
+    if task is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Task '{task_id}' not found in session '{session_id}'.",
+        )
+    return {
+        "task_id": task.task_id,
+        "trigger_type": task.trigger_type,
+        "prompt": task.prompt,
+        "cron_expr": task.cron_expr,
+        "interval_seconds": task.interval_seconds,
+        "run_at": task.run_at.isoformat() if task.run_at else None,
+        "next_run_at": task.next_run_at.isoformat() if task.next_run_at else None,
+        "enabled": task.enabled,
+        "status": task.status,
+        "trigger_count": task.trigger_count,
+        "max_triggers": task.max_triggers,
+        "end_time": task.end_time.isoformat() if task.end_time else None,
+        "durable": task.durable,
+        "jitter_max": task.jitter_max,
+        "created_at": task.created_at.isoformat(),
+        "last_triggered_at": task.last_triggered_at.isoformat() if task.last_triggered_at else None,
+    }
+
+
+@app.put(
+    "/sessions/{session_id}/scheduled-tasks/{task_id}",
+    summary="Update a scheduled task",
+)
+def update_scheduled_task(
+    session_id: str, task_id: str, req: UpdateScheduledTaskRequest
+) -> dict:
+    """更新现有定时任务的配置。只修改提供的字段。"""
+    scheduler = _get_cron_scheduler(session_id)
+
+    if scheduler.get(task_id) is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Task '{task_id}' not found in session '{session_id}'.",
+        )
+
+    kwargs: dict = {}
+    if req.prompt:
+        kwargs["prompt"] = req.prompt
+    if req.enabled is not None:
+        kwargs["enabled"] = req.enabled
+    if req.max_triggers >= 0:
+        kwargs["max_triggers"] = req.max_triggers if req.max_triggers > 0 else None
+    if req.end_time:
+        try:
+            kwargs["end_time"] = datetime.fromisoformat(
+                req.end_time.replace("Z", "+00:00")
+            )
+        except ValueError:
+            raise HTTPException(
+                status_code=400, detail=f"Invalid end_time: {req.end_time!r}"
+            )
+    if req.cron:
+        kwargs["cron_expr"] = req.cron
+    if req.interval_seconds > 0:
+        kwargs["interval_seconds"] = req.interval_seconds
+
+    try:
+        task = scheduler.update(task_id, **kwargs)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return {
+        "task_id": task.task_id,
+        "trigger_type": task.trigger_type,
+        "next_run_at": task.next_run_at.isoformat() if task.next_run_at else None,
+        "enabled": task.enabled,
+        "status": task.status,
+    }
+
+
+@app.delete(
+    "/sessions/{session_id}/scheduled-tasks/{task_id}",
+    summary="Delete a scheduled task",
+)
+def delete_scheduled_task(session_id: str, task_id: str) -> dict:
+    """删除指定定时任务。"""
+    scheduler = _get_cron_scheduler(session_id)
+    deleted = scheduler.delete(task_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Task '{task_id}' not found in session '{session_id}'.",
+        )
+    return {"status": "ok", "message": f"Task '{task_id}' deleted."}
+
+
+@app.post(
+    "/sessions/{session_id}/scheduled-tasks/{task_id}/toggle",
+    summary="Toggle a scheduled task enabled/disabled",
+)
+def toggle_scheduled_task(session_id: str, task_id: str) -> dict:
+    """启用/禁用切换。"""
+    scheduler = _get_cron_scheduler(session_id)
+    found, new_enabled = scheduler.toggle(task_id)
+    if not found:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Task '{task_id}' not found in session '{session_id}'.",
+        )
+    return {
+        "status": "ok",
+        "task_id": task_id,
+        "enabled": new_enabled,
+    }
 
 
 # ─── Agent 后台任务查询 ────────────────────────────────────────────────────────
