@@ -111,12 +111,26 @@ class _InterceptHandler(logging.Handler):
     参考：https://loguru.readthedocs.io/en/stable/overview.html#entirely-compatible-with-standard-logging
     """
 
+    # uvicorn DEBUG 噪音模式：WebSocket 握手原始 HTTP 头，无业务价值
+    _UVICORN_DEBUG_NOISE: tuple[str, ...] = (
+        "HTTP/1.1 101 Switching Protocols",
+        "Upgrade: websocket",
+        "Connection: Upgrade",
+        "Sec-WebSocket-Accept:",
+    )
+
     def emit(self, record: logging.LogRecord) -> None:
         # 将标准 logging level 映射到 loguru level 名称
         try:
             level = logger.level(record.levelname).name
         except ValueError:
             level = record.levelno  # 找不到对应 level 时用数字
+
+        # 过滤 uvicorn DEBUG 噪音（WebSocket 握手原始 HTTP 头）
+        if record.name == "uvicorn.error" and record.levelno <= logging.DEBUG:
+            msg = record.getMessage()
+            if any(pattern in msg for pattern in self._UVICORN_DEBUG_NOISE):
+                return
 
         # 按前缀表查找来源标签；找不到时直接用 record.name 顶级段（如 "mcp"）
         tag = _prefix_to_tag(record.name)
@@ -141,8 +155,15 @@ def _prefix_to_tag(logger_name: str) -> str:
         "mcp"             → "MCP"
         "mcp.server.db"   → "MCP:server.db"
         "uvicorn.access"  → "uvicorn:access"
+        "uvicorn.error"   → "uvicorn"（uvicorn 的通用 logger，不是错误）
         "unknown.lib"     → "unknown.lib"（无匹配时原样返回）
     """
+    # uvicorn.error 是 uvicorn 的通用/主 logger（记录启动、WS 握手等），
+    # 不是错误日志；uvicorn.access 是访问日志。
+    # 两者都映射为 "uvicorn" 避免列宽截断（_TAG_WIDTH=12 不够放下 "uvicorn:access"）。
+    if logger_name in ("uvicorn.error", "uvicorn.access"):
+        return "uvicorn"
+
     best_tag = logger_name   # 无匹配时降级显示原始名称
     best_len = -1
     for prefix, tag in _INTERCEPT_LOGGERS:

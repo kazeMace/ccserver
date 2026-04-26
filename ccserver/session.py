@@ -87,7 +87,9 @@ class Session:
         if self._bus is None:
             self._bus = SessionAgentBus()
         if self._event_bus is None:
-            self._event_bus = EventBus()
+            overflow_dir = self.workdir / "event_overflow"
+            overflow_dir.mkdir(parents=True, exist_ok=True)
+            self._event_bus = EventBus(overflow_dir=overflow_dir)
         if self._shell_tasks is None:
             self._shell_tasks = ShellTaskRegistry()
         if self._agent_tasks is None:

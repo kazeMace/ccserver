@@ -21,6 +21,42 @@ from loguru import logger
 from .base import StorageAdapter, SessionRecord, _json_default
 
 
+# ── 表名白名单 ────────────────────────────────────────────────────────────────
+
+# SQLiteAdapter 中所有合法的表名，用于防止 SQL 注入。
+# 任何动态构建 SQL 时传入的表名都必须在此列表中。
+_SQLITE_TABLE_WHITELIST: frozenset[str] = frozenset([
+    "sessions",
+    "conversations",
+    "messages",
+    "transcripts",
+    "tasks",
+    "task_counter",
+    "teams",
+    "inbox_messages",
+    "cron_tasks",
+    "cron_task_counter",
+])
+
+
+def _validate_table_name(table: str) -> str:
+    """
+    校验表名是否在白名单中，防止 SQL 注入。
+
+    Args:
+        table: 要校验的表名。
+
+    Returns:
+        校验通过的表名。
+
+    Raises:
+        ValueError: 表名不在白名单中时抛出。
+    """
+    if table not in _SQLITE_TABLE_WHITELIST:
+        raise ValueError(f"invalid table name: {table!r}")
+    return table
+
+
 class SQLiteStorageAdapter(StorageAdapter):
 
     def __init__(self, db_path: Path):

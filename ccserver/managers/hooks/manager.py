@@ -918,7 +918,7 @@ class HookLoader:
             try:
                 await self._call_entry(entry, payload, ctx)
             except Exception as e:
-                logger.error("hook error (void) | event={} source={} error={}", event, entry.source, e)
+                logger.exception("hook error (void) | event={} source={} error={}", event, entry.source, e)
 
         await asyncio.gather(*[run_one(e) for e in entries])
 

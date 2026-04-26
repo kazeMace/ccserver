@@ -36,10 +36,26 @@ class TeamRegistry:
         """从 StorageAdapter 加载所有团队数据到内存。"""
         assert self._adapter is not None
         teams_data = self._maybe_await(self._adapter.list_teams())
+        loaded = 0
+        failed = 0
         for data in teams_data:
-            team = Team.from_dict(data)
-            self._teams[team.name] = team
-        logger.debug("TeamRegistry loaded | teams={}", len(self._teams))
+            try:
+                team = Team.from_dict(data)
+                self._teams[team.name] = team
+                loaded += 1
+            except Exception as exc:
+                failed += 1
+                logger.warning(
+                    "TeamRegistry: failed to load team data | err={} data={!r}",
+                    exc, data,
+                )
+        if failed > 0:
+            logger.warning(
+                "TeamRegistry: loaded with failures | loaded={} failed={}",
+                loaded, failed,
+            )
+        else:
+            logger.info("TeamRegistry: loaded | teams={}", loaded)
 
     def _persist_team(self, team: Team) -> None:
         """将团队数据持久化到 StorageAdapter。"""

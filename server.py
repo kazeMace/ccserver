@@ -109,6 +109,8 @@ async def lifespan(app: FastAPI):
         await _storage.ping()
     # 启动 Team 健康监控（自愈）
     _team_monitor.start()
+    # 初始化内置 Agent 系统（加载 agents.json + 扫描 specs/ 包）
+    _init_builtin_agents()
     # 自动扫描适配器并启动配置中 enabled + auto_start 的 channel
     # 放到后台协程执行，避免阻塞 uvicorn startup（如 discord 连接超时 30s）
     gateway = _get_channel_gateway()
@@ -125,12 +127,15 @@ async def lifespan(app: FastAPI):
 
     asyncio.create_task(_start_channels_async())
     yield
-    # shutdown：ChannelGateway 关闭 → Team 监控停止 → 存储关闭
+    # shutdown：ChannelGateway 关闭 → Team 监控停止 → 存储关闭 → HTTP 客户端关闭
     if _channel_gateway is not None:
         await _channel_gateway.shutdown()
     _team_monitor.stop()
     if hasattr(_storage, "close"):
         await _storage.close()
+    # 关闭 WebFetch 共享的 HTTP 客户端，释放 TCP 连接池
+    from ccserver.builtins.tools.web_fetch import close_http_client
+    await close_http_client()
 
 
 app = FastAPI(title="CCServer", version="1.0.0", lifespan=lifespan)
@@ -200,6 +205,40 @@ _team_monitor = TeamHealthMonitor(session_manager)
 _channel_registry = ChannelRegistry()
 _outbound_bus = OutboundBus()
 _channel_gateway: ChannelGateway | None = None  # 延迟初始化
+
+
+def _init_builtin_agents() -> int:
+    """
+    初始化内置 Agent 系统。
+
+    加载 agents.json 配置，扫描 ccserver.builtins.agents.specs 包，
+    自动发现并注册所有 BaseAgentSpec 子类。
+
+    在 server lifespan startup 时调用，确保内置 Agent 在 AgentLoader
+    初始化之前完成注册。
+
+    Returns:
+        注册的内置 Agent 数量
+    """
+    try:
+        from ccserver.builtins.agents.config import agent_config
+        from ccserver.builtins.agents.registry import agent_registry
+
+        # 1. 加载 agents.json 配置
+        cfg = agent_config()
+        cfg.load()
+
+        # 2. 自动扫描 specs/ 包
+        reg = agent_registry()
+        count = reg.discover()
+        logger.info(
+            "Builtin agents initialized | count={} names={}",
+            count, reg.list_names(),
+        )
+        return count
+    except Exception as e:
+        logger.warning("Builtin agents initialization failed | err={}", e)
+        return 0
 
 
 def _get_channel_gateway() -> ChannelGateway:

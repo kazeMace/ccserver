@@ -57,6 +57,41 @@ class TestAgentEvent:
         event = AgentEvent(type="done", agent_id="a", session_id="s")
         assert event.to_agent is None
 
+    def test_to_dict_roundtrip(self):
+        """to_dict / from_dict 能正确序列化和反序列化。"""
+        original = AgentEvent(
+            type="token",
+            agent_id="agent-1",
+            session_id="session-1",
+            payload={"token": "hello"},
+            sender_type="agent",
+            to_agent="agent-2",
+            event_id="abc123",
+            ts=12345.6,
+        )
+        data = original.to_dict()
+        restored = AgentEvent.from_dict(data)
+
+        assert restored.type == original.type
+        assert restored.agent_id == original.agent_id
+        assert restored.session_id == original.session_id
+        assert restored.payload == original.payload
+        assert restored.sender_type == original.sender_type
+        assert restored.to_agent == original.to_agent
+        assert restored.event_id == original.event_id
+        assert restored.ts == original.ts
+
+    def test_from_dict_with_minimal_fields(self):
+        """from_dict 能处理只包含必填字段的字典。"""
+        data = {"type": "done", "agent_id": "a", "session_id": "s"}
+        event = AgentEvent.from_dict(data)
+        assert event.type == "done"
+        assert event.payload == {}
+        assert event.sender_type == "agent"
+        assert event.to_agent is None
+        assert event.event_id != ""
+        assert event.ts > 0
+
 
 # ── EventBus 测试 ─────────────────────────────────────────────────────────────
 
@@ -139,7 +174,7 @@ class TestEventBus:
 
     @pytest.mark.asyncio
     async def test_backpressure_drops_oldest_when_queue_full(self):
-        """Queue 满时丢弃最旧事件，新事件能放入，不阻塞 publish。"""
+        """Queue 满时丢弃最旧事件，新事件能放入，不阻塞 publish。（无 overflow_dir 时）"""
         bus = EventBus()
         # 用 maxsize=2 的小队列测试背压
         async with bus.subscribe("sub1", maxsize=2) as sub:
@@ -162,6 +197,66 @@ class TestEventBus:
         assert r2 is not None
         assert r1.event_id != e1_id   # e1 已被丢弃
         assert r2.type == EventType.DONE
+
+    @pytest.mark.asyncio
+    async def test_backpressure_overflow_persists_events(self, tmp_path):
+        """配置了 overflow_dir 时，Queue 满的事件会被持久化到磁盘，不被丢弃。"""
+        import os
+        overflow_dir = tmp_path / "overflow"
+        bus = EventBus(overflow_dir=overflow_dir)
+
+        async with bus.subscribe("sub1", maxsize=2) as sub:
+            e1 = make_event(EventType.TOKEN)
+            e2 = make_event(EventType.TOOL_START)
+            e3 = make_event(EventType.DONE)
+
+            await bus.publish(e1)
+            await bus.publish(e2)
+            # 队列已满，e3 应该被写入溢出文件而不是丢弃
+            await bus.publish(e3)
+
+            # 验证溢出文件已创建
+            overflow_file = overflow_dir / "sub1.jsonl"
+            assert overflow_file.exists(), "溢出文件应该被创建"
+
+            # 消费者读取：先读到 e1、e2（队列中的），然后 e3（从溢出重放）
+            r1 = await sub.get(timeout=0.5)
+            r2 = await sub.get(timeout=0.5)
+            r3 = await sub.get(timeout=0.5)
+
+        assert r1 is not None and r1.event_id == e1.event_id
+        assert r2 is not None and r2.event_id == e2.event_id
+        assert r3 is not None and r3.event_id == e3.event_id
+        assert r3.type == EventType.DONE
+
+        # 注销后溢出文件应该被清理
+        assert not overflow_file.exists(), "注销后溢出文件应该被清理"
+
+    @pytest.mark.asyncio
+    async def test_backpressure_overflow_replay_order(self, tmp_path):
+        """溢出事件按原始顺序重放回队列。"""
+        overflow_dir = tmp_path / "overflow"
+        bus = EventBus(overflow_dir=overflow_dir)
+
+        async with bus.subscribe("sub1", maxsize=1) as sub:
+            # 依次发布 3 个事件，只有第 1 个能进队列
+            events = [
+                make_event(EventType.TOKEN),
+                make_event(EventType.TOOL_START),
+                make_event(EventType.DONE),
+            ]
+            for e in events:
+                await bus.publish(e)
+
+            # 按顺序读取，应该保持原始顺序
+            received = []
+            for _ in range(3):
+                ev = await sub.get(timeout=0.5)
+                assert ev is not None
+                received.append(ev)
+
+        for i, ev in enumerate(events):
+            assert received[i].event_id == ev.event_id
 
     @pytest.mark.asyncio
     async def test_no_subscribers_publish_does_nothing(self):

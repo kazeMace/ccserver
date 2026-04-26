@@ -512,8 +512,16 @@ class Agent:
             injected_system = agent_def.system
 
         # ── model ─────────────────────────────────────────────────────────
-        # 优先级：model_override > agent_def.model > 继承父 agent 的 model
-        child_model = model_override or (agent_def.model if agent_def and agent_def.model else None) or self.model
+        # 优先级：model_override > agent_def.model > agent_def.model_hint > 继承父 agent 的 model
+        child_model = model_override
+        if not child_model and agent_def:
+            if agent_def.model:
+                child_model = agent_def.model
+            elif agent_def.model_hint:
+                # 解析 model_hint 为具体模型名
+                child_model = self._resolve_model_hint(agent_def.model_hint)
+        if not child_model:
+            child_model = self.model
 
         # emitter：子 agent 默认屏蔽 token 流（stream=False），避免子 agent 的思考过程
         # 直接透传到客户端与父 agent 输出混在一起。
@@ -585,6 +593,34 @@ class Agent:
             pass  # no running event loop — skip event publishing
 
         return child
+
+    @staticmethod
+    def _resolve_model_hint(hint: str) -> str | None:
+        """
+        将 model_hint 快捷方式解析为具体模型名。
+
+        支持的 hint：
+          "haiku"   → claude-haiku-4-5-20251001（Anthropic Haiku）
+          "sonnet"  → claude-sonnet-4-6（当前默认 Sonnet）
+          "opus"    → claude-opus-4-7（Anthropic Opus）
+          "inherit" → None（由调用方使用父模型）
+
+        不支持的 hint 返回 None，由调用方 fallback 到父模型。
+
+        Args:
+            hint: model_hint 字符串
+
+        Returns:
+            具体模型名，或 None
+        """
+        from .config import MODEL
+        _HINT_MAP = {
+            "haiku": "claude-haiku-4-5-20251001",
+            "sonnet": MODEL,          # 跟随全局默认模型
+            "opus": "claude-opus-4-7",
+            "inherit": None,          # 由调用方使用 self.model
+        }
+        return _HINT_MAP.get(hint.lower().strip())
 
 # ── 父 Agent 通知 ───────────────────────────────────────────────────────
 # 已由 _watch_terminal_events（EventBus 订阅者）替代，收到终端事件时直接注入

@@ -40,10 +40,18 @@ def parse_agent_id(agent_id: str) -> tuple[str | None, str | None]:
         agent_id: 格式为 name@teamName 的字符串
 
     Returns:
-        (name, team_name) 元组；如果格式不正确则返回 (None, None)
+        (name, team_name) 元组。空字符串返回 (None, None)。
+
+    Raises:
+        ValueError: 当 agent_id 非空但格式不正确（不包含 @）时抛出，
+                    便于调用方区分"格式错误"和"正常空值"。
     """
-    if "@" not in agent_id:
+    if not agent_id:
         return None, None
+    if "@" not in agent_id:
+        raise ValueError(
+            f"invalid agent_id format: expected 'name@teamName', got '{agent_id}'"
+        )
     name, team_name = agent_id.rsplit("@", 1)
     return name, team_name
 

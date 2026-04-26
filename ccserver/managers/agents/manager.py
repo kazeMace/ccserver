@@ -49,6 +49,19 @@ class AgentDef:
     round_limit: int | None = None            # 覆盖全局 SUB_ROUND_LIMIT；None = 使用全局默认值
     limit_strategy: str = "last_text"         # round limit 兜底策略（last_text/report/callback）
 
+    # ---- 新增字段（对齐 Claude Code AgentDefinition）----
+    model_hint: str | None = None             # 模型快捷方式："haiku" | "sonnet" | "inherit"
+    omit_claude_md: bool = False              # 不加载 CLAUDE.md（省 token）
+    permission_mode: str | None = None        # "dontAsk" | "acceptEdits" | "bubble" | ...
+    isolation: str | None = None              # "worktree" | "remote"
+    auto_background: bool = False             # True = 自动后台运行
+    max_turns: int | None = None              # 最大回合数（语义同 round_limit）
+    color: str | None = None                  # 终端显示颜色（"red" | "blue" | ...）
+    auto_approve_tools: bool = False          # 工具调用自动批准（不询问用户）
+    mcp_servers: list[str] | None = None      # 内置 Agent 专用的 MCP 服务器列表
+    hooks: dict | None = None                 # 生命周期钩子配置
+    is_builtin: bool = False                  # True = 由 AgentSpec（Python 类）注册的 AgentDef
+
 
 
 class AgentLoader:
@@ -68,11 +81,53 @@ class AgentLoader:
         """根据工作目录自动构建标准扫描路径（project-level 优先于 user-level，内置最低）。"""
         global_dir = global_config_dir or Path.home() / ".ccserver"
         builtin_dir = Path(__file__).parent.parent.parent / "builtins" / "agents"
-        return cls(
+        instance = cls(
             workdir / ".ccserver" / "agents",
             global_dir / "agents",
             builtin_dir,
         )
+        # 合并 Python AgentSpec 定义的内置 Agent
+        instance._merge_builtin_specs()
+        return instance
+
+    def _merge_builtin_specs(self) -> int:
+        """
+        合并内置 AgentSpec（Python 类定义）到 agents 字典。
+
+        AgentRegistry 自动扫描 ccserver.builtins.agents.specs 包，
+        发现所有 BaseAgentSpec 子类并转换为 AgentDef。
+
+        合并规则：
+          - 内置 Agent 的优先级低于 project/user-level .md 文件
+          - 如果同名 agent 已存在（由 .md 定义），保留 .md 版本
+          - 内置 Agent 的 is_builtin=True
+
+        Returns:
+            合并的 Agent 数量
+        """
+        try:
+            from ccserver.builtins.agents.registry import discover_builtin_agents
+        except ImportError:
+            logger.debug("Built-in agents package not available, skipping merge")
+            return 0
+
+        builtin_defs = discover_builtin_agents()
+        merged_count = 0
+        for name, agent_def in builtin_defs.items():
+            if name in self.agents:
+                # 已有同名 agent（project/user-level .md），跳过内置版本
+                logger.debug(
+                    "Built-in agent '{}' skipped: overridden by project/user-level definition",
+                    name,
+                )
+                continue
+            self.agents[name] = agent_def
+            merged_count += 1
+            logger.debug("Built-in agent merged | name={} builtin={}", name, agent_def.is_builtin)
+
+        if merged_count:
+            logger.info("Built-in agents merged | count={}", merged_count)
+        return merged_count
 
     # ── 扫描 ─────────────────────────────────────────────────────────────────
 
@@ -150,6 +205,27 @@ class AgentLoader:
 
         limit_strategy = meta.get("limit_strategy", "last_text")
 
+        # ---- 新增字段解析（对齐 Claude Code AgentDefinition）----
+        model_hint = meta.get("model_hint") or None
+        omit_claude_md_raw = meta.get("omit_claude_md", "false")
+        omit_claude_md = str(omit_claude_md_raw).strip().lower() in ("true", "1", "yes")
+        permission_mode = meta.get("permission_mode") or None
+        isolation = meta.get("isolation") or None
+        auto_background_raw = meta.get("auto_background", "false")
+        auto_background = str(auto_background_raw).strip().lower() in ("true", "1", "yes")
+        color = meta.get("color") or None
+        auto_approve_tools_raw = meta.get("auto_approve_tools", "false")
+        auto_approve_tools = str(auto_approve_tools_raw).strip().lower() in ("true", "1", "yes")
+        mcp_servers = _parse_str_or_list(meta.get("mcp_servers"))
+        hooks = meta.get("hooks") or None
+        max_turns = None
+        max_turns_raw = meta.get("max_turns")
+        if max_turns_raw is not None:
+            try:
+                max_turns = int(max_turns_raw)
+            except (TypeError, ValueError):
+                logger.warning("Invalid max_turns={} in {}, ignoring", max_turns_raw, md_file)
+
         return AgentDef(
             name=name,
             description=description,
@@ -166,6 +242,17 @@ class AgentLoader:
             is_persistent=is_persistent,
             round_limit=round_limit,
             limit_strategy=limit_strategy,
+            # 新增字段
+            model_hint=model_hint,
+            omit_claude_md=omit_claude_md,
+            permission_mode=permission_mode,
+            isolation=isolation,
+            auto_background=auto_background,
+            max_turns=max_turns,
+            color=color,
+            auto_approve_tools=auto_approve_tools,
+            mcp_servers=mcp_servers,
+            hooks=hooks,
         )
 
     # ── 公共接口 ──────────────────────────────────────────────────────────────
