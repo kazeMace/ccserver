@@ -98,6 +98,35 @@ class PromptLib:
         )
         return f"<available_skills>\n{entries}\n</available_skills>"
 
+    def _resolve_skill_entries(self, session: Session, skills_override: list[str] | None) -> list[dict]:
+        """
+        根据 skills_override 解析出应注入的 skill 条目列表。
+
+        参数:
+            session:        当前 Session，用于获取 skills 和 commands。
+            skills_override:
+                None      — 根 agent，使用 session 全局 skills + commands。
+                []        — subagent 未指定 skills，返回空列表。
+                ["a","b"] — subagent 指定 skills，只返回匹配的 skill。
+
+        返回:
+            应注入的 skill 元数据列表，每项含 name/description/location。
+        """
+        if skills_override is None:
+            # 根 agent：使用 session 全局 skills + commands
+            local_skills = session.skills.list_skills() if session.skills else []
+            local_commands = session.commands.list_commands() if session.commands else []
+            return local_skills + local_commands
+
+        if len(skills_override) == 0:
+            # subagent 未指定 skills：不注入任何 skill catalog
+            return []
+
+        # subagent 指定了 skills：只注入列出的 skill 名称
+        allowed = set(skills_override)
+        all_skills = session.skills.list_skills() if session.skills else []
+        return [s for s in all_skills if s["name"] in allowed]
+
     def build_command_message(self, cmd_info: dict, session: Session, history: list) -> list:
         """
         将 command 信息包装为 content block 列表。

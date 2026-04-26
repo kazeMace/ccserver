@@ -140,11 +140,13 @@ class AgentTaskState:
     error: str | None = None
 
     # ── 事件队列（引用 BackgroundAgentHandle 的队列）───────────────────────
-    inbox: asyncio.Queue = field(default_factory=asyncio.Queue)
+    # repr=False 避免日志/调试时输出 Queue 内部状态（不可序列化，pickle 行为不确定）
+    inbox: asyncio.Queue = field(default_factory=asyncio.Queue, repr=False)
 
     def __post_init__(self):
-        # agent_task_id 作为 id 的别名，方便序列化
-        self.agent_task_id = self.id
+        # agent_task_id 与 id 相同，dataclass field 默认已生成 id，此处仅做别名
+        # id 由 field(default_factory=generate_agent_id) 在构造时自动生成
+        object.__setattr__(self, "agent_task_id", self.id)
 
     # ── 只读属性 ────────────────────────────────────────────────────────────
 

@@ -59,21 +59,7 @@ class SimpleAgentV001(PromptLib):
             return parts
         # 1. skill inject（技能目录）
         skills_override = context.get("skills_override")  # None | list[str]
-
-        if skills_override is None:
-            # 根 agent：使用 session 全局 skills + commands
-            local_skills = session.skills.list_skills() if session.skills else []
-            local_commands = session.commands.list_commands() if session.commands else []
-            all_entries = local_skills + local_commands
-        elif len(skills_override) == 0:
-            # subagent 未指定 skills：不注入任何 skill catalog
-            all_entries = []
-        else:
-            # subagent 指定了 skills：只注入列出的 skill 名称
-            allowed = set(skills_override)
-            all_skills = session.skills.list_skills() if session.skills else []
-            all_entries = [s for s in all_skills if s["name"] in allowed]
-
+        all_entries = self._resolve_skill_entries(session, skills_override)
         skill_catalog = self.build_skill_catalog(all_entries)
         if skill_catalog:
             skill_text = f"The following skills are available for use with the Skill tool:\n\n{skill_catalog}"

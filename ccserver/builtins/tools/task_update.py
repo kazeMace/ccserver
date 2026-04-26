@@ -1,4 +1,9 @@
+from typing import TYPE_CHECKING
+
 from .base import BuiltinTools, ToolParam, ToolResult
+
+if TYPE_CHECKING:
+    from ccserver.managers.tasks import TaskManager
 
 
 class BTTaskUpdate(BuiltinTools):
@@ -45,7 +50,7 @@ class BTTaskUpdate(BuiltinTools):
         ),
     }
 
-    def __init__(self, task_manager):
+    def __init__(self, task_manager: "TaskManager"):
         self._tasks = task_manager
 
     async def run(

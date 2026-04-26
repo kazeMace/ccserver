@@ -26,6 +26,9 @@ class SQLiteStorageAdapter(StorageAdapter):
     def __init__(self, db_path: Path):
         self.db_path = db_path
         db_path.parent.mkdir(parents=True, exist_ok=True)
+        # 当前 conversation_id 的内存映射：session_id -> conversation_id
+        # 必须是实例级别，不能是类级别，否则多实例会互相污染
+        self._current_conv: dict[str, str] = {}
         self._init_db()
 
     # ── 数据库初始化 ───────────────────────────────────────────────────────────
@@ -287,10 +290,6 @@ class SQLiteStorageAdapter(StorageAdapter):
 
     # ── conversation 管理（SQLite 特有）──────────────────────────────────────
 
-    # 当前 conversation_id 的内存映射：session_id → conversation_id
-    # 每次 HTTP 请求开始时通过 set_conversation() 设置
-    _current_conv: dict[str, str] = {}
-
     def create_conversation(self, session_id: str, conversation_id: str) -> None:
         """注册一次新的对话轮次，并设为当前活跃 conversation。"""
         now = datetime.now(timezone.utc).isoformat()
@@ -519,7 +518,8 @@ class SQLiteStorageAdapter(StorageAdapter):
             sql += " AND read = 0"
         sql += " ORDER BY id ASC"
         if limit > 0:
-            sql += f" LIMIT {limit}"
+            sql += " LIMIT ?"
+            params.append(limit)
 
         with self._conn() as conn:
             rows = conn.execute(sql, params).fetchall()

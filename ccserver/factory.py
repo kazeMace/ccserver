@@ -53,7 +53,12 @@ class AgentFactory:
         if adapter is None:
             provider = settings.provider if isinstance(settings.provider, str) else "anthropic"
             provider_config = settings.provider_config or {}
-            resolved_adapter = get_adapter(provider, **provider_config)
+            try:
+                resolved_adapter = get_adapter(provider, **provider_config)
+            except Exception as e:
+                raise ValueError(
+                    f"Failed to create adapter for provider '{provider}': {e}"
+                ) from e
         else:
             resolved_adapter = adapter
 
