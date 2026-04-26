@@ -71,8 +71,8 @@ class TeamHealthMonitor:
 
     async def _check_all_teams(self) -> None:
         """遍历所有 Session 的 TeamRegistry，检查 Dispatcher 存活。"""
-        # _sessions 是内存中的 Session 对象字典，list_all() 返回的是 dict 元数据，不能用
-        sessions = list(self.session_manager._sessions.values())
+        # 使用 list_active_sessions() 公开方法，避免直接访问私有 _sessions
+        sessions = self.session_manager.list_active_sessions()
         for session in sessions:
             registry = session.team_registry
             if registry is None:

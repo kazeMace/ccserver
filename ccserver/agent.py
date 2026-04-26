@@ -1603,7 +1603,7 @@ class Agent:
         """
         import asyncio
         import httpx
-        from anthropic import APIConnectionError, APITimeoutError, InternalServerError
+        from anthropic import APIConnectionError, APITimeoutError, InternalServerError, RateLimitError
 
         max_retries = 3
         retry_delays = [2, 5, 10]
@@ -1685,7 +1685,7 @@ class Agent:
                 ))
                 return response
 
-            except (APIConnectionError, APITimeoutError, httpx.RemoteProtocolError, InternalServerError) as e:
+            except (APIConnectionError, APITimeoutError, httpx.RemoteProtocolError, InternalServerError, RateLimitError) as e:
                 if attempt < max_retries - 1:
                     delay = retry_delays[attempt]
                     logger.warning(
@@ -1725,7 +1725,7 @@ class Agent:
         """
         import asyncio
         import httpx
-        from anthropic import APIConnectionError, APITimeoutError, InternalServerError
+        from anthropic import APIConnectionError, APITimeoutError, InternalServerError, RateLimitError
 
         max_retries = 3
         retry_delays = [2, 5, 10]
@@ -1804,7 +1804,7 @@ class Agent:
                 ))
                 return response
 
-            except (APIConnectionError, APITimeoutError, httpx.RemoteProtocolError, InternalServerError) as e:
+            except (APIConnectionError, APITimeoutError, httpx.RemoteProtocolError, InternalServerError, RateLimitError) as e:
                 if attempt < max_retries - 1:
                     delay = retry_delays[attempt]
                     logger.warning(

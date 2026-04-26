@@ -48,7 +48,7 @@ class RedisMessageCache:
             await self._client.ltrim(key, -self.max_size, -1)
             await self._client.expire(key, self.ttl)
         except Exception as exc:
-            logger.debug("RedisCache: push 失败，已降级 | session={} err={}", session_id[:8], exc)
+            logger.warning("RedisCache: push 失败，已降级 | session={} err={}", session_id[:8], exc)
 
     async def get_all(self, session_id: str) -> list | None:
         """
@@ -75,26 +75,29 @@ class RedisMessageCache:
         try:
             await self._client.delete(self._key(session_id))
         except Exception as exc:
-            logger.debug("RedisCache: delete 失败，已降级 | session={} err={}", session_id[:8], exc)
+            logger.warning("RedisCache: delete 失败，已降级 | session={} err={}", session_id[:8], exc)
 
     async def backfill(self, session_id: str, messages: list) -> None:
         """
         回填消息到缓存（仅取最近 max_size 条，防止大 session 内存压力）。
-        先 delete 再 push，确保缓存内容与 messages 一致。
+        使用 pipeline 将 delete + rpush + expire 按顺序执行，
+        避免 delete 成功后 rpush 失败导致缓存为空。
         """
         if self._client is None:
             return
-        await self.delete(session_id)
         recent = messages[-self.max_size:]
         if not recent:
             return
         try:
             key = self._key(session_id)
             payloads = [json.dumps(msg, default=str) for msg in recent]
-            await self._client.rpush(key, *payloads)
-            await self._client.expire(key, self.ttl)
+            async with self._client.pipeline() as pipe:
+                pipe.delete(key)
+                pipe.rpush(key, *payloads)
+                pipe.expire(key, self.ttl)
+                await pipe.execute()
         except Exception as exc:
-            logger.debug("RedisCache: backfill 失败，已降级 | session={} err={}", session_id[:8], exc)
+            logger.warning("RedisCache: backfill 失败，已降级 | session={} err={}", session_id[:8], exc)
 
     async def close(self) -> None:
         """关闭连接（FastAPI lifespan shutdown 时调用）。"""

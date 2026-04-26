@@ -294,7 +294,10 @@ class ShellTaskState:
         self.status = TaskStatus.KILLED
         self.end_time = datetime.now(timezone.utc)
         if self.proc is not None:
-            self.proc.kill()
+            try:
+                self.proc.kill()
+            except ProcessLookupError:
+                pass  # 进程已退出，无需处理
         self._cleanup_proc()
         logger.info("ShellTask killed | id={} reason={}", self.id, reason)
 

@@ -163,7 +163,12 @@ def _parse_ddg_html(html: str) -> list[dict[str, str]]:
       - <a class="result-a"> for title + URL
       - <a class="result-snippet"> for the snippet
     """
-    soup = BeautifulSoup(html, "html.parser")
+    try:
+        soup = BeautifulSoup(html, "html.parser")
+    except Exception as exc:
+        logger.warning("BTDDGWebSearch: BeautifulSoup parse failed | error=%s", exc)
+        return []
+
     results: list[dict[str, str]] = []
 
     for block in soup.find_all("div", class_="result"):
@@ -197,6 +202,12 @@ def _parse_ddg_html(html: str) -> list[dict[str, str]]:
 
         if len(results) >= MAX_RESULTS:
             break
+
+    if not results and html.strip():
+        logger.warning(
+            "BTDDGWebSearch: parsed zero results from non-empty HTML "
+            "(DuckDuckGo page structure may have changed)"
+        )
 
     return results
 
@@ -311,15 +322,20 @@ class BTDDGWebSearch(BuiltinTools):
         raw_results: list[dict[str, str]] | None = None
         last_exc: Exception | None = None
 
-        for attempt in range(2):
+        for attempt in range(3):
             try:
                 raw_results = await _search_ddg_raw(query)
                 break
             except (httpx.ConnectError, httpx.ReadTimeout,
                     httpx.PoolTimeout, httpx.RemoteProtocolError) as exc:
                 last_exc = exc
-                if attempt == 0:
-                    await asyncio.sleep(1)
+                if attempt < 2:
+                    delay = 2 ** attempt  # 指数退避：1s, 2s
+                    logger.warning(
+                        "BTDDGWebSearch: transient error, retrying (%d/3) after %.0fs | error=%s",
+                        attempt + 1, delay, exc,
+                    )
+                    await asyncio.sleep(delay)
                     continue
                 break
             except Exception as exc:

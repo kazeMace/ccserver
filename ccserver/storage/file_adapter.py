@@ -59,8 +59,8 @@ class FileStorageAdapter(StorageAdapter):
         meta = json.loads(meta_path.read_text())
         messages = []
         msg_path = session_dir / "messages.jsonl"
-        if msg_path.exists():
-            # 使用 open + iter 逐行读取，避免大会话 OOM
+        # 直接用 try/except 打开文件，避免 TOCTOU 竞态（检查后文件可能消失）
+        try:
             with open(msg_path, "r", encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
@@ -72,6 +72,8 @@ class FileStorageAdapter(StorageAdapter):
                                 "FileStorageAdapter: skip corrupted message line | session_id={}",
                                 session_id[:8],
                             )
+        except FileNotFoundError:
+            pass  # 消息文件不存在，返回空列表
 
         return SessionRecord(
             session_id=session_id,
@@ -96,7 +98,7 @@ class FileStorageAdapter(StorageAdapter):
 
     def append_message(self, session_id: str, message: dict) -> None:
         msg_path = self._session_dir(session_id) / "messages.jsonl"
-        with open(msg_path, "a") as f:
+        with open(msg_path, "a", encoding="utf-8") as f:
             f.write(json.dumps(message, default=str) + "\n")
 
     def rewrite_messages(self, session_id: str, messages: list) -> None:

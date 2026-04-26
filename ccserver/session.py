@@ -315,6 +315,10 @@ class SessionManager:
     def list_all(self) -> list[dict]:
         return self.storage.list_sessions()
 
+    def list_active_sessions(self) -> list["Session"]:
+        """返回内存中所有活跃的 Session 对象列表（供 monitor 等内部组件遍历）。"""
+        return list(self._sessions.values())
+
     def _load(self, session_id: str) -> Optional[Session]:
         record = self.storage.load_session(session_id)
         if record is None:

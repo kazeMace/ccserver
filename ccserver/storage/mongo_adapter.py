@@ -31,6 +31,9 @@ class MongoStorageAdapter(StorageAdapter):
         self._tasks = self._db["tasks"]
         self._teams = self._db["teams"]
         self._inbox_messages = self._db["inbox_messages"]
+        # 实例级映射：session_id -> 当前活跃的 conversation_id
+        # 必须是实例级别，不能是类级别，否则多实例会互相污染
+        self._current_conv: dict[str, str] = {}
         logger.debug("MongoAdapter: 初始化 | db={}", db_name)
 
     # ── 初始化索引（异步，需在事件循环中调用一次）─────────────────────────────
@@ -86,7 +89,7 @@ class MongoStorageAdapter(StorageAdapter):
         msg_docs = await self._messages.find(
             {"session_id": session_id, "is_active": True},
             sort=[("seq", ASCENDING)],
-        ).to_list(length=None)
+        ).to_list(length=10000)
 
         messages = [
             {"role": m["role"], "content": m["content"]}
@@ -122,23 +125,30 @@ class MongoStorageAdapter(StorageAdapter):
         now = datetime.now(timezone.utc).isoformat()
         conv_id = self._current_conv.get(session_id, session_id)
 
-        # 原子自增 msg_seq，取自增后的值作为 seq（第一条消息 seq=1）
-        updated = await self._sessions.find_one_and_update(
-            {"_id": session_id},
-            {"$inc": {"msg_seq": 1}, "$set": {"updated_at": now}},
-            return_document=ReturnDocument.AFTER,
-        )
-        seq = updated["msg_seq"]
+        try:
+            # 原子自增 msg_seq，取自增后的值作为 seq（第一条消息 seq=1）
+            updated = await self._sessions.find_one_and_update(
+                {"_id": session_id},
+                {"$inc": {"msg_seq": 1}, "$set": {"updated_at": now}},
+                return_document=ReturnDocument.AFTER,
+            )
+            seq = updated["msg_seq"]
 
-        await self._messages.insert_one({
-            "session_id": session_id,
-            "conversation_id": conv_id,
-            "role": message["role"],
-            "content": message["content"],   # 直接存 BSON，不 JSON 序列化
-            "is_active": True,
-            "seq": seq,
-            "created_at": now,
-        })
+            await self._messages.insert_one({
+                "session_id": session_id,
+                "conversation_id": conv_id,
+                "role": message["role"],
+                "content": message["content"],   # 直接存 BSON，不 JSON 序列化
+                "is_active": True,
+                "seq": seq,
+                "created_at": now,
+            })
+        except Exception as exc:
+            logger.error(
+                "MongoAdapter: append_message failed | session={} error={}",
+                session_id[:8], exc,
+            )
+            raise
 
     async def rewrite_messages(self, session_id: str, messages: list) -> None:
         """
@@ -203,10 +213,6 @@ class MongoStorageAdapter(StorageAdapter):
         )
 
     # ── conversation 管理 ─────────────────────────────────────────────────────
-
-    # session_id → 当前活跃 conversation_id 的内存映射（实例级别，非类级别）
-    # 注意：不得放在类级别，否则多实例场景下会内存污染
-    _current_conv: dict[str, str] = field(default_factory=dict)
 
     async def create_conversation(self, session_id: str, conversation_id: str) -> None:
         now = datetime.now(timezone.utc).isoformat()
@@ -354,25 +360,20 @@ class MongoStorageAdapter(StorageAdapter):
         return messages
 
     async def mark_inbox_read(self, team_name: str, recipient: str, message_ids: list[str]) -> None:
-        """将指定消息标记为已读。"""
+        """将指定消息标记为已读。使用 update_many 批量原子更新，避免全量读取。"""
         if not message_ids:
             return
 
-        # 由于消息体嵌套在 message 字段中，我们通过遍历更新
-        target_ids = set(message_ids)
-        docs = await self._inbox_messages.find(
-            {"team_name": team_name, "recipient": recipient}
-        ).to_list(length=None)
-
-        updated = 0
-        for doc in docs:
-            msg = doc.get("message", {})
-            if msg.get("id") in target_ids and not doc.get("read"):
-                await self._inbox_messages.update_one(
-                    {"_id": doc["_id"]},
-                    {"$set": {"read": True}},
-                )
-                updated += 1
+        result = await self._inbox_messages.update_many(
+            {
+                "team_name": team_name,
+                "recipient": recipient,
+                "message.id": {"$in": list(message_ids)},
+                "read": False,
+            },
+            {"$set": {"read": True}},
+        )
+        updated = result.modified_count
 
         logger.debug(
             "MongoAdapter: inbox marked read | team={} recipient={} updated={}",
