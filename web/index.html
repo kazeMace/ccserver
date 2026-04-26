@@ -380,6 +380,9 @@
     .data-table .badge.done { background: #ddf4ff; color: #0969da; }
     .data-table .badge.error { background: #ffebe9; color: #cf222e; }
     .data-table .badge.idle { background: #fbefff; color: #8250df; }
+    .data-table .badge.scheduled { background: #dafbe1; color: #1a7f37; }
+    .data-table .badge.triggered { background: #fff8c5; color: #7d4e00; }
+    .data-table .badge.deleted { background: #eaeef2; color: #57606a; }
 
     /* ── Agent 树状表格 ── */
     .agent-tree-container {
@@ -574,6 +577,10 @@
       <div class="label">Subscribers</div>
       <div class="value" id="stat-subs">0</div>
     </div>
+    <div class="stat-card">
+      <div class="label">Cron Tasks</div>
+      <div class="value" id="stat-cron">0</div>
+    </div>
   </div>
 
   <!-- Tab 导航 -->
@@ -582,6 +589,7 @@
     <button class="tab-btn" data-tab="agents">Agents</button>
     <button class="tab-btn" data-tab="sessions">Sessions</button>
     <button class="tab-btn" data-tab="teams">Teams</button>
+    <button class="tab-btn" data-tab="cron">Cron</button>
   </div>
 
   <!-- 主区域 -->
@@ -626,6 +634,10 @@
         <div class="sidebar-section" id="sec-teams">
           <h3>Teams</h3>
           <div class="section-body"><div class="empty">No teams</div></div>
+        </div>
+        <div class="sidebar-section" id="sec-cron">
+          <h3>Cron Tasks</h3>
+          <div class="section-body"><div class="empty">No cron tasks</div></div>
         </div>
       </div>
     </div>
@@ -679,6 +691,27 @@
         </table>
       </div>
     </div>
+
+    <!-- Cron Tab -->
+    <div id="tab-cron" class="tab-content">
+      <div class="data-table-container">
+        <table class="data-table" id="cron-table">
+          <thead>
+            <tr>
+              <th>Task ID</th>
+              <th>Session</th>
+              <th>Mode</th>
+              <th>Schedule</th>
+              <th>Next Run</th>
+              <th>Triggers</th>
+              <th>Status</th>
+              <th>Durable</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
   </div>
 
   <!-- 详情弹窗 -->
@@ -722,6 +755,7 @@
     let sessions = {};
     let agents = {};      // agent_id -> {id, name, session_id, phase, last_event, last_ts}
     let teams = {};
+    let cronTasks = {};   // task_id -> cron task data
     let activeTab = 'events';
 
     // ── DOM 引用 ──
@@ -867,12 +901,19 @@
       renderTeams();
       renderTeamsTable();
 
+      // Cron Tasks
+      cronTasks = {};
+      (data.cron_tasks || []).forEach(t => { cronTasks[t.task_id] = t; });
+      renderCronSidebar();
+      renderCronTable();
+
       // Sessions table
       renderSessionsTable();
 
       document.getElementById('stat-sessions').textContent = Object.keys(sessions).length;
       document.getElementById('stat-agents').textContent = Object.keys(agents).length;
       document.getElementById('stat-subs').textContent = data.subscriber_count || 0;
+      document.getElementById('stat-cron').textContent = Object.keys(cronTasks).length;
     }
 
     // ── 渲染事件行 ──
@@ -987,6 +1028,24 @@
       body.innerHTML = items.map(t => `<div class="item">
         <span class="name">${escapeHtml(t.name)}</span>
         <span class="badge">${t.member_count || 0} members</span>
+      </div>`).join('');
+    }
+
+    function renderCronSidebar() {
+      const body = document.querySelector('#sec-cron .section-body');
+      const items = Object.values(cronTasks);
+      if (items.length === 0) {
+        body.innerHTML = '<div class="empty">No cron tasks</div>';
+        return;
+      }
+      // 按 session 分组统计
+      const bySession = {};
+      items.forEach(t => {
+        bySession[t.session_id] = (bySession[t.session_id] || 0) + 1;
+      });
+      body.innerHTML = Object.entries(bySession).map(([sid, count]) => `<div class="item">
+        <span class="name" title="${escapeHtml(sid)}">${escapeHtml(truncate(sid, 16))}</span>
+        <span class="badge">${count} tasks</span>
       </div>`).join('');
     }
 
@@ -1119,6 +1178,45 @@
       </tr>`).join('');
     }
 
+    function renderCronTable() {
+      const tbody = document.querySelector('#cron-table tbody');
+      const items = Object.values(cronTasks);
+      if (items.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#8c959f;padding:20px;">No cron tasks</td></tr>';
+        return;
+      }
+      tbody.innerHTML = items.map(t => {
+        const badgeClass = t.status || 'scheduled';
+        const modeLabel = t.mode === 'recurring' ? '循环' : '一次性';
+        const scheduleDisplay = t.cron_expr || '-';
+        const nextRun = t.next_run_at ? formatDate(t.next_run_at) : '-';
+        const durableBadge = t.durable ? '<span class="badge scheduled">是</span>' : '<span class="badge">否</span>';
+        return `<tr>
+          <td class="mono" title="${escapeHtml(t.task_id)}">${escapeHtml(truncate(t.task_id, 14))}</td>
+          <td class="mono" title="${escapeHtml(t.session_id)}">${escapeHtml(truncate(t.session_id, 12))}</td>
+          <td>${escapeHtml(modeLabel)}</td>
+          <td class="mono" title="${escapeHtml(t.cron_expr)}">${escapeHtml(scheduleDisplay)}</td>
+          <td>${escapeHtml(nextRun)}</td>
+          <td>${t.trigger_count || 0}</td>
+          <td><span class="badge ${badgeClass}">${escapeHtml(t.status)}</span></td>
+          <td>${durableBadge}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    function formatDate(isoStr) {
+      if (!isoStr) return '-';
+      try {
+        const d = new Date(isoStr);
+        return d.toLocaleString('zh-CN', {
+          month: '2-digit', day: '2-digit',
+          hour: '2-digit', minute: '2-digit'
+        });
+      } catch {
+        return isoStr;
+      }
+    }
+
     // ── 列宽拖拽 ──
     let resizingCol = null;
     let resizeStartX = 0;
@@ -1184,6 +1282,7 @@
         if (tab === 'agents') renderAgentsTable();
         else if (tab === 'sessions') renderSessionsTable();
         else if (tab === 'teams') renderTeamsTable();
+        else if (tab === 'cron') renderCronTable();
       });
     });
 

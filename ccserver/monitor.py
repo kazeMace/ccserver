@@ -333,6 +333,7 @@ class MonitorCollector:
         sessions_data = []
         agents_data = []
         teams_data = []
+        cron_tasks_data = []
         total_subscribers = 0
 
         for session in self._session_manager._sessions.values():
@@ -385,6 +386,23 @@ class MonitorCollector:
                         "member_count": len(team.members),
                     })
 
+            # Cron 定时任务
+            cron_scheduler = getattr(session, "cron_scheduler", None)
+            if cron_scheduler is not None:
+                for task in cron_scheduler.list_all():
+                    cron_tasks_data.append({
+                        "task_id": task.task_id,
+                        "session_id": session.id,
+                        "mode": task.mode,
+                        "cron_expr": task.cron_expr,
+                        "next_run_at": task.next_run_at.isoformat() if task.next_run_at else None,
+                        "trigger_count": task.trigger_count,
+                        "status": task.status,
+                        "durable": task.durable,
+                        "jitter_max": task.jitter_max,
+                        "prompt": task.prompt[:50] + "..." if len(task.prompt) > 50 else task.prompt,
+                    })
+
             # EventBus 订阅者统计
             event_bus = getattr(session, "event_bus", None)
             if event_bus is not None:
@@ -396,6 +414,7 @@ class MonitorCollector:
                 "sessions": sessions_data,
                 "agents": agents_data,
                 "teams": teams_data,
+                "cron_tasks": cron_tasks_data,
                 "subscriber_count": total_subscribers,
             },
         }
