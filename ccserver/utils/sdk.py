@@ -43,7 +43,8 @@ def get_block_attr(block: dict[str, Any] | Any, attr: str) -> Any:
     Raises:
         TypeError: 如果 attr 不是字符串类型。
     """
-    assert isinstance(attr, str), f"attr 必须是字符串，收到: {type(attr)}"
+    if not isinstance(attr, str):
+        raise TypeError(f"attr 必须是字符串，收到: {type(attr)}")
 
     if isinstance(block, dict):
         return block.get(attr)
@@ -65,7 +66,8 @@ def normalize_content_blocks(content: Iterable[Any]) -> list[dict[str, Any]]:
     Raises:
         TypeError: 如果 content 不可迭代（将通过 for 循环自然抛出）。
     """
-    assert content is not None, "content 参数不能为 None"
+    if content is None:
+        raise TypeError("content 参数不能为 None")
 
     result: list[dict[str, Any]] = []
     for block in content:
@@ -111,8 +113,9 @@ def estimate_tokens(messages: list[Any]) -> int:
     Raises:
         TypeError: 如果 messages 不是列表类型。
     """
-    assert isinstance(messages, list), f"messages 必须是列表，收到: {type(messages)}"
-    token_count = len(str(messages)) // 4
+    if not isinstance(messages, list):
+        raise TypeError(f"messages 必须是列表，收到: {type(messages)}")
+    token_count = sum(len(str(m)) for m in messages) // 4
     logger.debug("estimate_tokens: %d messages -> ~%d tokens", len(messages), token_count)
     return token_count
 

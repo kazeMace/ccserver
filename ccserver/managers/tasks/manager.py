@@ -12,14 +12,13 @@ LLM 通过 TaskCreate/TaskUpdate/TaskGet/TaskList 工具操作任务，
   - Task 支持类型、绑定 Agent、依赖关系
 """
 
-import asyncio
-import inspect
 from datetime import datetime, timezone
 from typing import Any
 
 from loguru import logger
 
 from ccserver.storage.base import StorageAdapter
+from ccserver.utils.async_compat import maybe_await as _maybe_await
 
 
 class Task:
@@ -117,25 +116,6 @@ class TaskManager:
 
         if self._adapter is not None:
             self._load_from_storage()
-
-    @staticmethod
-    def _maybe_await(coro_or_result: Any) -> Any:
-        """
-        兼容同步与异步 adapter：如果返回的是协程，则运行事件循环直到完成。
-        注意：仅在非异步上下文中调用；若已在异步上下文中，应由调用方 await。
-        """
-        if inspect.isawaitable(coro_or_result):
-            try:
-                loop = asyncio.get_running_loop()
-                # 若已有运行中的事件循环，使用 run_coroutine_threadpool 避免嵌套错误
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor() as pool:
-                    future = pool.submit(asyncio.run, coro_or_result)
-                    return future.result()
-            except RuntimeError:
-                # 无运行中的事件循环，可直接 asyncio.run
-                return asyncio.run(coro_or_result)
-        return coro_or_result
 
     def _load_from_storage(self) -> None:
         """启动时从 StorageAdapter 加载所有任务与计数器。"""

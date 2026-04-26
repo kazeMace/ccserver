@@ -6,13 +6,12 @@ team.registry — TeamRegistry 实现。
 通过 _maybe_await 自动桥接。
 """
 
-import asyncio
-import inspect
 from typing import Any
 
 from loguru import logger
 
 from ccserver.storage.base import StorageAdapter
+from ccserver.utils.async_compat import maybe_await as _maybe_await
 from .models import Team, TeamMember, TeamMemberRole, TeamMemberState
 from .helpers import format_agent_id
 
@@ -30,28 +29,6 @@ class TeamRegistry:
         self._teams: dict[str, Team] = {}
         if self._adapter is not None:
             self._load_from_storage()
-
-    @staticmethod
-    def _maybe_await(coro_or_result: Any) -> Any:
-        """
-        兼容同步与异步 adapter。
-
-        如果返回值是协程对象（async def 的返回值），
-        则启动事件循环并运行至完成；否则直接返回原值。
-        """
-        if inspect.isawaitable(coro_or_result):
-            try:
-                loop = asyncio.get_running_loop()
-                # 若已有运行中的事件循环，使用线程池桥接避免嵌套错误
-                import concurrent.futures
-
-                with concurrent.futures.ThreadPoolExecutor() as pool:
-                    future = pool.submit(asyncio.run, coro_or_result)
-                    return future.result()
-            except RuntimeError:
-                # 无运行中的事件循环，可直接 asyncio.run
-                return asyncio.run(coro_or_result)
-        return coro_or_result
 
     # ── 加载与持久化 ───────────────────────────────────────────────────────────
 

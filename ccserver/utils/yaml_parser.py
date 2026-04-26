@@ -22,6 +22,7 @@ yaml_parser — 统一 YAML frontmatter 解析入口。
               原 frontmatter.py 被 yaml_parser.py 取代。
 """
 
+import logging
 import re
 
 try:
@@ -31,6 +32,8 @@ except ImportError as _e:  # noqa: F841
         "PyYAML is required for frontmatter parsing. "
         "Run: pip install pyyaml"
     )
+
+logger = logging.getLogger(__name__)
 
 
 def parse(text: str) -> tuple[dict | None, str]:
@@ -50,7 +53,8 @@ def parse(text: str) -> tuple[dict | None, str]:
 
     try:
         meta = yaml.safe_load(match.group(1))
-    except Exception:
+    except Exception as e:
+        logger.error("yaml_parser: YAML frontmatter parsing failed | error=%s", e)
         return None, text
 
     if not isinstance(meta, dict):
