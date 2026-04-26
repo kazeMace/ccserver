@@ -12,6 +12,7 @@ For non-Anthropic adapters, use BTDDGWebSearch (duckduckgo_search.py) instead.
 
 import asyncio
 import logging
+import random
 
 from ccserver.model import ModelAdapter, AnthropicAdapter
 
@@ -132,7 +133,7 @@ class BTWebSearch(BuiltinTools):
         """
         last_exc: Exception | None = None
 
-        for attempt in range(2):
+        for attempt in range(3):
             try:
                 response = await self.adapter._client.beta.messages.create(
                     model=self.model,
@@ -150,11 +151,15 @@ class BTWebSearch(BuiltinTools):
 
             except Exception as exc:
                 last_exc = exc
-                # Retry once on rate limit (429) or service unavailable (503).
+                # Retry on rate limit (429) or service unavailable (503).
                 status = getattr(exc, "status_code", None)
-                if status in (429, 503) and attempt == 0:
-                    wait = 2 ** attempt   # 1s back-off
-                    logger.warning(f"WebSearch retrying after {status}, waiting {wait}s")
+                if status in (429, 503) and attempt < 2:
+                    # Exponential backoff with jitter: 1s, 2s, 4s + up to 0.5s random
+                    wait = (2 ** attempt) + random.uniform(0, 0.5)
+                    logger.warning(
+                        "WebSearch retrying (%d/3) after %s, waiting %.1fs",
+                        attempt + 1, status, wait,
+                    )
                     await asyncio.sleep(wait)
                     continue
                 # All other errors: break immediately.

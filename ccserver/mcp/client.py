@@ -205,7 +205,7 @@ class MCPClient:
                     stderr_task.cancel()
                 return MCPOutcome.ok("\n".join(parts), server=self.server_name)
         except Exception as e:
-            logger.error(
+            logger.exception(
                 "MCP call failed | server={} tool={} error={}",
                 self.server_name, tool_name, e,
             )

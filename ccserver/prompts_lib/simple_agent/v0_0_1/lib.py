@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from ccserver.prompts_lib.base import PromptLib
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
+
+from ccserver.prompts_lib.base import PromptLib
 
 if TYPE_CHECKING:
     from ccserver.session import Session
@@ -28,7 +30,6 @@ class SimpleAgentV001(PromptLib):
     def build_system(self, session: Session, model: str, language: str, cch: str = "", injected_system: list | None = None, append_system: bool = True, is_spawn: bool = False) -> list:
         if not injected_system:
             return []
-        from datetime import datetime, timezone
         date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         text = f"{injected_system}\n\n# currentDate\nToday's date is {date_str}."
         return [{"type": "text", "text": text}]

@@ -144,7 +144,7 @@ class MongoStorageAdapter(StorageAdapter):
                 "created_at": now,
             })
         except Exception as exc:
-            logger.error(
+            logger.exception(
                 "MongoAdapter: append_message failed | session={} error={}",
                 session_id[:8], exc,
             )

@@ -59,6 +59,8 @@ class FileStorageAdapter(StorageAdapter):
         meta = json.loads(meta_path.read_text())
         messages = []
         msg_path = session_dir / "messages.jsonl"
+        # 限制单会话最大读取消息条数，防止大会话 OOM
+        MAX_MESSAGES_PER_SESSION = 10_000
         # 直接用 try/except 打开文件，避免 TOCTOU 竞态（检查后文件可能消失）
         try:
             with open(msg_path, "r", encoding="utf-8") as f:
@@ -72,6 +74,14 @@ class FileStorageAdapter(StorageAdapter):
                                 "FileStorageAdapter: skip corrupted message line | session_id={}",
                                 session_id[:8],
                             )
+                    if len(messages) >= MAX_MESSAGES_PER_SESSION:
+                        logger.warning(
+                            "FileStorageAdapter: message count exceeds limit {} | "
+                            "session_id={} truncating",
+                            MAX_MESSAGES_PER_SESSION,
+                            session_id[:8],
+                        )
+                        break
         except FileNotFoundError:
             pass  # 消息文件不存在，返回空列表
 

@@ -54,7 +54,7 @@ def parse(text: str) -> tuple[dict | None, str]:
     try:
         meta = yaml.safe_load(match.group(1))
     except Exception as e:
-        logger.error("yaml_parser: YAML frontmatter parsing failed | error=%s", e)
+        logger.exception("yaml_parser: YAML frontmatter parsing failed | error=%s", e)
         return None, text
 
     if not isinstance(meta, dict):

@@ -228,7 +228,7 @@ class BTDDGWebSearch(BuiltinTools):
       - Server-side domain filtering (allowed/blocked)
       - BeautifulSoup parsing (robust)
       - Semaphore-concurrency guard (max 5 simultaneous searches)
-      - 1-retry on transient errors
+      - 2 retries with exponential backoff on transient errors
     """
 
     name = "WebSearch"

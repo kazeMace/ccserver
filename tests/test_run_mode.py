@@ -65,6 +65,8 @@ def _make_agent(
     # hooks.emit 是 async，返回有 .block 属性的对象
     session.hooks.emit = AsyncMock(return_value=_make_hook_result(block=False))
     session.hooks.emit_void = AsyncMock(return_value=None)
+    # event_bus.publish 是 async，测试中需要支持 await
+    session.event_bus.publish = AsyncMock(return_value=None)
 
     context = AgentContext(name="orchestrator", messages=[], depth=0)
     return Agent(
@@ -208,6 +210,7 @@ def test_auto_mode_ask_tool_denied(tmp_path):
     session.project_root = tmp_path
     session.hooks.emit = AsyncMock(return_value=_make_hook_result(block=False))
     session.hooks.emit_void = AsyncMock(return_value=None)
+    session.event_bus.publish = AsyncMock(return_value=None)
 
     emitter = MagicMock(spec=BaseEmitter)
     emitter.emit_permission_request = AsyncMock(return_value=True)
@@ -254,6 +257,7 @@ def test_auto_mode_non_ask_tool_not_blocked(tmp_path):
     session.project_root = tmp_path
     session.hooks.emit = AsyncMock(return_value=_make_hook_result(block=False))
     session.hooks.emit_void = AsyncMock(return_value=None)
+    session.event_bus.publish = AsyncMock(return_value=None)
 
     emitter = MagicMock(spec=BaseEmitter)
     emitter.emit_permission_request = AsyncMock(return_value=True)
@@ -299,6 +303,7 @@ def test_interactive_mode_ask_tool_granted(tmp_path):
     session.project_root = tmp_path
     session.hooks.emit = AsyncMock(return_value=_make_hook_result(block=False))
     session.hooks.emit_void = AsyncMock(return_value=None)
+    session.event_bus.publish = AsyncMock(return_value=None)
 
     emitter = MagicMock(spec=BaseEmitter)
     emitter.emit_permission_request = AsyncMock(return_value=True)   # 用户批准
@@ -339,6 +344,7 @@ def test_interactive_mode_ask_tool_denied(tmp_path):
     session.project_root = tmp_path
     session.hooks.emit = AsyncMock(return_value=_make_hook_result(block=False))
     session.hooks.emit_void = AsyncMock(return_value=None)
+    session.event_bus.publish = AsyncMock(return_value=None)
 
     emitter = MagicMock(spec=BaseEmitter)
     emitter.emit_permission_request = AsyncMock(return_value=False)  # 用户拒绝

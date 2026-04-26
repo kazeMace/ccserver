@@ -563,21 +563,26 @@ class Agent:
 
         # 发布 subagent_spawned 事件，供 monitor 追踪 Agent 树形关系
         # spawn_child 是同步方法，使用 create_task 异步发布事件
-        asyncio.create_task(self.session.event_bus.publish(AgentEvent(
-            type=EventType.SUBAGENT_SPAWNED,
-            agent_id=self.context.agent_id,
-            session_id=self.session.id,
-            sender_type=SenderType.AGENT,
-            payload={
-                "parent_id": self.context.agent_id,
-                "child_id": child.context.agent_id,
-                "child_name": child.context.name or "unnamed",
-                "depth": child.context.depth,
-                "mode": "sync",
-                "model": child.model,
-                "round_limit": child.round_limit,
-            },
-        )))
+        # 无事件循环时（如单元测试）静默跳过，避免 RuntimeError
+        try:
+            asyncio.get_running_loop()
+            asyncio.create_task(self.session.event_bus.publish(AgentEvent(
+                type=EventType.SUBAGENT_SPAWNED,
+                agent_id=self.context.agent_id,
+                session_id=self.session.id,
+                sender_type=SenderType.AGENT,
+                payload={
+                    "parent_id": self.context.agent_id,
+                    "child_id": child.context.agent_id,
+                    "child_name": child.context.name or "unnamed",
+                    "depth": child.context.depth,
+                    "mode": "sync",
+                    "model": child.model,
+                    "round_limit": child.round_limit,
+                },
+            )))
+        except RuntimeError:
+            pass  # no running event loop — skip event publishing
 
         return child
 
@@ -2381,6 +2386,14 @@ class Agent:
 
     async def _maybe_compact(self):
         self.compactor.micro(self.context.messages)
+        msg_count = len(self.context.messages)
+        # 消息条数过多时记录警告，提醒用户可能需要手动压缩或增加阈值
+        if msg_count > 300:
+            logger.warning(
+                "Agent message count high | agent={} msgs={} "
+                "consider increasing compact threshold or triggering manual compact",
+                self.aid_label, msg_count,
+            )
         if self.compactor.needs_compact(self.context.messages):
             logger.debug(f"do compact")
             await self._do_compact(reason="token threshold reached")

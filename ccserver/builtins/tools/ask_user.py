@@ -62,6 +62,8 @@ class BTAskUser(BuiltinTools):
     }
 
     async def run(self, questions: list) -> ToolResult:
+        if not isinstance(questions, list):
+            return ToolResult.error("questions must be a list")
         # This method is never actually called.
         # Agent._handle_tools() intercepts "AskUserQuestion" calls,
         # emits an ask_user event, and waits for the user's answer

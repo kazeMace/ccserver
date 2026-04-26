@@ -12,6 +12,8 @@ def _make_agent(prompt_version="cc_reverse:v2.1.81", tmp_path=None):
     # project_root 必须是真实 Path，lib.py 会做 / 运算访问 CLAUDE.md
     session.project_root = tmp_path or Path("/tmp")
     session.mcp.schemas.return_value = []
+    # event_bus.publish 是 async，测试中需要支持 await
+    session.event_bus.publish = AsyncMock(return_value=None)
     emitter = MagicMock()
     emitter.emit_token = AsyncMock()
     emitter.emit_done = AsyncMock()
