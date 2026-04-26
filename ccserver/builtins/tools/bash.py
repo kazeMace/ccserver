@@ -76,75 +76,92 @@ class BTBash(BuiltinTools):
         ),
     }
 
-    # 硬编码兜底黑名单：无论任何配置都拒绝，防止最危险的操作
-    # 每条记录为 (检测模式, 人类可读描述)
-    # 模式支持两种形式：
-    #   - 字符串：做子串匹配（简单命令）
-    #   - 元组：shlex 分词后的 token 序列匹配（防止空格/引号绕过）
-    _HARDBLOCK: frozenset[tuple[str, str]] = frozenset({
-        ("rm -rf /", "recursive delete root filesystem"),
-        ("shutdown", "system shutdown"),
-        ("reboot", "system reboot"),
-        ("> /dev/", "redirect to system device"),
-    })
-
     def _check_hardblock(self, cmd: str) -> ToolResult | None:
         """
         检查命令是否命中硬编码黑名单。
 
-        采用双层检测策略：
-        1. 子串匹配：对简单危险命令做快速拦截
-        2. Token 匹配：对 shlex 分词后的 token 序列做精确匹配，
-           防止通过空格、引号、换行等手法绕过
+        采用基于 shlex 分词的 token 级精确匹配，防止通过空格、
+        引号、换行、sudo 前缀、完整路径等手法绕过。
 
         同时递归检查 shell wrapper 的 -c 参数内容
         （如 sh -c "rm -rf /"）。
         """
-        # 第一层：子串匹配（保留向后兼容的快速路径）
-        for pattern, desc in self._HARDBLOCK:
-            if pattern in cmd:
-                return ToolResult.error(f"Blocked: {desc}")
-
-        # 第二层：shlex 分词后的 token 匹配
         try:
             tokens = shlex.split(cmd)
         except ValueError:
-            # shlex 分词失败（如未闭合引号），退回到子串匹配
-            return None
+            # shlex 分词失败（如未闭合引号），退回到空格分割
+            tokens = cmd.split()
 
         if not tokens:
             return None
 
-        # 检查 token 序列中是否包含危险命令
-        # 例如：["rm", "-rf", "/"] 中包含 "rm" 和 "/"
-        first_token = tokens[0].lower()
+        # ── 跳过特权前缀（sudo/su/doas），定位实际命令 ──
+        cmd_idx = 0
+        while cmd_idx < len(tokens) and tokens[cmd_idx].lower() in (
+            "sudo", "su", "doas", "nice", "env", "time",
+        ):
+            cmd_idx += 1
+        if cmd_idx >= len(tokens):
+            return None
 
-        # 检查 rm + 根目录相关参数
-        if first_token == "rm":
-            # 检查是否包含根目录作为参数
-            has_recursive = any(t.startswith("-") and "r" in t for t in tokens[1:])
-            has_root = any(t == "/" or t == "/." for t in tokens[1:])
+        # 处理前缀命令自身的 -c 参数（如 su -c "rm -rf /"）
+        if tokens[cmd_idx] == "-c" and cmd_idx + 1 < len(tokens):
+            inner_result = self._check_hardblock(tokens[cmd_idx + 1])
+            if inner_result:
+                return inner_result
+            return None
+
+        actual_cmd = tokens[cmd_idx].lower()
+        # 处理完整路径：/bin/rm → rm
+        actual_cmd = Path(actual_cmd).name
+        args = tokens[cmd_idx + 1:]
+
+        # ── 检查 rm + 递归 + 根目录 ──
+        if actual_cmd == "rm":
+            # 处理 -- 选项结束标记：rm -- -rf / 中 -- 后的参数不再视为选项
+            try:
+                dd_idx = args.index("--")
+                args_after_dd = args[dd_idx + 1:]
+                options = args[:dd_idx]
+            except ValueError:
+                args_after_dd = args
+                options = args
+
+            has_recursive = any(
+                t.startswith("-") and "r" in t for t in options
+            )
+            has_root = any(t == "/" or t == "/." for t in args_after_dd)
             if has_recursive and has_root:
-                return ToolResult.error("Blocked: recursive delete root filesystem")
+                return ToolResult.error(
+                    "Blocked: recursive delete root filesystem"
+                )
 
-        # 检查 shutdown / reboot / poweroff / halt
-        if first_token in ("shutdown", "reboot", "poweroff", "halt", "init"):
-            return ToolResult.error(f"Blocked: system control command '{first_token}'")
+        # ── 检查系统控制命令 ──
+        if actual_cmd in ("shutdown", "reboot", "poweroff", "halt", "init"):
+            return ToolResult.error(
+                f"Blocked: system control command '{actual_cmd}'"
+            )
 
-        # 递归检查 shell wrapper 的 -c 参数
-        # 例如：sh -c "rm -rf /" 或 bash -c "rm -rf /"
-        if first_token in ("sh", "bash", "zsh", "dash", "ksh"):
-            # 查找 -c 参数的位置
+        # ── 检查重定向到系统设备 ──
+        # 如 "> /dev/sda"、"dd if=/dev/zero of=/dev/sda"
+        for i, t in enumerate(tokens):
+            if t in (">", ">>", "1>", "1>>", "2>", "2>>"):
+                if i + 1 < len(tokens) and tokens[i + 1].startswith("/dev/"):
+                    return ToolResult.error("Blocked: redirect to system device")
+            # dd 命令的 of=/dev/sda 形式
+            if t.startswith("of=/dev/") or t.startswith("if=/dev/"):
+                return ToolResult.error("Blocked: direct device access")
+
+        # ── 递归检查 shell wrapper 的 -c 参数 ──
+        if actual_cmd in ("sh", "bash", "zsh", "dash", "ksh", "fish"):
             try:
                 c_idx = tokens.index("-c")
                 if c_idx + 1 < len(tokens):
-                    inner_cmd = tokens[c_idx + 1]
-                    # 递归检查内层命令
-                    inner_result = self._check_hardblock(inner_cmd)
+                    inner_result = self._check_hardblock(tokens[c_idx + 1])
                     if inner_result:
                         return inner_result
             except ValueError:
-                pass  # 无 -c 参数
+                pass
 
         return None
 
@@ -367,7 +384,6 @@ class BTBash(BuiltinTools):
         注意：stdout 全量读取后再追加到 task.output，
         增量输出轮询（pollTasks）留待 Step 3 实现。
         """
-        offset = 0  # 记录本次轮询开始前的 output_offset
         try:
             while True:
                 # 检查进程是否已结束
@@ -389,15 +405,14 @@ class BTBash(BuiltinTools):
                 if chunk:
                     decoded = chunk.decode(errors="replace")
                     task.append_output(decoded)
-                    # 只推送本轮新增的增量
-                    delta = task.output[offset:]
-                    if self._emitter:
+                    # 只推送本轮新增的增量（read_incremental 自动处理 offset）
+                    delta = task.read_incremental()
+                    if delta and self._emitter:
                         await self._emitter.emit_task_progress(
                             task_id=task.id,
                             status="running",
                             output=delta,
                         )
-                    offset = task.output_offset
 
             # 进程结束：读取可能残留的未读数据
             try:
@@ -407,8 +422,8 @@ class BTBash(BuiltinTools):
             if remaining:
                 decoded = remaining.decode(errors="replace")
                 task.append_output(decoded)
-                delta = task.output[offset:]
-                if self._emitter:
+                delta = task.read_incremental()
+                if delta and self._emitter:
                     await self._emitter.emit_task_progress(
                         task_id=task.id,
                         status="running",

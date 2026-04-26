@@ -113,9 +113,9 @@ class FileStorageAdapter(StorageAdapter):
 
     def rewrite_messages(self, session_id: str, messages: list) -> None:
         msg_path = self._session_dir(session_id) / "messages.jsonl"
-        with open(msg_path, "w") as f:
+        with open(msg_path, "w", encoding="utf-8") as f:
             for msg in messages:
-                f.write(json.dumps(msg, default=str) + "\n")
+                f.write(json.dumps(msg, default=_json_default) + "\n")
         logger.debug("FileAdapter: messages rewritten | id={} count={}", session_id[:8], len(messages))
 
     def save_transcript(self, session_id: str, messages: list) -> str:
@@ -344,7 +344,7 @@ class FileStorageAdapter(StorageAdapter):
         """向 inbox 文件追加一条消息。"""
         path = self._inbox_file(team_name, recipient)
         path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "a") as f:
+        with open(path, "a", encoding="utf-8") as f:
             f.write(json.dumps(message, default=_json_default) + "\n")
         logger.debug(
             "FileAdapter: inbox appended | team={} recipient={} msg_id={}",
@@ -366,7 +366,7 @@ class FileStorageAdapter(StorageAdapter):
             return []
 
         messages = []
-        with open(path, "r") as f:
+        with open(path, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if not line:
@@ -382,28 +382,34 @@ class FileStorageAdapter(StorageAdapter):
         return messages
 
     def mark_inbox_read(self, team_name: str, recipient: str, message_ids: list[str]) -> None:
-        """将指定 ID 的消息标记为已读（重写整个 inbox 文件）。"""
+        """将指定 ID 的消息标记为已读（流式重写 inbox 文件，避免大会话 OOM）。"""
         path = self._inbox_file(team_name, recipient)
-        if not path.exists():
+        # 直接用 try/except 打开，避免 TOCTOU 竞态
+        try:
+            with open(path, "r", encoding="utf-8") as _:
+                pass
+        except FileNotFoundError:
             return
 
         target_ids = set(message_ids)
-        lines = []
         updated = 0
-        with open(path, "r") as f:
-            for line in f:
+        temp_path = path.with_suffix(".tmp")
+
+        # 流式读取 + 写入临时文件，内存占用 O(1)（只缓存当前行）
+        with open(path, "r", encoding="utf-8") as src, open(temp_path, "w", encoding="utf-8") as dst:
+            for line in src:
                 raw = line.strip()
                 if not raw:
-                    lines.append(line)
+                    dst.write(line)
                     continue
                 msg = json.loads(raw)
                 if msg.get("id") in target_ids and not msg.get("read"):
                     msg["read"] = True
                     updated += 1
-                lines.append(json.dumps(msg, default=str) + "\n")
+                dst.write(json.dumps(msg, default=_json_default) + "\n")
 
-        with open(path, "w") as f:
-            f.writelines(lines)
+        # 原子替换：保证写操作完整性，异常时原文件不受影响
+        temp_path.replace(path)
 
         logger.debug(
             "FileAdapter: inbox marked read | team={} recipient={} updated={}",

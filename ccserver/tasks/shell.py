@@ -173,7 +173,9 @@ class ShellTaskState:
     proc: Optional["asyncio.subprocess.Process"] = None  # type: ignore[name-defined]
 
     # ── 输出追踪 ─────────────────────────────────────────────────────────────
-    output: str = ""
+    # 使用列表累积输出片段，避免大字符串切片时的 O(n) 内存拷贝。
+    # output 为 property，读取时惰性拼接，外部代码无感知。
+    _output_parts: list[str] = field(default_factory=list, repr=False)
     output_offset: int = 0
 
     # ── 结果 ─────────────────────────────────────────────────────────────────
@@ -185,6 +187,16 @@ class ShellTaskState:
     end_time: Optional[datetime] = None
 
     # ── 只读属性 ─────────────────────────────────────────────────────────────
+
+    @property
+    def output(self) -> str:
+        """
+        完整输出字符串（惰性拼接）。
+
+        内部以 list[str] 累积片段，读取时才 join，
+        避免每次追加都触发大字符串的重新分配和拷贝。
+        """
+        return "".join(self._output_parts)
 
     @property
     def is_running(self) -> bool:
@@ -308,24 +320,30 @@ class ShellTaskState:
 
     def append_output(self, chunk: str) -> None:
         """
-        追加新的输出片段到 output 字段。
+        追加新的输出片段到内部列表。
 
         每次追加前更新 output_offset（追加前的长度），确保外部轮询时
-        可以通过 output[self.output_offset:] 获取增量部分。
+        可以通过 read_incremental() 获取增量部分。
 
-        当 output 总长度超过 MAX_OUTPUT_SIZE（5MB）时，自动截断前面部分，
+        当总输出长度超过 MAX_OUTPUT_SIZE（5MB）时，自动截断前面部分，
         防止长时间运行的命令（如日志输出）导致内存无限增长。
 
         Args:
             chunk: 新的输出字符串。
         """
-        self.output_offset = len(self.output)
-        self.output += chunk
+        current_len = sum(len(p) for p in self._output_parts)
+        self.output_offset = current_len
+        self._output_parts.append(chunk)
 
         # 输出过长时截断旧内容，保留尾部
-        if len(self.output) > MAX_OUTPUT_SIZE:
-            overflow = len(self.output) - MAX_OUTPUT_SIZE
-            self.output = self.output[overflow:]
+        total_len = current_len + len(chunk)
+        if total_len > MAX_OUTPUT_SIZE:
+            overflow = total_len - MAX_OUTPUT_SIZE
+            # 将列表拼接后截断，再重新拆成单一片段
+            # 截断操作不频繁（仅在超过 5MB 时触发），拼接成本可接受
+            full = "".join(self._output_parts)
+            truncated = full[overflow:]
+            self._output_parts = [truncated]
             # output_offset 同步调整，避免指向被截断的区域
             self.output_offset = max(0, self.output_offset - overflow)
             logger.warning(
@@ -337,8 +355,8 @@ class ShellTaskState:
         """
         返回自上次读取以来的增量输出，并将 offset 更新到最新位置。
 
-        每次调用后 output_offset 被更新为当前 output 的长度，
-        下次调用时自动从新位置开始返回新增内容。
+        利用 _output_parts 列表直接定位未读片段，避免对大字符串做 O(n) 切片。
+        每次调用后 output_offset 被更新为当前总长度，下次调用时自动从新位置开始。
 
         使用场景：pollTasks 轮询时，调用 read_incremental() 获取本轮增量，
         无需关心具体从哪里开始——offset 会自动推进。
@@ -346,9 +364,30 @@ class ShellTaskState:
         Returns:
             从 output_offset 位置到末尾的新增内容。
         """
-        delta = self.output[self.output_offset :]
-        self.output_offset = len(self.output)
-        return delta
+        offset = self.output_offset
+        total = 0
+        start_part_idx = 0
+        start_char_offset = 0
+
+        # 定位 output_offset 落在哪个片段中
+        for i, part in enumerate(self._output_parts):
+            part_len = len(part)
+            if total + part_len > offset:
+                start_part_idx = i
+                start_char_offset = offset - total
+                break
+            total += part_len
+        else:
+            # offset 已到达或超过末尾，无新增内容
+            self.output_offset = sum(len(p) for p in self._output_parts)
+            return ""
+
+        # 收集从 start_part_idx 开始的未读片段
+        delta_parts = [self._output_parts[start_part_idx][start_char_offset:]]
+        delta_parts.extend(self._output_parts[start_part_idx + 1 :])
+
+        self.output_offset = sum(len(p) for p in self._output_parts)
+        return "".join(delta_parts)
 
     # ── 内部清理 ─────────────────────────────────────────────────────────────
 
@@ -377,6 +416,7 @@ class ShellTaskState:
             "is_backgrounded": self.is_backgrounded,
             "pid": self.pid,
             "output": self.output,
+            "output_offset": self.output_offset,
             "exit_code": self.exit_code,
             "reason": self.reason,
             "start_time": self.start_time.isoformat() if self.start_time else None,
@@ -398,6 +438,8 @@ class ShellTaskState:
         Returns:
             新的 ShellTaskState 实例（proc 字段为 None）。
         """
+        # output 是 property，不能传给 dataclass __init__，
+        # 先构造再手动填充 _output_parts
         state = cls(
             id=data["id"],
             command=data["command"],
@@ -405,11 +447,13 @@ class ShellTaskState:
             status=data.get("status", TaskStatus.PENDING),
             is_backgrounded=data.get("is_backgrounded", True),
             pid=data.get("pid"),
-            output=data.get("output", ""),
             output_offset=data.get("output_offset", 0),
             exit_code=data.get("exit_code"),
             reason=data.get("reason"),
         )
+        output_str = data.get("output", "")
+        if output_str:
+            state._output_parts = [output_str]
         if data.get("start_time"):
             state.start_time = datetime.fromisoformat(data["start_time"])
         if data.get("end_time"):

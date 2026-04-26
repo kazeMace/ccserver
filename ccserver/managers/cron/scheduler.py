@@ -324,6 +324,9 @@ class TaskScheduler:
 
         由 Session 初始化时调用（参见 Session.__post_init__）。
         """
+        if self._session is None or self._session.storage is None:
+            return
+
         raw_tasks: list[dict] = []
         try:
             raw_tasks = maybe_await(

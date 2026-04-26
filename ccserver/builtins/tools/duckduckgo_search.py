@@ -66,6 +66,14 @@ def _get_client() -> httpx.AsyncClient:
     return _http_client
 
 
+async def close_http_client() -> None:
+    """关闭模块级共享的 httpx.AsyncClient，释放 TCP 连接池。"""
+    global _http_client
+    if _http_client is not None and not _http_client.is_closed:
+        await _http_client.aclose()
+        _http_client = None
+
+
 def _make_cache_key(query: str, allowed: list | None, blocked: list | None) -> int:
     """Stable cache key for a search query (hash of args)."""
     import hashlib
