@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Literal, Optional
 
 from loguru import logger
 
+from ccserver.utils.async_compat import maybe_await
 from .models import CronTask
 from .cron_parser import parse_cron_next_run, compute_jitter_delay
 
@@ -204,7 +205,9 @@ class CronScheduler:
         """
         raw_tasks: list[dict] = []
         try:
-            raw_tasks = self._session.storage.list_cron_tasks(self._session_id)
+            raw_tasks = maybe_await(
+                self._session.storage.list_cron_tasks(self._session_id)
+            )
         except (OSError, ValueError) as e:
             # 存储层 I/O 错误或数据格式错误，记录后跳过恢复
             logger.warning(
@@ -436,10 +439,12 @@ class CronScheduler:
     # ── 持久化 ─────────────────────────────────────────────────────────────────
 
     def _save_task(self, task: CronTask) -> None:
-        """将任务写入磁盘（durable=True 时调用）。"""
+        """将任务写入存储（durable=True 时调用）。兼容 sync / async adapter。"""
         try:
-            self._session.storage.create_cron_task(
-                self._session_id, task.to_dict(),
+            maybe_await(
+                self._session.storage.create_cron_task(
+                    self._session_id, task.to_dict(),
+                )
             )
         except Exception as e:
             logger.error(
@@ -448,9 +453,11 @@ class CronScheduler:
             )
 
     def _delete_task(self, task_id: str) -> None:
-        """从磁盘删除任务（durable=True 时调用）。"""
+        """从存储删除任务（durable=True 时调用）。兼容 sync / async adapter。"""
         try:
-            self._session.storage.delete_cron_task(self._session_id, task_id)
+            maybe_await(
+                self._session.storage.delete_cron_task(self._session_id, task_id)
+            )
         except Exception as e:
             logger.error(
                 "CronTask.delete from storage failed | task_id={} error={}",

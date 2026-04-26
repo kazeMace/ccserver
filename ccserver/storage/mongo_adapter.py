@@ -381,3 +381,67 @@ class MongoStorageAdapter(StorageAdapter):
             recipient,
             updated,
         )
+
+    # ── Cron 任务存储 ────────────────────────────────────────────────────────────
+
+    async def create_cron_task(self, session_id: str, task_data: dict) -> None:
+        """插入或替换 cron 任务文档。"""
+        doc = dict(task_data)
+        doc["session_id"] = session_id
+        await self._db["cron_tasks"].replace_one(
+            {"session_id": session_id, "task_id": task_data["task_id"]},
+            doc,
+            upsert=True,
+        )
+        logger.debug(
+            "MongoAdapter: cron task saved | session={} task_id={}",
+            session_id[:8], task_data.get("task_id"),
+        )
+
+    async def load_cron_task(self, session_id: str, task_id: str) -> dict | None:
+        """按 session_id + task_id 查询单个 cron 任务。"""
+        doc = await self._db["cron_tasks"].find_one(
+            {"session_id": session_id, "task_id": task_id}
+        )
+        if doc is None:
+            return None
+        doc.pop("_id", None)
+        doc.pop("session_id", None)
+        return doc
+
+    async def update_cron_task(self, session_id: str, task_data: dict) -> None:
+        """覆盖更新 cron 任务（与 create 行为相同）。"""
+        await self.create_cron_task(session_id, task_data)
+
+    async def delete_cron_task(self, session_id: str, task_id: str) -> None:
+        """删除单个 cron 任务。"""
+        result = await self._db["cron_tasks"].delete_one(
+            {"session_id": session_id, "task_id": task_id}
+        )
+        logger.debug(
+            "MongoAdapter: cron task deleted | session={} task_id={} count={}",
+            session_id[:8], task_id, result.deleted_count,
+        )
+
+    async def list_cron_tasks(self, session_id: str) -> list[dict]:
+        """列出某 session 下所有 cron 任务，按 task_id 排序。"""
+        docs = await self._db["cron_tasks"].find(
+            {"session_id": session_id}
+        ).to_list(length=None)
+        for doc in docs:
+            doc.pop("_id", None)
+            doc.pop("session_id", None)
+        return sorted(docs, key=lambda t: t.get("task_id", ""))
+
+    async def get_cron_highwatermark(self, session_id: str) -> int:
+        """从 sessions 集合读取 cron_highwatermark 字段。"""
+        doc = await self._sessions.find_one({"_id": session_id})
+        return doc.get("cron_highwatermark", 0) if doc else 0
+
+    async def set_cron_highwatermark(self, session_id: str, value: int) -> None:
+        """更新 sessions 集合中的 cron_highwatermark 字段。"""
+        await self._sessions.update_one(
+            {"_id": session_id},
+            {"$set": {"cron_highwatermark": value}},
+            upsert=True,
+        )
