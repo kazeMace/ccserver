@@ -62,6 +62,19 @@ def _get_http_client() -> httpx.AsyncClient:
     return _http_client
 
 
+async def close_http_client() -> None:
+    """
+    关闭模块级共享的 httpx.AsyncClient。
+
+    在应用退出或测试清理时调用，释放 TCP 连接池。
+    关闭后下次调用 _get_http_client() 会自动重建新实例。
+    """
+    global _http_client
+    if _http_client is not None and not _http_client.is_closed:
+        await _http_client.aclose()
+        _http_client = None
+
+
 # ─── HTML → Markdown converter (cached, reused) ───────────────────────────────
 
 _html2text_converter: Optional[html2text.HTML2Text] = None
