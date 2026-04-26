@@ -579,6 +579,7 @@ class TaskScheduler:
                 from ccserver.event_bus import AgentEvent
                 event = AgentEvent(
                     agent_id=root.context.agent_id if root else "scheduler",
+                    session_id=self._session.id,
                     sender_type="scheduler",
                     type="scheduled_task_triggered",
                     payload=trigger_payload,
