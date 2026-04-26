@@ -300,18 +300,18 @@ class MarkReadRequest(BaseModel):
 
 
 @app.post("/sessions", summary="Create a new session with an isolated workdir")
-def create_session(req: CreateSessionRequest):
+def create_session(req: CreateSessionRequest) -> dict:
     session = session_manager.create(req.session_id)
     return session.to_meta()
 
 
 @app.get("/sessions", summary="List all sessions")
-def list_sessions():
+def list_sessions() -> list[dict]:
     return session_manager.list_all()
 
 
 @app.get("/sessions/{session_id}", summary="Get session metadata")
-def get_session(session_id: str):
+def get_session(session_id: str) -> dict:
     session = _get_or_404(session_id)
     return {**session.to_meta(), "message_count": len(session.messages)}
 
@@ -323,7 +323,7 @@ def get_session(session_id: str):
     "/sessions/{session_id}/tasks",
     summary="List all shell background tasks for a session",
 )
-def list_shell_tasks(session_id: str):
+def list_shell_tasks(session_id: str) -> list[dict]:
     """
     返回当前 Session 中所有后台 shell 任务的状态。
 
@@ -355,7 +355,7 @@ def list_shell_tasks(session_id: str):
     "/sessions/{session_id}/tasks/{task_id}/kill",
     summary="Kill a running shell background task",
 )
-def kill_shell_task(session_id: str, task_id: str):
+def kill_shell_task(session_id: str, task_id: str) -> dict:
     """
     主动终止一个运行中的后台 shell 任务。
 
@@ -396,7 +396,7 @@ def kill_shell_task(session_id: str, task_id: str):
     "/sessions/{session_id}/tasks/{task_id}",
     summary="Get a single shell background task by ID",
 )
-def get_shell_task(session_id: str, task_id: str):
+def get_shell_task(session_id: str, task_id: str) -> dict:
     """
     根据 task_id 查询单个任务的详细状态。
 
@@ -429,7 +429,7 @@ def get_shell_task(session_id: str, task_id: str):
     "/sessions/{session_id}/agent-tasks",
     summary="List all agent background tasks for a session",
 )
-def list_agent_tasks(session_id: str):
+def list_agent_tasks(session_id: str) -> list[dict]:
     """
     返回当前 Session 中所有后台 Agent 任务的状态。
 
@@ -459,7 +459,7 @@ def list_agent_tasks(session_id: str):
     "/sessions/{session_id}/agent-tasks/{task_id}",
     summary="Get a single agent background task by ID",
 )
-def get_agent_task(session_id: str, task_id: str):
+def get_agent_task(session_id: str, task_id: str) -> dict:
     """
     根据 task_id 查询单个 Agent 任务的详细状态。
 
@@ -489,7 +489,7 @@ def get_agent_task(session_id: str, task_id: str):
     "/sessions/{session_id}/agent-tasks/{task_id}/cancel",
     summary="Cancel a running agent background task",
 )
-async def cancel_agent_task(session_id: str, task_id: str):
+async def cancel_agent_task(session_id: str, task_id: str) -> dict:
     """
     主动取消一个运行中的后台 Agent 任务。
 
@@ -571,7 +571,7 @@ def _role_from_str(role: str) -> TeamMemberRole:
     "/sessions/{session_id}/teams",
     summary="List all teams in a session",
 )
-def list_teams(session_id: str):
+def list_teams(session_id: str) -> list[dict]:
     """返回当前 Session 中的所有团队列表。"""
     session = _get_or_404(session_id)
     registry = session.team_registry
@@ -594,7 +594,7 @@ def list_teams(session_id: str):
     "/sessions/{session_id}/teams",
     summary="Create a new team",
 )
-def create_team(session_id: str, req: CreateTeamRequest):
+def create_team(session_id: str, req: CreateTeamRequest) -> dict:
     """在指定 Session 中创建一个新团队。"""
     session = _get_or_404(session_id)
     registry = session.team_registry
@@ -615,7 +615,7 @@ def create_team(session_id: str, req: CreateTeamRequest):
     "/sessions/{session_id}/teams/{team_name}",
     summary="Get team details",
 )
-def get_team(session_id: str, team_name: str):
+def get_team(session_id: str, team_name: str) -> dict:
     """获取指定团队的详细信息，包括所有成员。"""
     session = _get_or_404(session_id)
     team = _get_team_or_404(session, team_name)
@@ -631,7 +631,7 @@ def get_team(session_id: str, team_name: str):
     "/sessions/{session_id}/teams/{team_name}",
     summary="Delete a team",
 )
-def delete_team(session_id: str, team_name: str):
+def delete_team(session_id: str, team_name: str) -> dict:
     """删除指定团队（仅移除注册表与持久化数据，不影响正在运行的 Agent）。"""
     session = _get_or_404(session_id)
     registry = session.team_registry
@@ -648,7 +648,7 @@ def delete_team(session_id: str, team_name: str):
     "/sessions/{session_id}/teams/{team_name}/members",
     summary="List team members",
 )
-def list_members(session_id: str, team_name: str):
+def list_members(session_id: str, team_name: str) -> list[dict]:
     """返回团队成员列表。"""
     session = _get_or_404(session_id)
     team = _get_team_or_404(session, team_name)
@@ -661,7 +661,7 @@ def list_members(session_id: str, team_name: str):
     "/sessions/{session_id}/teams/{team_name}/members",
     summary="Add a member to a team",
 )
-def add_member(session_id: str, team_name: str, req: AddMemberRequest):
+def add_member(session_id: str, team_name: str, req: AddMemberRequest) -> dict:
     """向指定团队添加一名成员。"""
     session = _get_or_404(session_id)
     registry = session.team_registry
@@ -679,7 +679,7 @@ def add_member(session_id: str, team_name: str, req: AddMemberRequest):
     "/sessions/{session_id}/teams/{team_name}/members/{agent_id}",
     summary="Remove a member from a team",
 )
-def remove_member(session_id: str, team_name: str, agent_id: str):
+def remove_member(session_id: str, team_name: str, agent_id: str) -> dict:
     """从团队中移除指定成员。"""
     session = _get_or_404(session_id)
     registry = session.team_registry
@@ -696,7 +696,7 @@ def remove_member(session_id: str, team_name: str, agent_id: str):
     "/sessions/{session_id}/teams/{team_name}/health",
     summary="Team health check",
 )
-def team_health(session_id: str, team_name: str):
+def team_health(session_id: str, team_name: str) -> dict:
     """
     返回团队后台组件的健康状态：
       - dispatcher_alive: TeamTaskDispatcher 是否在运行
@@ -735,7 +735,7 @@ async def send_mailbox_message(
     session_id: str,
     team_name: str,
     req: SendTeamMessageRequest,
-):
+) -> dict:
     """
     向 Team 中某个成员的 Mailbox 发送消息。
     to="*" 表示广播（排除发送者自己时由业务层处理）。
@@ -784,7 +784,7 @@ async def fetch_mailbox_messages(
     agent_id: str,
     unread_only: bool = True,
     limit: int = 100,
-):
+) -> list[dict]:
     """获取指定成员的 Mailbox 消息列表。"""
     session = _get_or_404(session_id)
     _get_team_or_404(session, team_name)
@@ -805,7 +805,7 @@ async def mark_mailbox_read(
     team_name: str,
     agent_id: str,
     req: MarkReadRequest,
-):
+) -> dict:
     """将指定消息标记为已读。"""
     session = _get_or_404(session_id)
     _get_team_or_404(session, team_name)
@@ -824,7 +824,7 @@ class StartChannelRequest(BaseModel):
 
 
 @app.get("/channels", summary="List all registered channel adapters")
-def list_channels():
+def list_channels() -> list[dict]:
     """
     返回所有已注册的 channel 适配器列表及其能力声明。
 
@@ -839,7 +839,7 @@ def list_channels():
 
 
 @app.get("/channels/status", summary="List running channel accounts")
-def list_channel_status():
+def list_channel_status() -> list[dict]:
     """
     返回所有正在运行的 channel 账户状态。
 
@@ -855,7 +855,7 @@ def list_channel_status():
 
 
 @app.post("/channels/start", summary="Start a channel account")
-async def start_channel(req: StartChannelRequest):
+async def start_channel(req: StartChannelRequest) -> dict:
     """
     启动一个 channel 账户。
 
@@ -886,7 +886,7 @@ async def start_channel(req: StartChannelRequest):
 
 
 @app.post("/channels/{channel_id}/stop", summary="Stop a channel account")
-async def stop_channel(channel_id: str, account_id: str = "default"):
+async def stop_channel(channel_id: str, account_id: str = "default") -> dict:
     """
     停止一个 channel 账户。
 
@@ -905,7 +905,7 @@ async def stop_channel(channel_id: str, account_id: str = "default"):
 
 
 @app.get("/channels/{channel_id}/status", summary="Get channel account status")
-async def get_channel_status(channel_id: str, account_id: str = "default"):
+async def get_channel_status(channel_id: str, account_id: str = "default") -> dict:
     """
     查询 channel 账户的实时状态。
 
@@ -935,7 +935,7 @@ from starlette.requests import Request as StarletteRequest
     summary="Channel Webhook 统一回调",
     include_in_schema=False,
 )
-async def channel_webhook(channel_id: str, request: StarletteRequest):
+async def channel_webhook(channel_id: str, request: StarletteRequest) -> dict:
     """
     接收各 channel 适配器的 Webhook 回调。
 
@@ -1042,7 +1042,7 @@ class PermissionRequest(BaseModel):
 async def inject_permission(
     req: PermissionRequest,
     x_session_id: str = Header(..., alias="X-Session-Id"),
-):
+) -> dict:
     """
     当 SSE 流中出现 `{"type": "permission_request", "tool": "...", "input": {...}}` 事件时，
     说明 agent 正在等待用户决定是否允许该工具调用。
@@ -1152,6 +1152,9 @@ async def chat_sse(req: ChatRequest, x_session_id: Optional[str] = Header(None, 
     # EventBus 过滤函数：只接收当前 Session 内的事件
     _event_bus_filter = lambda e: e.session_id == session.id
 
+    # 保存后台任务引用，客户端断开时用于取消
+    _agent_task: asyncio.Task | None = None
+
     if req.dag:
         pipeline_cls = _get_pipeline_class(req.pipeline_class)
         pipeline = pipeline_cls(session_manager=session_manager)
@@ -1170,7 +1173,7 @@ async def chat_sse(req: ChatRequest, x_session_id: Optional[str] = Header(None, 
                 if _channel_gateway is not None:
                     await _channel_gateway.cleanup_session(session.id)
 
-        asyncio.create_task(_run_dag())
+        _agent_task = asyncio.create_task(_run_dag())
     else:
         async def _run():
             try:
@@ -1186,21 +1189,30 @@ async def chat_sse(req: ChatRequest, x_session_id: Optional[str] = Header(None, 
                 if _channel_gateway is not None:
                     await _channel_gateway.cleanup_session(session.id)
 
-        asyncio.create_task(_run())
+        _agent_task = asyncio.create_task(_run())
 
     # 启动 EventBus 订阅，使 SSE 客户端能直接收到后台 Agent / teammate 的事件
     await raw_emitter.start_event_bus_subscription(_event_bus_filter)
 
     async def _generate() -> AsyncIterator[str]:
-        async for data in raw_emitter.event_stream():
-            event = json.loads(data)
-            # done 事件附上 session_id 和 conversation_id，方便客户端保存
-            if event.get("type") == "done":
-                event["session_id"] = session.id
-                event["conversation_id"] = conversation_id
-                yield f"data: {json.dumps(event)}\n\n"
-            else:
-                yield f"data: {data}\n\n"
+        try:
+            async for data in raw_emitter.event_stream():
+                event = json.loads(data)
+                # done 事件附上 session_id 和 conversation_id，方便客户端保存
+                if event.get("type") == "done":
+                    event["session_id"] = session.id
+                    event["conversation_id"] = conversation_id
+                    yield f"data: {json.dumps(event)}\n\n"
+                else:
+                    yield f"data: {data}\n\n"
+        finally:
+            # 客户端断开 SSE 连接时，取消后台 agent 任务，触发 finally 清理
+            if _agent_task is not None and not _agent_task.done():
+                _agent_task.cancel()
+                try:
+                    await _agent_task
+                except asyncio.CancelledError:
+                    pass
 
     return StreamingResponse(_generate(), media_type="text/event-stream")
 
@@ -1209,7 +1221,7 @@ async def chat_sse(req: ChatRequest, x_session_id: Optional[str] = Header(None, 
 
 
 @app.websocket("/chat/ws")
-async def chat_ws(websocket: WebSocket):
+async def chat_ws(websocket: WebSocket) -> None:
     """
     WebSocket endpoint.
 
@@ -1304,7 +1316,7 @@ async def chat_ws(websocket: WebSocket):
 
 
 @app.get("/monitor", summary="Monitor dashboard HTML page")
-def monitor_page():
+def monitor_page() -> str:
     """
     返回监控 Dashboard 的 HTML 页面。
 
@@ -1316,7 +1328,7 @@ def monitor_page():
 
 
 @app.websocket("/monitor/ws")
-async def monitor_ws(websocket: WebSocket):
+async def monitor_ws(websocket: WebSocket) -> None:
     """
     监控 Dashboard 的 WebSocket 端点。
 

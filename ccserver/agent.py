@@ -2387,13 +2387,17 @@ class Agent:
     async def _maybe_compact(self):
         self.compactor.micro(self.context.messages)
         msg_count = len(self.context.messages)
-        # 消息条数过多时记录警告，提醒用户可能需要手动压缩或增加阈值
+        # 两种触发压缩的条件：
+        # 1. token 数超过阈值（由 compactor.needs_compact 判断）
+        # 2. 消息条数超过 300 条（防止短消息过多导致内存无限增长）
         if msg_count > 300:
-            logger.warning(
-                "Agent message count high | agent={} msgs={} "
-                "consider increasing compact threshold or triggering manual compact",
+            logger.info(
+                "Agent message count exceeds limit | agent={} msgs={} "
+                "triggering compact",
                 self.aid_label, msg_count,
             )
+            await self._do_compact(reason="message count limit reached")
+            return
         if self.compactor.needs_compact(self.context.messages):
             logger.debug(f"do compact")
             await self._do_compact(reason="token threshold reached")

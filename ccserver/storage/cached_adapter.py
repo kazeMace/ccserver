@@ -97,7 +97,15 @@ class CachedStorageAdapter(StorageAdapter):
 
     async def append_message(self, session_id: str, message: dict) -> None:
         await self._inner.append_message(session_id, message)
-        await self._cache.push(session_id, message)
+        try:
+            await self._cache.push(session_id, message)
+        except Exception as exc:
+            # cache 写入失败不阻断主流程，但记录警告以便排查不一致问题
+            logger.warning(
+                "CachedAdapter: cache push failed | session={} error={} "
+                "(primary already written, cache will be stale until next backfill)",
+                session_id[:8], exc,
+            )
 
     async def rewrite_messages(self, session_id: str, messages: list) -> None:
         await self._inner.rewrite_messages(session_id, messages)

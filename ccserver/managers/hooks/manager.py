@@ -656,7 +656,7 @@ class HookLoader:
         try:
             text = hook_md.read_text(encoding="utf-8")
         except Exception as e:
-            logger.error("failed to read HOOK.md | path={} error={}", hook_md, e)
+            logger.exception("failed to read HOOK.md | path={} error={}", hook_md, e)
             return None
 
         meta, _ = parse_frontmatter(text)
@@ -853,7 +853,7 @@ class HookLoader:
                     raw = await self._call_entry(entry, payload, ctx)
                     results.append((entry, raw))
                 except Exception as e:
-                    logger.error("hook error | event={} source={} error={}", event, entry.source, e)
+                    logger.exception("hook error | event={} source={} error={}", event, entry.source, e)
                     results.append((entry, None))
         else:
             # parallel：同时启动，按 entries 顺序收集
@@ -861,7 +861,7 @@ class HookLoader:
             completed = await asyncio.gather(*tasks, return_exceptions=True)
             for entry, raw in zip(entries, completed):
                 if isinstance(raw, Exception):
-                    logger.error("hook error | event={} source={} error={}", event, entry.source, raw)
+                    logger.exception("hook error | event={} source={} error={}", event, entry.source, raw)
                     results.append((entry, None))
                 else:
                     results.append((entry, raw))
@@ -911,7 +911,7 @@ class HookLoader:
                 try:
                     await self._call_entry(entry, payload, ctx)
                 except Exception as e:
-                    logger.error("hook error (void) | event={} source={} error={}", event, entry.source, e)
+                    logger.exception("hook error (void) | event={} source={} error={}", event, entry.source, e)
             return
 
         async def run_one(entry: HookEntry) -> None:
@@ -1034,7 +1034,7 @@ class HookLoader:
         try:
             await self._run_entry_sync(entry, payload, ctx)
         except Exception as e:
-            logger.error("async hook error | event={} source={} error={}", entry.event, entry.source, e)
+            logger.exception("async hook error | event={} source={} error={}", entry.event, entry.source, e)
 
     # ── command 执行器 ────────────────────────────────────────────────────────
 
@@ -1084,7 +1084,7 @@ class HookLoader:
                 executable="/bin/bash" if shell == "bash" else None,
             )
         except Exception as e:
-            logger.error("failed to start command hook | source={} error={}", entry.source, e)
+            logger.exception("failed to start command hook | source={} error={}", entry.source, e)
             return HookResult()
 
         stdin_bytes = json.dumps(stdin_data, ensure_ascii=False).encode("utf-8")
@@ -1154,7 +1154,7 @@ class HookLoader:
             logger.error("'bun' not found in PATH. Install bun to use TypeScript hooks.")
             return HookResult()
         except Exception as e:
-            logger.error("failed to start bun hook | source={} error={}", entry.source, e)
+            logger.exception("failed to start bun hook | source={} error={}", entry.source, e)
             return HookResult()
 
         stdin_bytes = json.dumps(stdin_data, ensure_ascii=False).encode("utf-8")
@@ -1209,7 +1209,7 @@ class HookLoader:
                     return _parse_stdout_json(resp_data, entry.source)
                 return HookResult()
         except Exception as e:
-            logger.error("http hook error | source={} error={}", entry.source, e)
+            logger.exception("http hook error | source={} error={}", entry.source, e)
             return HookResult()
 
     # ── prompt 执行器 ──────────────────────────────────────────────────────────
@@ -1244,7 +1244,7 @@ class HookLoader:
         try:
             user_prompt = prompt_template.format(**variables)
         except Exception as e:
-            logger.error("prompt template format failed | source={} error={}", entry.source, e)
+            logger.exception("prompt template format failed | source={} error={}", entry.source, e)
             return HookResult()
 
         messages = [{"role": "user", "content": user_prompt}]
@@ -1261,7 +1261,7 @@ class HookLoader:
             if response.content:
                 text = response.content[0].text.strip()
         except Exception as e:
-            logger.error("prompt llm call failed | source={} error={}", entry.source, e)
+            logger.exception("prompt llm call failed | source={} error={}", entry.source, e)
             return HookResult()
 
         if text.startswith("{"):

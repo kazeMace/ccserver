@@ -18,7 +18,7 @@ from pathlib import Path
 
 from loguru import logger
 
-from .base import StorageAdapter, SessionRecord
+from .base import StorageAdapter, SessionRecord, _json_default
 
 
 class SQLiteStorageAdapter(StorageAdapter):
@@ -227,7 +227,7 @@ class SQLiteStorageAdapter(StorageAdapter):
                     session_id,
                     conv_id,
                     message["role"],
-                    json.dumps(message["content"], default=str),
+                    json.dumps(message["content"], default=_json_default),
                     now,
                 ),
             )
@@ -256,7 +256,7 @@ class SQLiteStorageAdapter(StorageAdapter):
                         session_id,
                         conv_id,
                         msg["role"],
-                        json.dumps(msg["content"], default=str),
+                        json.dumps(msg["content"], default=_json_default),
                         now,
                     ),
                 )
@@ -275,7 +275,7 @@ class SQLiteStorageAdapter(StorageAdapter):
                 INSERT INTO transcripts (session_id, conversation_id, messages_json, created_at)
                 VALUES (?, ?, ?, ?)
                 """,
-                (session_id, conv_id, json.dumps(messages, default=str), now),
+                (session_id, conv_id, json.dumps(messages, default=_json_default), now),
             )
             transcript_id = cursor.lastrowid
         logger.debug("SQLiteAdapter: transcript saved | id={} transcript_id={}", session_id[:8], transcript_id)
@@ -492,7 +492,7 @@ class SQLiteStorageAdapter(StorageAdapter):
                 INSERT INTO inbox_messages (team_name, recipient, message_json, created_at, read)
                 VALUES (?, ?, ?, ?, 0)
                 """,
-                (team_name, recipient, json.dumps(message, default=str), now),
+                (team_name, recipient, json.dumps(message, default=_json_default), now),
             )
         logger.debug(
             "SQLiteAdapter: inbox appended | team={} recipient={} msg_id={}",
@@ -553,7 +553,7 @@ class SQLiteStorageAdapter(StorageAdapter):
                     msg["read"] = True
                     conn.execute(
                         "UPDATE inbox_messages SET message_json = ?, read = 1 WHERE id = ?",
-                        (json.dumps(msg, default=str), r["id"]),
+                        (json.dumps(msg, default=_json_default), r["id"]),
                     )
                     updated += 1
 
@@ -574,7 +574,7 @@ class SQLiteStorageAdapter(StorageAdapter):
                 INSERT OR REPLACE INTO cron_tasks (task_id, session_id, task_json)
                 VALUES (?, ?, ?)
                 """,
-                (task_data["task_id"], session_id, json.dumps(task_data, default=str)),
+                (task_data["task_id"], session_id, json.dumps(task_data, default=_json_default)),
             )
         logger.debug(
             "SQLiteAdapter: cron task saved | session={} task_id={}",

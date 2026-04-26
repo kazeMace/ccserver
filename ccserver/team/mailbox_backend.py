@@ -98,15 +98,22 @@ class StorageAdapterBackend(MailboxBackend):
     async def append(self, team_name: str, recipient: str, message: dict) -> None:
         """
         通过 StorageAdapter.append_inbox_message 追加消息。
+        底层 adapter 异常会被捕获并记录，不会上浮。
         """
         if self.adapter is None:
             logger.warning("Mailbox append skipped | no adapter")
             return
-        await self.adapter.append_inbox_message(team_name, recipient, message)
-        logger.debug(
-            "Mailbox appended | team={} recipient={} msg_id={}",
-            team_name, recipient, message.get("msg_id"),
-        )
+        try:
+            await self.adapter.append_inbox_message(team_name, recipient, message)
+            logger.debug(
+                "Mailbox appended | team={} recipient={} msg_id={}",
+                team_name, recipient, message.get("msg_id"),
+            )
+        except Exception as exc:
+            logger.exception(
+                "Mailbox append failed | team={} recipient={} error={}",
+                team_name, recipient, exc,
+            )
 
     async def fetch(
         self,
@@ -117,22 +124,37 @@ class StorageAdapterBackend(MailboxBackend):
     ) -> list[dict]:
         """
         通过 StorageAdapter.fetch_inbox_messages 拉取消息。
+        底层 adapter 异常会被捕获并返回空列表，不会上浮。
         """
         if self.adapter is None:
             return []
-        rows = await self.adapter.fetch_inbox_messages(
-            team_name, recipient, unread_only=unread_only, limit=limit,
-        )
-        return rows
+        try:
+            rows = await self.adapter.fetch_inbox_messages(
+                team_name, recipient, unread_only=unread_only, limit=limit,
+            )
+            return rows
+        except Exception as exc:
+            logger.exception(
+                "Mailbox fetch failed | team={} recipient={} error={}",
+                team_name, recipient, exc,
+            )
+            return []
 
     async def mark_read(self, team_name: str, recipient: str, msg_ids: list[str]) -> None:
         """
         通过 StorageAdapter.mark_inbox_read 标记已读。
+        底层 adapter 异常会被捕获并记录，不会上浮。
         """
         if self.adapter is None or not msg_ids:
             return
-        await self.adapter.mark_inbox_read(team_name, recipient, msg_ids)
-        logger.debug(
-            "Mailbox marked read | team={} recipient={} count={}",
-            team_name, recipient, len(msg_ids),
-        )
+        try:
+            await self.adapter.mark_inbox_read(team_name, recipient, msg_ids)
+            logger.debug(
+                "Mailbox marked read | team={} recipient={} count={}",
+                team_name, recipient, len(msg_ids),
+            )
+        except Exception as exc:
+            logger.exception(
+                "Mailbox mark_read failed | team={} recipient={} count={} error={}",
+                team_name, recipient, len(msg_ids), exc,
+            )

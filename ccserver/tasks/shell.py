@@ -40,6 +40,9 @@ from loguru import logger
 # Shell 任务 ID 的前缀，与 Claude Code 保持一致（b = bash）
 SHELL_TASK_PREFIX = "b"
 
+# 单个 Shell 任务的最大输出长度（5MB），超过时截断旧内容防止内存无限增长
+MAX_OUTPUT_SIZE = 5 * 1024 * 1024
+
 # 任务状态
 class TaskStatus:
     PENDING: str = "pending"
@@ -310,14 +313,25 @@ class ShellTaskState:
         每次追加前更新 output_offset（追加前的长度），确保外部轮询时
         可以通过 output[self.output_offset:] 获取增量部分。
 
-        注意：output 目前是内存字符串，若单个命令输出超过 ~10MB 应考虑
-        改用临时文件存储。output_offset 届时可表示文件字节偏移。
+        当 output 总长度超过 MAX_OUTPUT_SIZE（5MB）时，自动截断前面部分，
+        防止长时间运行的命令（如日志输出）导致内存无限增长。
 
         Args:
             chunk: 新的输出字符串。
         """
         self.output_offset = len(self.output)
         self.output += chunk
+
+        # 输出过长时截断旧内容，保留尾部
+        if len(self.output) > MAX_OUTPUT_SIZE:
+            overflow = len(self.output) - MAX_OUTPUT_SIZE
+            self.output = self.output[overflow:]
+            # output_offset 同步调整，避免指向被截断的区域
+            self.output_offset = max(0, self.output_offset - overflow)
+            logger.warning(
+                "ShellTask output truncated | id={} overflow={}B kept={}B",
+                self.id, overflow, MAX_OUTPUT_SIZE,
+            )
 
     def read_incremental(self) -> str:
         """

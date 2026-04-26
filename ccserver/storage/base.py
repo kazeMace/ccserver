@@ -10,6 +10,30 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from loguru import logger
+
+
+def _json_default(obj):
+    """
+    JSON 序列化的 fallback：对不可 JSON 原生类型的对象保留结构化信息。
+
+    处理优先级：
+      1. datetime → ISO 格式字符串
+      2. Path → str
+      3. 其他 → 记录 warning，返回 "<unserializable:类型名>" 标记
+
+    为什么不用 default=str：
+      str() 会静默吞掉原始类型信息，反序列化后调用方无法区分
+      "这是一个字符串" 和 "一个被强制转字符串的 datetime 对象"。
+    """
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    if isinstance(obj, Path):
+        return str(obj)
+    type_name = f"{type(obj).__module__}.{type(obj).__name__}"
+    logger.warning("JSON serialization fallback | type={}", type_name)
+    return f"<unserializable:{type_name}>"
+
 
 @dataclass
 class SessionRecord:
@@ -63,7 +87,10 @@ class StorageAdapter(ABC):
     # ── conversation 跟踪（可选，不支持的 adapter 保持默认空实现）──────────────
 
     def create_conversation(self, session_id: str, conversation_id: str) -> None:
-        """注册一次新的 HTTP 请求对话轮次。不支持的 adapter 忽略此调用。"""
+        """注册一次新的 HTTP 请求对话轮次。默认未实现。"""
+        raise NotImplementedError(
+            f"{self.__class__.__name__} 未实现 create_conversation"
+        )
 
     # ── Task 存储 ─────────────────────────────────────────────────────────────
 

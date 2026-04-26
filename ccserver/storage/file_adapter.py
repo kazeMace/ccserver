@@ -25,7 +25,7 @@ from pathlib import Path
 
 from loguru import logger
 
-from .base import StorageAdapter, SessionRecord
+from .base import StorageAdapter, SessionRecord, _json_default
 
 
 class FileStorageAdapter(StorageAdapter):
@@ -109,7 +109,7 @@ class FileStorageAdapter(StorageAdapter):
     def append_message(self, session_id: str, message: dict) -> None:
         msg_path = self._session_dir(session_id) / "messages.jsonl"
         with open(msg_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(message, default=str) + "\n")
+            f.write(json.dumps(message, default=_json_default) + "\n")
 
     def rewrite_messages(self, session_id: str, messages: list) -> None:
         msg_path = self._session_dir(session_id) / "messages.jsonl"
@@ -345,7 +345,7 @@ class FileStorageAdapter(StorageAdapter):
         path = self._inbox_file(team_name, recipient)
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "a") as f:
-            f.write(json.dumps(message, default=str) + "\n")
+            f.write(json.dumps(message, default=_json_default) + "\n")
         logger.debug(
             "FileAdapter: inbox appended | team={} recipient={} msg_id={}",
             team_name,
