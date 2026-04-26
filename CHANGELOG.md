@@ -8,9 +8,9 @@
 
 ---
 
-## [Unreleased] — 2026-04-23
+## [Unreleased] — 2026-04-25
 
-**会话**: Agent Loop 缺陷修复 + 输出控制重构 + TUI 交互增强 + 日志系统优化
+**会话**: Agent 驻留生命周期管理 (`is_persistent`) + 子代理自动清理 + 日志优化
 
 ### Changed
 
@@ -48,9 +48,25 @@
 
 - `ccserver/agent.py` — `_drain_inbox_and_respond()` 中两处 `if/elif` 消息分发链改为 `match/case MsgType.XXX`，补充 `case _` 未知类型 warning；同步在 Teammate idle 循环中也使用 `match/case`
 
+### Added
+
+- `ccserver/managers/agents/manager.py` — `AgentDef` 新增 `is_persistent: bool = False` 字段，支持从 agent 定义文件 frontmatter 中读取 `is_persistent` 配置
+- `ccserver/tasks/agent.py` — `AgentTaskState` 新增 `is_persistent: bool = False` 字段，标记该 agent 任务是否为永久驻留型
+- `ccserver/agent.py` — Agent 工具（`_handle_agent`）支持运行时通过 `persistent` 参数显式覆盖驻留策略，优先级：`task_input["persistent"]` > `agent_def.is_persistent` > 默认 `False`
+- `ccserver/agent.py` — 子代理完成后自动清理逻辑：
+  - 同步子代理（`_handle_agent` 同步模式）：`finally` 块中若 `not is_persistent` 则调用 `agent_tasks.evict()`
+  - 后台子代理（`spawn_background` 的 `_run_background`）：`finally` 块中若 `not is_persistent` 则调用 `agent_tasks.evict()`
+
+### Changed
+
+- `ccserver/agent.py` — `Child agent done` 日志由 `child.context.agent_id[:8]` 改为 `child.aid_label`（格式 `id(name)`），补齐 agent_name 显示
+- `ccserver/agent_scheduler.py` — `AgentScheduler.spawn()` 调用 `spawn_background()` 时默认传入 `is_persistent=True`，用户显式创建的 agent 默认永久驻留
+- `ccserver/agent.py` — `_spawn_teammate()` 调用 `spawn_background()` 时传入 `is_persistent=True`，teammate 默认永久驻留
+- `ccserver/agent.py` — LLM 自动派生（Agent 工具调用）默认 `is_persistent=False`，执行完自动从 monitor 消失
+
 ### Fixed
 
-- `ccserver/agent.py` — 修复 `_drain_inbox_and_respond()` 双重循环 bug：原先在 `outbox is not None` 时第一个循环会消费全部 inbox 消息（含 `new_task`/`shutdown_request` 等），导致第二个循环永远拿不到团队消息，团队协作完全失效；合并为单一循环修复此问题
+- `ccserver/agent.py` — 修复同步/后台子代理完成后残留 `session.agent_tasks` 的 bug：此前所有子代理注册后均不清理，导致 monitor 中已完成的 agent 永久堆积：原先在 `outbox is not None` 时第一个循环会消费全部 inbox 消息（含 `new_task`/`shutdown_request` 等），导致第二个循环永远拿不到团队消息，团队协作完全失效；合并为单一循环修复此问题
 
 - `clients/tui_http.py` — `sys.stdout.write()` 错误传入 `flush=True` 关键字参数（`write` 不支持），拆分为 `write()` + `flush()`
 

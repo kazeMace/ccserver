@@ -233,10 +233,22 @@ class SessionManager:
 
         workdir = self.storage.get_workdir(sid)
 
+        # 如果没有 project_root（CCSERVER_PROJECT_DIR 未设置），
+        # 为每个 session 创建独立的临时目录
+        project_root = self.project_root
+        if project_root is None:
+            import tempfile
+            project_root = Path(tempfile.gettempdir()) / f"ccserver-session-{sid}"
+            project_root.mkdir(parents=True, exist_ok=True)
+            logger.info(
+                "Session using temporary project_root | id={} path={}",
+                sid[:8], project_root,
+            )
+
         record = SessionRecord(
             session_id=sid,
             workdir=str(workdir),
-            project_root=str(self.project_root),
+            project_root=str(project_root),
             created_at=now,
             updated_at=now,
             messages=[],
@@ -246,7 +258,7 @@ class SessionManager:
         session = Session(
             id=sid,
             workdir=workdir,
-            project_root=self.project_root,
+            project_root=project_root,
             storage=self.storage,
             created_at=now,
             updated_at=now,

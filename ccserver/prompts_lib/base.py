@@ -21,7 +21,17 @@ class PromptLib:
       build_system        — 启动时构建 system prompt 列表
       build_user_message  — 每条 user 消息追加前的包装
       build_compact_messages — 压缩完成后写回 history 的消息格式
+
+    lib_id 由 adapter.py 在注册时自动注入到 self._lib_id。
     """
+
+    # 由 adapter.py 在注册时注入（格式："{name}:{version}"）
+    _lib_id: str | None = None
+
+    @property
+    def lib_id(self) -> str:
+        """返回本实例对应的 lib_id。未注册时返回 "unknown"。"""
+        return self._lib_id or "unknown"
 
     def build_system(self, session: Session, model: str, language: str, cch: str = "", injected_system: list | None = None, is_spawn: bool = False) -> list:
         """
@@ -143,6 +153,10 @@ class PromptLib:
           3. 注入额外的自定义工具
 
         默认实现：返回 ccserver 内置工具的默认集合。
+
+        WebSearch 选择策略（同一时刻只注册一个 WebSearch）：
+          - lib_id == "claude_code" 且 adapter 是 AnthropicAdapter → Anthropic BTWebSearch
+          - 其余情况 → DuckDuckGo BTDDGWebSearch（不依赖 Anthropic）
         """
         from ccserver.builtins.tools import (
             BTBash,
@@ -160,6 +174,7 @@ class PromptLib:
             BTAskUser,
             BTWebFetch,
             BTWebSearch,
+            BTDDGWebSearch,
             BTAgent,
             BTSendMessage,
         )
@@ -185,8 +200,15 @@ class PromptLib:
         # 需要 LLM client 的工具
         if adapter is not None:
             tools["WebFetch"] = BTWebFetch(adapter)
-            if isinstance(adapter, AnthropicAdapter):
+
+            # WebSearch 选择逻辑：同一时刻只注册一个
+            # cc_reverse:v2.1.81 + Anthropic adapter → Anthropic 原生搜索
+            # 其余情况 → DuckDuckGo（不依赖 Anthropic）
+            if self.lib_id == "cc_reverse:v2.1.81" and isinstance(adapter, AnthropicAdapter):
                 tools["WebSearch"] = BTWebSearch(adapter)
+            else:
+                # 其余情况 → 使用 DuckDuckGo（provider-agnostic）
+                tools["WebSearch"] = BTDDGWebSearch(adapter)
 
         # Agent 工具动态注入
         tools["Agent"] = BTAgent(agent_catalog=session.agents.build_catalog())
@@ -194,6 +216,10 @@ class PromptLib:
         # Agent Team 通信工具（仅在开启 team 功能时注册）
         if session.settings.user_agent_team:
             tools["SendMessage"] = BTSendMessage()
+
+        # 定时任务工具（始终注册）
+        from ccserver.managers.cron.tools import build_cron_tools
+        tools.update(build_cron_tools(session.cron_scheduler))
 
         return tools
 

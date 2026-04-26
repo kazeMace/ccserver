@@ -9,23 +9,25 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ── 启动时校验 PROJECT_DIR（必须在业务导入之前）────────────────────────────────
-if not os.getenv("CCSERVER_PROJECT_DIR"):
-    print(
-        "[ERROR] CCSERVER_PROJECT_DIR is not set.\n"
-        "Set it to the project workspace directory before starting the API server.\n"
-        "Example: CCSERVER_PROJECT_DIR=/path/to/project python server.py",
-        file=sys.stderr,
-    )
-    sys.exit(1)
-
 from pathlib import Path
-_project_dir = Path(os.environ["CCSERVER_PROJECT_DIR"]).resolve()
-if not _project_dir.exists():
+
+_project_dir_env = os.getenv("CCSERVER_PROJECT_DIR")
+if _project_dir_env:
+    _project_dir = Path(_project_dir_env).resolve()
+    if not _project_dir.exists():
+        print(
+            f"[ERROR] CCSERVER_PROJECT_DIR='{_project_dir}' does not exist.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+else:
     print(
-        f"[ERROR] CCSERVER_PROJECT_DIR='{_project_dir}' does not exist.",
+        "[WARN] CCSERVER_PROJECT_DIR is not set. "
+        "Sessions will use temporary directories under /tmp/ as project_root. "
+        "All project-level configs (CLAUDE.md, skills, agents, hooks, commands, MCP) will be empty.",
         file=sys.stderr,
     )
-    sys.exit(1)
+    _project_dir = None
 
 # ── 业务导入 ────────────────────────────────────────────────────────────────────
 import asyncio
@@ -45,7 +47,7 @@ from ccserver import (
     Pipeline,
 )
 from ccserver.config import (
-    DB_PATH, SYSTEM_FILE, APPEND_SYSTEM, STORAGE_BACKEND,
+    DB_PATH, INJECT_SYSTEM_FILE, APPEND_SYSTEM, STORAGE_BACKEND,
     MONGO_URI, MONGO_DB, REDIS_URL, REDIS_CACHE_SIZE, REDIS_TTL,
 )
 from ccserver.storage import build_storage
@@ -57,10 +59,16 @@ from ccserver.emitters.tui import gradient_text
 from ccserver.team import TeamHealthMonitor
 from ccserver.team.mailbox import TeamMailbox
 from ccserver.team.models import TeamMemberRole
+from ccserver.monitor import MonitorCollector, get_monitor_html
 from loguru import logger
 from ccserver.log import setup_logging
 from contextlib import asynccontextmanager
 import time as _time
+
+# ── Channel 系统 ─────────────────────────────────────────────────────────────
+from ccserver.channels import ChannelGateway, ChannelRegistry
+from ccserver.channels.config import ChannelConfig
+from ccserver.outbound_bus import OutboundBus
 
 # Logo 最先输出（print 不经过 logging，不受 sink 影响）
 # 仅在直接运行时打印，uvicorn worker reload 时 __name__ != "__main__"，不会重复
@@ -77,7 +85,8 @@ if __name__ == "__main__":
         "   ╚═════╝ ╚═════╝╚══════╝╚══════╝╚═╝  ╚═╝  ╚═══╝  ╚══════╝╚═╝  ╚═╝",
     ]:
         print(_gt(_line, _LOGO_START, _LOGO_END))
-    print(f"\n\033[2m  API Server — http://0.0.0.0:8000  |  project: {_project_dir}\033[0m\n")
+    _proj_display = _project_dir if _project_dir else "(temporary, no project dir set)"
+    print(f"\n\033[2m  API Server — http://0.0.0.0:8000  |  project: {_proj_display}\033[0m\n")
 
 setup_logging(stderr=True)
 
@@ -100,8 +109,25 @@ async def lifespan(app: FastAPI):
         await _storage.ping()
     # 启动 Team 健康监控（自愈）
     _team_monitor.start()
+    # 自动扫描适配器并启动配置中 enabled + auto_start 的 channel
+    # 放到后台协程执行，避免阻塞 uvicorn startup（如 discord 连接超时 30s）
+    gateway = _get_channel_gateway()
+
+    async def _start_channels_async():
+        auto_result = await gateway.auto_discover_and_start()
+        logger.info(
+            "Channel auto-start | discovered={} started={} failed={} skipped={}",
+            auto_result["discovered"],
+            auto_result["started"],
+            auto_result["failed"],
+            auto_result["skipped"],
+        )
+
+    asyncio.create_task(_start_channels_async())
     yield
-    # shutdown：Team 监控停止，然后关闭连接
+    # shutdown：ChannelGateway 关闭 → Team 监控停止 → 存储关闭
+    if _channel_gateway is not None:
+        await _channel_gateway.shutdown()
     _team_monitor.stop()
     if hasattr(_storage, "close"):
         await _storage.close()
@@ -170,6 +196,40 @@ if _ACCESS_LOG_ENABLED:
 session_manager = SessionManager(SESSIONS_BASE, storage=_storage)
 _team_monitor = TeamHealthMonitor(session_manager)
 
+# ── Channel 系统初始化 ────────────────────────────────────────────────────────
+_channel_registry = ChannelRegistry()
+_outbound_bus = OutboundBus()
+_channel_gateway: ChannelGateway | None = None  # 延迟初始化
+
+
+def _get_channel_gateway() -> ChannelGateway:
+    """
+    获取或创建 ChannelGateway。
+
+    ChannelGateway 依赖 runner，runner 在下面创建，
+    所以这里用延迟初始化模式。
+
+    适配器通过 registry.discover() 自动扫描注册，
+    无需在 server.py 中手动 import 和 register。
+    """
+    global _channel_gateway
+    if _channel_gateway is None:
+        _channel_gateway = ChannelGateway(
+            registry=_channel_registry,
+            session_manager=session_manager,
+            runner=runner,
+            outbound_bus=_outbound_bus,
+            config=ChannelConfig(),
+        )
+        # 自动扫描 adapters 目录下的所有适配器
+        discovered = _channel_registry.discover()
+        logger.info(
+            "ChannelGateway initialized | discovered={} channels={}",
+            discovered,
+            list(_channel_registry._adapters.keys()),
+        )
+    return _channel_gateway
+
 # SSE 会话的 emitter 注册表：session_id → SSEEmitter
 # 用于 AskUserQuestion：客户端通过 POST /chat/stream/answer 将答案注入正在等待的 emitter。
 _sse_emitters: dict[str, "SSEEmitter"] = {}
@@ -182,11 +242,11 @@ def _read_system_file(path: str | None) -> str | None:
     from pathlib import Path
     p = Path(path)
     if not p.exists():
-        raise FileNotFoundError(f"CCSERVER_SYSTEM_FILE 不存在: {path}")
+        raise FileNotFoundError(f"CCSERVER_INJECT_SYSTEM_FILE 不存在: {path}")
     return p.read_text(encoding="utf-8")
 
 
-runner = AgentRunner(system=_read_system_file(SYSTEM_FILE), append_system=APPEND_SYSTEM)
+runner = AgentRunner(system=_read_system_file(INJECT_SYSTEM_FILE), append_system=APPEND_SYSTEM)
 
 
 def _wrap_emitter(
@@ -640,14 +700,12 @@ def team_health(session_id: str, team_name: str):
     """
     返回团队后台组件的健康状态：
       - dispatcher_alive: TeamTaskDispatcher 是否在运行
-      - relay_alive: TeamPermissionRelay 是否在运行
       - pollers_alive: 各 MailboxPoller 是否在运行
     """
     session = _get_or_404(session_id)
     team = _get_team_or_404(session, team_name)
 
     dispatcher = getattr(team, "_dispatcher", None)
-    relay = getattr(team, "_relay", None)
 
     pollers: dict[str, bool] = {}
     from ccserver import agent_registry
@@ -662,7 +720,6 @@ def team_health(session_id: str, team_name: str):
     return {
         "team_name": team_name,
         "dispatcher_alive": dispatcher.is_alive if dispatcher else False,
-        "relay_alive": relay.is_alive if relay else False,
         "pollers_alive": pollers,
     }
 
@@ -674,7 +731,7 @@ def team_health(session_id: str, team_name: str):
     "/sessions/{session_id}/teams/{team_name}/mailbox/send",
     summary="Send a mailbox message to a teammate",
 )
-def send_mailbox_message(
+async def send_mailbox_message(
     session_id: str,
     team_name: str,
     req: SendTeamMessageRequest,
@@ -698,7 +755,7 @@ def send_mailbox_message(
             text=req.text,
             summary=req.summary,
         )
-        mailbox.broadcast(chat_msg, recipients=recipients)
+        await mailbox.broadcast(chat_msg, recipients=recipients)
         return {"status": "ok", "broadcast_to": len(recipients)}
     else:
         to_agent = f"{req.to}@{team_name}"
@@ -713,7 +770,7 @@ def send_mailbox_message(
             text=req.text,
             summary=req.summary,
         )
-        mailbox.send(chat_msg)
+        await mailbox.send(chat_msg)
         return {"status": "ok", "to": to_agent}
 
 
@@ -721,7 +778,7 @@ def send_mailbox_message(
     "/sessions/{session_id}/teams/{team_name}/mailbox/{agent_id}",
     summary="Fetch mailbox messages for a teammate",
 )
-def fetch_mailbox_messages(
+async def fetch_mailbox_messages(
     session_id: str,
     team_name: str,
     agent_id: str,
@@ -732,7 +789,7 @@ def fetch_mailbox_messages(
     session = _get_or_404(session_id)
     _get_team_or_404(session, team_name)
     mailbox = TeamMailbox(team_name, session.storage)
-    msgs = mailbox.fetch_messages(agent_id, unread_only=unread_only, limit=limit)
+    msgs = await mailbox.fetch_messages(agent_id, unread_only=unread_only, limit=limit)
     return {
         "messages": [m.to_dict() for m in msgs],
         "count": len(msgs),
@@ -743,7 +800,7 @@ def fetch_mailbox_messages(
     "/sessions/{session_id}/teams/{team_name}/mailbox/{agent_id}/read",
     summary="Mark mailbox messages as read",
 )
-def mark_mailbox_read(
+async def mark_mailbox_read(
     session_id: str,
     team_name: str,
     agent_id: str,
@@ -753,8 +810,193 @@ def mark_mailbox_read(
     session = _get_or_404(session_id)
     _get_team_or_404(session, team_name)
     mailbox = TeamMailbox(team_name, session.storage)
-    mailbox.mark_read(agent_id, req.msg_ids)
+    await mailbox.mark_read(agent_id, req.msg_ids)
     return {"status": "ok", "marked_count": len(req.msg_ids)}
+
+
+# ─── Channel 管理 API ─────────────────────────────────────────────────────────
+
+
+class StartChannelRequest(BaseModel):
+    channel_id: str
+    account_id: str = "default"
+    config: dict = {}
+
+
+@app.get("/channels", summary="List all registered channel adapters")
+def list_channels():
+    """
+    返回所有已注册的 channel 适配器列表及其能力声明。
+
+    Returns:
+        channels: list[{
+            "id": "webchat",
+            "aliases": ["web", "browser"],
+            "capabilities": { ... }
+        }]
+    """
+    return {"channels": _channel_registry.list_channels()}
+
+
+@app.get("/channels/status", summary="List running channel accounts")
+def list_channel_status():
+    """
+    返回所有正在运行的 channel 账户状态。
+
+    Returns:
+        channels: list[{
+            "channel_id": "webchat",
+            "account_id": "default",
+            "status": { ... }
+        }]
+    """
+    gateway = _get_channel_gateway()
+    return {"channels": gateway.list_running()}
+
+
+@app.post("/channels/start", summary="Start a channel account")
+async def start_channel(req: StartChannelRequest):
+    """
+    启动一个 channel 账户。
+
+    启动后，适配器会主动连接外部平台（建立 WebSocket/Stream 连接），
+    并开始接收入站消息。
+
+    Args:
+        channel_id: channel ID（如 "webchat", "discord", "feishu"）
+        account_id: 账户标识（多账户场景下区分不同 bot）
+        config:     平台特定的配置（token、app_id 等）
+
+    Returns:
+        启动后的账户状态快照
+    """
+    gateway = _get_channel_gateway()
+    try:
+        snapshot = await gateway.start_channel(
+            req.channel_id,
+            req.account_id,
+            req.config,
+        )
+        return {"status": "started", "snapshot": snapshot.to_dict()}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error("Channel start failed | channel={} err={}", req.channel_id, e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/channels/{channel_id}/stop", summary="Stop a channel account")
+async def stop_channel(channel_id: str, account_id: str = "default"):
+    """
+    停止一个 channel 账户。
+
+    关闭与外部平台的连接，不再接收新消息。
+
+    Args:
+        channel_id: channel ID
+        account_id: 账户标识
+
+    Returns:
+        {"status": "stopped"}
+    """
+    gateway = _get_channel_gateway()
+    await gateway.stop_channel(channel_id, account_id)
+    return {"status": "stopped"}
+
+
+@app.get("/channels/{channel_id}/status", summary="Get channel account status")
+async def get_channel_status(channel_id: str, account_id: str = "default"):
+    """
+    查询 channel 账户的实时状态。
+
+    Args:
+        channel_id: channel ID
+        account_id: 账户标识
+
+    Returns:
+        账户状态快照
+    """
+    gateway = _get_channel_gateway()
+    try:
+        snapshot = await gateway.get_status(channel_id, account_id)
+        return {"status": snapshot.to_dict()}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+# ─── Webhook 统一回调 ─────────────────────────────────────────────────────────
+
+
+from starlette.requests import Request as StarletteRequest
+
+
+@app.post(
+    "/webhook/{channel_id}",
+    summary="Channel Webhook 统一回调",
+    include_in_schema=False,
+)
+async def channel_webhook(channel_id: str, request: StarletteRequest):
+    """
+    接收各 channel 适配器的 Webhook 回调。
+
+    通用入口：根据 URL 中的 channel_id 找到对应 adapter，
+    调用其 handle_webhook() 方法处理请求。
+
+    支持的适配器：
+      - feishu: 飞书事件推送（/webhook/feishu）
+      - 其他需要 HTTP 回调的 channel...
+
+    不支持的适配器（走内部事件循环，无需 webhook）：
+      - discord：使用 discord.py Gateway WebSocket
+      - imessage：轮询本地 SQLite 数据库
+      - webchat：通过 SSE/WS HTTP 路由
+
+    注意：
+      - 需要公网可访问的地址
+      - 本地开发可用 ngrok 转发
+      - 飞书等平台要求 5 秒内响应，超时会重试
+    """
+    # 通过 registry 查找 adapter
+    adapter = _channel_registry.get_adapter(channel_id)
+    if adapter is None:
+        logger.warning(
+            "Webhook received for unregistered channel | channel={}",
+            channel_id,
+        )
+        return {"code": 404, "msg": f"Channel '{channel_id}' not found"}
+
+    # 检查 adapter 是否有 handle_webhook 方法
+    if not hasattr(adapter, "handle_webhook"):
+        logger.warning(
+            "Webhook received but adapter has no handle_webhook | channel={}",
+            channel_id,
+        )
+        return {"code": 400, "msg": f"Channel '{channel_id}' does not support webhooks"}
+
+    # 解析 JSON body
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    # 提取 HTTP headers（各平台签名验证需要）
+    webhook_headers = dict(request.headers)
+
+    # 调用 adapter 处理 webhook
+    try:
+        result = await adapter.handle_webhook(body, webhook_headers)
+
+        if result is not None:
+            # 各平台特定响应（如飞书 Challenge 验证）
+            return result
+        else:
+            return {"code": 0}
+    except Exception as e:
+        logger.error(
+            "Webhook handler error | channel={} err={}",
+            channel_id, e,
+        )
+        return {"code": 500, "msg": str(e)}
 
 
 # ─── AskUserQuestion: 注入答案（SSE 模式专用）────────────────────────────────────
@@ -887,11 +1129,28 @@ async def chat_sse(req: ChatRequest, x_session_id: Optional[str] = Header(None, 
     dag=True: runs through a Pipeline (pipeline_class must be registered).
     """
     session, conversation_id = _get_or_create_session(x_session_id)
-    raw_emitter = SSEEmitter()
+    # P1: SSEEmitter 直接订阅 EventBus，独立接收后台 Agent 事件
+    raw_emitter = SSEEmitter(
+        session=session,
+        event_bus=session.event_bus,
+        client_id=conversation_id,
+    )
     emitter = _wrap_emitter(raw_emitter, verbosity=req.verbosity, stream=req.stream, interactive=req.interactive)
 
     # 注册 emitter，允许 /chat/stream/answer 端点注入 AskUserQuestion 的答案
     _sse_emitters[session.id] = raw_emitter
+
+    # 注册到 ChannelGateway（WebChatAdapter），支持多 channel 架构
+    gateway = _get_channel_gateway()
+    webchat = _channel_registry.get_adapter("webchat")
+    if webchat is not None:
+        webchat.register_emitter(session.id, raw_emitter, client_info={
+            "type": "sse",
+            "client_id": conversation_id,
+        })
+
+    # EventBus 过滤函数：只接收当前 Session 内的事件
+    _event_bus_filter = lambda e: e.session_id == session.id
 
     if req.dag:
         pipeline_cls = _get_pipeline_class(req.pipeline_class)
@@ -903,6 +1162,13 @@ async def chat_sse(req: ChatRequest, x_session_id: Optional[str] = Header(None, 
             finally:
                 await raw_emitter.close()
                 _sse_emitters.pop(session.id, None)
+                # 注销 WebChatAdapter
+                webchat = _channel_registry.get_adapter("webchat")
+                if webchat is not None:
+                    webchat.unregister_session(session.id)
+                # 清理 ChannelGateway 路由
+                if _channel_gateway is not None:
+                    await _channel_gateway.cleanup_session(session.id)
 
         asyncio.create_task(_run_dag())
     else:
@@ -912,8 +1178,18 @@ async def chat_sse(req: ChatRequest, x_session_id: Optional[str] = Header(None, 
             finally:
                 await raw_emitter.close()
                 _sse_emitters.pop(session.id, None)
+                # 注销 WebChatAdapter
+                webchat = _channel_registry.get_adapter("webchat")
+                if webchat is not None:
+                    webchat.unregister_session(session.id)
+                # 清理 ChannelGateway 路由
+                if _channel_gateway is not None:
+                    await _channel_gateway.cleanup_session(session.id)
 
         asyncio.create_task(_run())
+
+    # 启动 EventBus 订阅，使 SSE 客户端能直接收到后台 Agent / teammate 的事件
+    await raw_emitter.start_event_bus_subscription(_event_bus_filter)
 
     async def _generate() -> AsyncIterator[str]:
         async for data in raw_emitter.event_stream():
@@ -948,7 +1224,6 @@ async def chat_ws(websocket: WebSocket):
     done 事件包含 session_id 和 conversation_id。
     """
     await websocket.accept()
-    emitter = WSEmitter(websocket)
 
     # 第一条消息：握手，确定 session
     try:
@@ -966,6 +1241,24 @@ async def chat_ws(websocket: WebSocket):
             return
     else:
         session = session_manager.create()
+
+    # P1: WSEmitter 直接订阅 EventBus，独立接收后台 Agent 事件
+    emitter = WSEmitter(
+        websocket=websocket,
+        session=session,
+        event_bus=session.event_bus,
+        client_id=session.id,
+    )
+    _event_bus_filter = lambda e: e.session_id == session.id
+    await emitter.start_event_bus_subscription(_event_bus_filter)
+
+    # 注册到 ChannelGateway（WebChatAdapter）
+    webchat = _channel_registry.get_adapter("webchat")
+    if webchat is not None:
+        webchat.register_emitter(session.id, emitter, client_info={
+            "type": "websocket",
+            "remote": str(websocket.client) if websocket.client else None,
+        })
 
     try:
         while True:
@@ -995,6 +1288,73 @@ async def chat_ws(websocket: WebSocket):
             await emitter.emit_error(str(e))
         except Exception:
             pass
+    finally:
+        # 客户端断开时停止 EventBus 订阅，防止泄漏
+        await emitter.stop_event_bus_subscription()
+        # 注销 WebChatAdapter
+        webchat = _channel_registry.get_adapter("webchat")
+        if webchat is not None:
+            webchat.unregister_session(session.id)
+        # 清理 ChannelGateway 路由
+        if _channel_gateway is not None:
+            await _channel_gateway.cleanup_session(session.id)
+
+
+# ─── Monitor Dashboard ─────────────────────────────────────────────────────────
+
+
+@app.get("/monitor", summary="Monitor dashboard HTML page")
+def monitor_page():
+    """
+    返回监控 Dashboard 的 HTML 页面。
+
+    阶段1：纯 HTML + JS，零前端构建工具。
+    阶段2（未来）：迁移到 React 后，本路由将指向构建产物。
+    """
+    from fastapi.responses import HTMLResponse
+    return HTMLResponse(content=get_monitor_html())
+
+
+@app.websocket("/monitor/ws")
+async def monitor_ws(websocket: WebSocket):
+    """
+    监控 Dashboard 的 WebSocket 端点。
+
+    连接建立后，自动订阅所有 Session 的 EventBus，
+    将事件实时推送给前端。同时定期推送全局状态快照。
+
+    前端通过单个 WebSocket 连接即可监控整个服务器的运行状态。
+    """
+    await websocket.accept()
+    logger.info("Monitor WebSocket connected | client={}", websocket.client)
+
+    collector = MonitorCollector(session_manager=session_manager, websocket=websocket)
+
+    try:
+        await collector.start()
+        # 保持连接存活，直到客户端断开
+        while True:
+            # 接收前端消息（目前只处理 ping，用于保持连接）
+            try:
+                raw = await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
+                # 前端可以发送 ping 或控制命令
+                try:
+                    msg = json.loads(raw)
+                    if msg.get("action") == "ping":
+                        await websocket.send_json({"type": "pong"})
+                except json.JSONDecodeError:
+                    pass
+            except asyncio.TimeoutError:
+                # 超时后发送 keepalive ping
+                try:
+                    await websocket.send_json({"type": "ping"})
+                except Exception:
+                    break
+    except Exception as e:
+        logger.debug("Monitor WebSocket error | error={}", e)
+    finally:
+        await collector.stop()
+        logger.info("Monitor WebSocket disconnected")
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -1052,6 +1412,48 @@ def _get_or_create_session(session_id: Optional[str]) -> tuple[Session, str]:
 
 if __name__ == "__main__":
     import uvicorn
+    import argparse
+
+    # 命令行参数解析
+    parser = argparse.ArgumentParser(description="CCServer API")
+    parser.add_argument("--monitor", action="store_true", help="启动后自动打开监控页面")
+    parser.add_argument("--port", type=int, default=8000, help="服务端口（默认 8000）")
+    parser.add_argument("--host", type=str, default="0.0.0.0", help="绑定地址（默认 0.0.0.0）")
+    # 解析已知的参数，忽略 uvicorn 不认识的参数
+    args, _ = parser.parse_known_args()
+
+    # 自动打开浏览器（如果传了 --monitor）
+    if args.monitor:
+        import threading
+        import webbrowser
+
+        def _open_browser():
+            """延迟 1.5 秒后打开监控页面，等待 uvicorn 启动完成。"""
+            import time
+            time.sleep(1.5)
+            url = f"http://{ '127.0.0.1' if args.host == '0.0.0.0' else args.host }:{args.port}/monitor"
+            webbrowser.open(url)
+            logger.info("Monitor page opened | url={}", url)
+
+        threading.Thread(target=_open_browser, daemon=True).start()
+        logger.info("Auto-open monitor enabled | url will open in 1.5s")
+
+    # ── uvicorn WebSocket DEBUG 日志过滤 ──────────────────────────────────────
+    # 环境变量 CCSERVER_UVICORN_WS_LOG=0 时，过滤掉 WebSocket 流量/PING/PONG 等
+    # 高频 DEBUG 消息，保留其他 uvicorn 日志（启动、关闭、连接建立等）
+    import logging
+    if os.environ.get("CCSERVER_UVICORN_WS_LOG", "1") == "0":
+        class _UvicornWSFilter(logging.Filter):
+            """拦截 uvicorn WebSocket 协议层面的高频 DEBUG 消息。"""
+            _patterns = (
+                "> TEXT", "> PING", "< PONG",
+                "sending keepalive", "received keepalive",
+            )
+            def filter(self, record):
+                msg = record.getMessage()
+                return not any(p in msg for p in self._patterns)
+        logging.getLogger("uvicorn.error").addFilter(_UvicornWSFilter())
+        logger.debug("Uvicorn WebSocket DEBUG log filtered | CCSERVER_UVICORN_WS_LOG=0")
 
     # log_config=None：禁止 uvicorn 用 dictConfig 覆盖我们已装好的 loguru handler
-    uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=False, log_config=None)
+    uvicorn.run("server:app", host=args.host, port=args.port, reload=False, log_config=None)

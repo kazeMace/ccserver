@@ -11,7 +11,6 @@ from .registry import TeamRegistry
 from .mailbox import TeamMailbox
 from .poller import TeamMailboxPoller
 from .dispatcher import TeamTaskDispatcher
-from .permission_relay import TeamPermissionRelay
 from .prompts import build_teammate_system_addendum
 from .monitor import TeamHealthMonitor
 
@@ -27,7 +26,6 @@ __all__ = [
     "TeamMailbox",
     "TeamMailboxPoller",
     "TeamTaskDispatcher",
-    "TeamPermissionRelay",
     "build_teammate_system_addendum",
     "TeamHealthMonitor",
 ]

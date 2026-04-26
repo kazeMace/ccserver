@@ -23,10 +23,12 @@ def format_agent_id(name: str, team_name: str) -> str:
         格式化后的 agent_id 字符串
 
     Raises:
-        AssertionError: 当 name 或 team_name 为空时触发
+        ValueError: 当 name 或 team_name 为空时触发
     """
-    assert name, "agent name must not be empty"
-    assert team_name, "team name must not be empty"
+    if not name or not name.strip():
+        raise ValueError("agent name must not be empty")
+    if not team_name or not team_name.strip():
+        raise ValueError("team name must not be empty")
     return f"{name}@{team_name}"
 
 

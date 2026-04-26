@@ -107,6 +107,7 @@ class Compactor:
             }],
             max_tokens=2000,
         )
+        assert response.content, f"LLM returned empty content in Compactor.compact for model={self.model}"
         summary = response.content[0].text
         logger.info("auto_compact done  | session={} summary_len={}", session.id[:8], len(summary))
 

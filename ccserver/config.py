@@ -28,9 +28,10 @@ MAX_DEPTH = int(os.getenv("CCSERVER_MAX_DEPTH", "5"))        # max agent nesting
 # ─── Paths ────────────────────────────────────────────────────────────────────
 
 # 项目工作空间根目录。
-# server.py 部署时必须通过 CCSERVER_PROJECT_DIR 显式指定；
-# tui.py 本地运行时默认使用当前工作目录。
-PROJECT_DIR   = Path(os.getenv("CCSERVER_PROJECT_DIR", ".")).resolve()
+# tui.py 本地运行时默认使用当前工作目录；
+# server.py 未设置时为 None，此时 Session 使用临时目录作为 project_root。
+_PROJECT_DIR_ENV = os.getenv("CCSERVER_PROJECT_DIR")
+PROJECT_DIR: Path | None = Path(_PROJECT_DIR_ENV).resolve() if _PROJECT_DIR_ENV else None
 
 # 全局配置目录，存放跨项目共享的 skills/agents/hooks/commands/sessions
 GLOBAL_CONFIG_DIR = Path(os.getenv("CCSERVER_GLOBAL_CONFIG_DIR", str(Path.home() / ".ccserver")))
@@ -75,9 +76,9 @@ PROMPT_LIB = os.getenv("CCSERVER_PROMPT_LIB", "cc_reverse:v2.1.81")
 # 不设置则不记录
 RECORD_DIR = os.getenv("CCSERVER_RECORD_DIR")
 
-# ─── System prompt ────────────────────────────────────────────────────────────
+# ─── 注入 System Prompt（可选）────────────────────────────────────────────────
 
-# 启动时注入的额外 system prompt 文件路径（可选）
-SYSTEM_FILE    = os.getenv("CCSERVER_SYSTEM_FILE")
+# 启动时注入的额外 system prompt 文件路径（设置即启用）
+INJECT_SYSTEM_FILE = os.getenv("CCSERVER_INJECT_SYSTEM_FILE")
 # True: 追加到 workflow 末尾；False: 替换 workflow
-APPEND_SYSTEM  = os.getenv("CCSERVER_APPEND_SYSTEM", "false").lower() == "true"
+APPEND_SYSTEM      = os.getenv("CCSERVER_APPEND_SYSTEM", "false").lower() == "true"

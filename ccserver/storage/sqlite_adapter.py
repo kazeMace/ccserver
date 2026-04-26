@@ -114,6 +114,18 @@ class SQLiteStorageAdapter(StorageAdapter):
 
                 CREATE INDEX IF NOT EXISTS idx_inbox_read
                     ON inbox_messages(team_name, recipient, read);
+
+                CREATE TABLE IF NOT EXISTS cron_tasks (
+                    task_id         TEXT NOT NULL,
+                    session_id      TEXT NOT NULL,
+                    task_json       TEXT NOT NULL,   -- JSON 序列化的 CronTask 数据
+                    PRIMARY KEY (session_id, task_id)
+                );
+
+                CREATE TABLE IF NOT EXISTS cron_task_counter (
+                    session_id      TEXT PRIMARY KEY,
+                    counter         INTEGER NOT NULL DEFAULT 0
+                );
             """)
         logger.debug("SQLiteAdapter: db initialized | path={}", self.db_path)
 
@@ -551,3 +563,70 @@ class SQLiteStorageAdapter(StorageAdapter):
             recipient,
             updated,
         )
+
+    # ── Cron 任务存储 ───────────────────────────────────────────────────────────
+
+    def create_cron_task(self, session_id: str, task_data: dict) -> None:
+        """创建或覆盖一个 cron 任务记录。"""
+        with self._conn() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO cron_tasks (task_id, session_id, task_json)
+                VALUES (?, ?, ?)
+                """,
+                (task_data["task_id"], session_id, json.dumps(task_data, default=str)),
+            )
+        logger.debug(
+            "SQLiteAdapter: cron task saved | session={} task_id={}",
+            session_id[:8],
+            task_data["task_id"],
+        )
+
+    def delete_cron_task(self, session_id: str, task_id: str) -> None:
+        """删除一个 cron 任务记录。"""
+        with self._conn() as conn:
+            conn.execute(
+                "DELETE FROM cron_tasks WHERE session_id = ? AND task_id = ?",
+                (session_id, task_id),
+            )
+        logger.debug(
+            "SQLiteAdapter: cron task deleted | session={} task_id={}",
+            session_id[:8],
+            task_id,
+        )
+
+    def list_cron_tasks(self, session_id: str) -> list[dict]:
+        """列出指定 session 的所有 cron 任务。"""
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT task_json FROM cron_tasks WHERE session_id = ?",
+                (session_id,),
+            ).fetchall()
+
+        tasks = []
+        for r in rows:
+            try:
+                tasks.append(json.loads(r["task_json"]))
+            except json.JSONDecodeError:
+                logger.warning(
+                    "SQLiteAdapter: failed to decode cron task JSON | session={}",
+                    session_id[:8],
+                )
+        return tasks
+
+    def get_cron_highwatermark(self, session_id: str) -> int:
+        """获取 cron 任务的自增计数器。"""
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT counter FROM cron_task_counter WHERE session_id = ?",
+                (session_id,),
+            ).fetchone()
+            return row["counter"] if row else 0
+
+    def set_cron_highwatermark(self, session_id: str, value: int) -> None:
+        """设置 cron 任务的自增计数器。"""
+        with self._conn() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO cron_task_counter (session_id, counter) VALUES (?, ?)",
+                (session_id, value),
+            )

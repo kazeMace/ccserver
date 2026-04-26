@@ -28,6 +28,7 @@ def get_lib(lib_id: str) -> PromptLib:
 
 def register(lib_id: str, lib: PromptLib) -> None:
     """手动注册一个 PromptLib 实例。"""
+    lib._lib_id = lib_id
     _REGISTRY[lib_id] = lib
 
 
@@ -47,7 +48,9 @@ def _auto_register():
 
         module = importlib.import_module(module_path)
         cls = getattr(module, class_name)
-        _REGISTRY[lib_id] = cls()
+        instance: PromptLib = cls()
+        instance._lib_id = lib_id
+        _REGISTRY[lib_id] = instance
 
 
 _auto_register()

@@ -436,15 +436,13 @@ class Agent:
         """
         from ccserver.builtins.tools.constants import CHILD_DISALLOWED_TOOLS, CHILD_DEFAULT_TOOLS, TEAMMATE_EXTRA_TOOLS
 
-        # ════════ 排查 subagent name 日志 ════════
-        logger.warning(
-            "[SPAWN_DEBUG] spawn_child called | "
+        logger.debug(
+            "spawn_child called | "
             "agent_name_param={!r} agent_def={} agent_def_name={!r}",
             agent_name,
             agent_def is not None,
             getattr(agent_def, "name", None) if agent_def else None,
         )
-        # ════════════════════════════════════════
 
         # ── skills：子代理默认无 skill catalog，除非 agent_def.skills 显式指定 ──
         if agent_def is not None and agent_def.skills is not None:
@@ -462,12 +460,10 @@ class Agent:
         child_env_vars = dict(self.context.env_vars)
         # agent_name 优先级：显式传入 > agent_def.name > None
         effective_name = agent_name or (agent_def.name if agent_def else None)
-        # ════════ 排查 subagent name 日志 ════════
-        logger.warning(
-            "[SPAWN_DEBUG] effective_name={!r} | agent_name_param={!r} agent_def_name={!r}",
+        logger.debug(
+            "effective_name={!r} | agent_name_param={!r} agent_def_name={!r}",
             effective_name, agent_name, getattr(agent_def, "name", None) if agent_def else None,
         )
-        # ════════════════════════════════════════
         child_context = AgentContext(
             name=effective_name,
             messages=[initial_message],
@@ -557,15 +553,13 @@ class Agent:
 
         child.recorder.schemas = child._schemas
 
-        # ════════ 排查 subagent name 日志 ════════
-        logger.warning(
-            "[SPAWN_DEBUG] spawn_child done | child_name={!r} child_aid={} child_context_name={!r} parent={}",
+        logger.debug(
+            "spawn_child done | child_name={!r} child_aid={} child_context_name={!r} parent={}",
             child.context.name,
             child.aid_label,
             child_context.name,
             self.aid_label,
         )
-        # ════════════════════════════════════════
 
         # 发布 subagent_spawned 事件，供 monitor 追踪 Agent 树形关系
         # spawn_child 是同步方法，使用 create_task 异步发布事件
@@ -629,12 +623,10 @@ class Agent:
         #    注意：子 Agent 的事件发布由 run_stream() 内部统一处理（临时替换为 BusEmitter），
         #    不再需要在此处手动替换 child.emitter。
         resolved_name = agent_name or child.context.name or "unnamed"
-        # ════════ 排查 subagent name 日志 ════════
-        logger.warning(
-            "[SPAWN_DEBUG] spawn_background | resolved_name={!r} agent_name_param={!r} child.context.name={!r} task_id={}",
+        logger.debug(
+            "spawn_background | resolved_name={!r} agent_name_param={!r} child.context.name={!r} task_id={}",
             resolved_name, agent_name, child.context.name, agent_task_id,
         )
-        # ════════════════════════════════════════
 
         # 发布 subagent_spawned 事件，供 monitor 追踪 Agent 树形关系
         asyncio.create_task(self.session.event_bus.publish(AgentEvent(

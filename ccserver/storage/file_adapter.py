@@ -60,9 +60,18 @@ class FileStorageAdapter(StorageAdapter):
         messages = []
         msg_path = session_dir / "messages.jsonl"
         if msg_path.exists():
-            for line in msg_path.read_text().splitlines():
-                if line.strip():
-                    messages.append(json.loads(line))
+            # 使用 open + iter 逐行读取，避免大会话 OOM
+            with open(msg_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        try:
+                            messages.append(json.loads(line))
+                        except json.JSONDecodeError:
+                            logger.warning(
+                                "FileStorageAdapter: skip corrupted message line | session_id={}",
+                                session_id[:8],
+                            )
 
         return SessionRecord(
             session_id=session_id,

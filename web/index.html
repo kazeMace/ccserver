@@ -1,0 +1,1239 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CCServer Monitor</title>
+  <style>
+    /* ── 基础重置 ── */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: #ffffff;
+      color: #24292f;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── 顶部统计栏 ── */
+    #stats-bar {
+      display: flex;
+      gap: 16px;
+      padding: 12px 20px;
+      background: #f6f8fa;
+      border-bottom: 1px solid #d0d7de;
+      flex-shrink: 0;
+    }
+    .stat-card {
+      background: #ffffff;
+      border-radius: 8px;
+      padding: 10px 16px;
+      min-width: 120px;
+      border: 1px solid #d0d7de;
+      box-shadow: 0 1px 2px rgba(31,35,40,0.04);
+    }
+    .stat-card .label {
+      font-size: 11px;
+      color: #57606a;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .stat-card .value {
+      font-size: 20px;
+      font-weight: 600;
+      color: #0969da;
+      margin-top: 2px;
+    }
+    .stat-card .value.warn { color: #cf222e; }
+    .stat-card .value.ok { color: #1a7f37; }
+
+    /* ── Tab 导航 ── */
+    #tab-bar {
+      display: flex;
+      gap: 2px;
+      padding: 0 20px;
+      background: #f6f8fa;
+      border-bottom: 1px solid #d0d7de;
+      flex-shrink: 0;
+    }
+    .tab-btn {
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      padding: 8px 16px;
+      font-size: 13px;
+      font-weight: 500;
+      color: #57606a;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .tab-btn:hover { color: #24292f; background: #eaeef2; }
+    .tab-btn.active {
+      color: #0969da;
+      border-bottom-color: #0969da;
+      background: #ffffff;
+    }
+
+    /* ── 主布局 ── */
+    #main {
+      flex: 1;
+      overflow: hidden;
+      position: relative;
+    }
+    .tab-content {
+      display: none;
+      height: 100%;
+      width: 100%;
+    }
+    .tab-content.active { display: flex; }
+
+    /* ── Events Tab ── */
+    #tab-events {
+      flex-direction: row;
+    }
+
+    /* ── 事件流区域 ── */
+    #events-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+    #events-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 16px;
+      background: #f6f8fa;
+      border-bottom: 1px solid #d0d7de;
+      flex-shrink: 0;
+    }
+    #events-header h2 { font-size: 14px; color: #57606a; }
+    #events-header .controls {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    #events-header input[type="text"] {
+      background: #ffffff;
+      border: 1px solid #d0d7de;
+      border-radius: 6px;
+      padding: 5px 12px;
+      color: #24292f;
+      font-size: 12px;
+      width: 180px;
+    }
+    #events-header input[type="text"]:focus {
+      outline: none;
+      border-color: #0969da;
+      box-shadow: 0 0 0 3px rgba(9,105,218,0.15);
+    }
+    #events-header button {
+      background: #f6f8fa;
+      border: 1px solid #d0d7de;
+      border-radius: 6px;
+      padding: 5px 14px;
+      color: #24292f;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    #events-header button:hover { background: #eaeef2; }
+    #events-header button.active {
+      background: #0969da;
+      border-color: #0969da;
+      color: #ffffff;
+    }
+
+    /* 事件列表表头 */
+    #events-header-row {
+      display: flex;
+      padding: 6px 12px;
+      background: #ffffff;
+      border-bottom: 1px solid #d0d7de;
+      font-size: 11px;
+      font-weight: 600;
+      color: #57606a;
+      flex-shrink: 0;
+      user-select: none;
+    }
+    .hcol {
+      position: relative;
+      padding-right: 4px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .resize-handle {
+      position: absolute;
+      right: 0;
+      top: 0;
+      bottom: 0;
+      width: 4px;
+      cursor: col-resize;
+      z-index: 2;
+    }
+    .resize-handle:hover { background: #0969da; }
+
+    #events-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0 12px 8px;
+      font-size: 12px;
+      line-height: 1.5;
+      background: #ffffff;
+    }
+    #events-list .event-row {
+      display: flex;
+      gap: 0;
+      padding: 4px 0;
+      border-radius: 4px;
+      margin-bottom: 1px;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      word-break: break-all;
+      border-bottom: 1px solid #f6f8fa;
+      cursor: pointer;
+      transition: background 0.1s;
+    }
+    #events-list .event-row:hover { background: #ddf4ff; }
+    #events-list .event-row .cell {
+      padding: 2px 6px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    #events-list .event-row .cell.ts {
+      color: #8c959f;
+    }
+    #events-list .event-row .cell.session {
+      color: #8250df;
+    }
+    #events-list .event-row .cell.agent {
+      color: #0969da;
+    }
+    #events-list .event-row .cell.team {
+      color: #bf3989;
+    }
+    #events-list .event-row .cell.etype {
+      font-weight: 600;
+    }
+    #events-list .event-row .cell.payload {
+      color: #57606a;
+      flex: 1;
+      min-width: 80px;
+    }
+
+    /* 事件类型颜色 */
+    .etype-token            { color: #0969da; }
+    .etype-tool_start       { color: #8250df; }
+    .etype-tool_done        { color: #bf3989; }
+    .etype-progress         { color: #bc4c00; }
+    .etype-done             { color: #1a7f37; }
+    .etype-error            { color: #cf222e; }
+    .etype-cancelled        { color: #cf222e; }
+    .etype-idle             { color: #1a7f37; }
+    .etype-shutdown         { color: #cf222e; }
+    .etype-phase_changed    { color: #9e6a03; }
+    .etype-llm_request      { color: #0550ae; }
+    .etype-llm_response     { color: #0969da; }
+    .etype-subagent_spawned { color: #8250df; }
+    .etype-default          { color: #57606a; }
+
+    /* sender_type 徽章样式 */
+    .sender-badge {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      line-height: 1.4;
+    }
+    .sender-agent   { background: #ddf4ff; color: #0969da; }
+    .sender-gateway { background: #fff8c5; color: #7d4e00; }
+    .sender-system  { background: #eaeef2; color: #57606a; }
+    .sender-default { background: #f6f8fa; color: #57606a; }
+
+    /* sender_type 筛选下拉框 */
+    #filter-sender {
+      padding: 4px 8px;
+      border: 1px solid #d0d7de;
+      border-radius: 6px;
+      font-size: 12px;
+      background: #ffffff;
+      color: #24292f;
+      cursor: pointer;
+    }
+
+    /* ── 侧边栏 ── */
+    #sidebar {
+      width: 320px;
+      background: #f6f8fa;
+      border-left: 1px solid #d0d7de;
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+    .sidebar-section {
+      border-bottom: 1px solid #d0d7de;
+      flex-shrink: 0;
+    }
+    .sidebar-section h3 {
+      font-size: 12px;
+      color: #57606a;
+      padding: 10px 14px;
+      background: #ffffff;
+      cursor: pointer;
+      user-select: none;
+      font-weight: 600;
+    }
+    .sidebar-section h3::before {
+      content: "▼ ";
+      font-size: 10px;
+    }
+    .sidebar-section.collapsed h3::before { content: "▶ "; }
+    .sidebar-section.collapsed .section-body { display: none; }
+    .section-body {
+      max-height: 200px;
+      overflow-y: auto;
+      padding: 4px 0;
+      background: #f6f8fa;
+    }
+    .section-body .item {
+      padding: 6px 14px;
+      font-size: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .section-body .item:hover { background: #eaeef2; }
+    .section-body .item .name { color: #24292f; }
+    .section-body .item .badge {
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      background: #eaeef2;
+      color: #57606a;
+      font-weight: 500;
+    }
+    .section-body .item .badge.running { background: #dafbe1; color: #1a7f37; }
+    .section-body .item .badge.done { background: #ddf4ff; color: #0969da; }
+    .section-body .item .badge.error { background: #ffebe9; color: #cf222e; }
+    .section-body .item .badge.idle { background: #fbefff; color: #8250df; }
+    .section-body .empty {
+      padding: 20px;
+      text-align: center;
+      color: #8c959f;
+      font-size: 12px;
+    }
+
+    /* ── 全局表格（Sessions/Teams tabs） ── */
+    .data-table-container {
+      flex: 1;
+      overflow: auto;
+      padding: 16px;
+    }
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      background: #ffffff;
+      border: 1px solid #d0d7de;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .data-table th, .data-table td {
+      padding: 8px 12px;
+      text-align: left;
+      border-bottom: 1px solid #d0d7de;
+    }
+    .data-table th {
+      background: #f6f8fa;
+      font-weight: 600;
+      color: #57606a;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+    .data-table tr:hover { background: #f6f8fa; }
+    .data-table td { color: #24292f; }
+    .data-table td.mono {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 11px;
+    }
+    .data-table .badge {
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      background: #eaeef2;
+      color: #57606a;
+      font-weight: 500;
+      display: inline-block;
+    }
+    .data-table .badge.running { background: #dafbe1; color: #1a7f37; }
+    .data-table .badge.done { background: #ddf4ff; color: #0969da; }
+    .data-table .badge.error { background: #ffebe9; color: #cf222e; }
+    .data-table .badge.idle { background: #fbefff; color: #8250df; }
+
+    /* ── Agent 树状表格 ── */
+    .agent-tree-container {
+      flex: 1;
+      overflow: auto;
+      padding: 16px;
+    }
+    .agent-tree {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      background: #ffffff;
+      border: 1px solid #d0d7de;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .agent-tree th, .agent-tree td {
+      padding: 8px 12px;
+      text-align: left;
+      border-bottom: 1px solid #d0d7de;
+    }
+    .agent-tree th {
+      background: #f6f8fa;
+      font-weight: 600;
+      color: #57606a;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+    .agent-tree tr:hover { background: #f6f8fa; }
+    .agent-tree td { color: #24292f; }
+    .agent-tree .tree-cell {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .agent-tree .tree-toggle {
+      width: 16px;
+      height: 16px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 10px;
+      color: #57606a;
+      border-radius: 3px;
+      user-select: none;
+    }
+    .agent-tree .tree-toggle:hover { background: #eaeef2; }
+    .agent-tree .tree-indent {
+      display: inline-block;
+      width: 18px;
+      flex-shrink: 0;
+    }
+    .agent-tree .tree-leaf .tree-indent {
+      width: 16px;
+    }
+    .agent-tree .tree-line {
+      color: #d0d7de;
+      font-size: 11px;
+      margin-right: 2px;
+    }
+    .agent-tree .mono {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 11px;
+    }
+    .agent-tree .badge {
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      background: #eaeef2;
+      color: #57606a;
+      font-weight: 500;
+      display: inline-block;
+    }
+    .agent-tree .badge.running { background: #dafbe1; color: #1a7f37; }
+    .agent-tree .badge.done { background: #ddf4ff; color: #0969da; }
+    .agent-tree .badge.error { background: #ffebe9; color: #cf222e; }
+    .agent-tree .badge.idle { background: #fbefff; color: #8250df; }
+    .agent-tree tr.collapsed { display: none; }
+
+    /* ── 详情弹窗 ── */
+    #detail-modal {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(31,35,40,0.5);
+      z-index: 200;
+      justify-content: center;
+      align-items: center;
+    }
+    #detail-modal.show { display: flex; }
+    #detail-panel {
+      background: #ffffff;
+      border-radius: 12px;
+      width: 80%;
+      max-width: 800px;
+      max-height: 80%;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 8px 24px rgba(31,35,40,0.2);
+      overflow: hidden;
+    }
+    #detail-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 20px;
+      border-bottom: 1px solid #d0d7de;
+      background: #f6f8fa;
+    }
+    #detail-header h3 {
+      font-size: 14px;
+      color: #24292f;
+      margin: 0;
+    }
+    #detail-close {
+      background: none;
+      border: none;
+      font-size: 18px;
+      color: #57606a;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 6px;
+    }
+    #detail-close:hover { background: #eaeef2; color: #cf222e; }
+    #detail-body {
+      padding: 20px;
+      overflow-y: auto;
+      flex: 1;
+    }
+    #detail-body pre {
+      background: #f6f8fa;
+      border: 1px solid #d0d7de;
+      border-radius: 8px;
+      padding: 16px;
+      font-size: 12px;
+      line-height: 1.6;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      white-space: pre-wrap;
+      word-break: break-all;
+      color: #24292f;
+    }
+
+    /* ── 连接状态 ── */
+    #conn-status {
+      position: fixed;
+      top: 12px;
+      right: 20px;
+      font-size: 11px;
+      padding: 5px 14px;
+      border-radius: 12px;
+      background: #ffffff;
+      border: 1px solid #d0d7de;
+      z-index: 100;
+      font-weight: 500;
+      box-shadow: 0 1px 3px rgba(31,35,40,0.08);
+    }
+    #conn-status.connected { border-color: #1a7f37; color: #1a7f37; background: #dafbe1; }
+    #conn-status.disconnected { border-color: #cf222e; color: #cf222e; background: #ffebe9; }
+    #conn-status.connecting { border-color: #9e6a03; color: #9e6a03; background: #fff8c5; }
+
+    /* ── 滚动条 ── */
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #d0d7de; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #8c959f; }
+  </style>
+</head>
+<body>
+  <div id="conn-status" class="connecting">Connecting...</div>
+
+  <!-- 顶部统计栏 -->
+  <div id="stats-bar">
+    <div class="stat-card">
+      <div class="label">Sessions</div>
+      <div class="value" id="stat-sessions">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Agents</div>
+      <div class="value" id="stat-agents">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Events</div>
+      <div class="value" id="stat-events">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Events/s</div>
+      <div class="value ok" id="stat-eps">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Subscribers</div>
+      <div class="value" id="stat-subs">0</div>
+    </div>
+  </div>
+
+  <!-- Tab 导航 -->
+  <div id="tab-bar">
+    <button class="tab-btn active" data-tab="events">Events</button>
+    <button class="tab-btn" data-tab="agents">Agents</button>
+    <button class="tab-btn" data-tab="sessions">Sessions</button>
+    <button class="tab-btn" data-tab="teams">Teams</button>
+  </div>
+
+  <!-- 主区域 -->
+  <div id="main">
+    <!-- Events Tab -->
+    <div id="tab-events" class="tab-content active">
+      <div id="events-panel">
+        <div id="events-header">
+          <h2>EventBus Stream</h2>
+          <div class="controls">
+            <input type="text" id="filter-input" placeholder="Filter agent_id...">
+            <select id="filter-sender">
+              <option value="">All Senders</option>
+              <option value="agent">Agent</option>
+              <option value="gateway">Gateway</option>
+              <option value="system">System</option>
+            </select>
+            <button id="btn-pause">Pause</button>
+            <button id="btn-clear">Clear</button>
+          </div>
+        </div>
+        <div id="events-header-row">
+          <div class="hcol" style="width:60px" data-col="ts">Time<div class="resize-handle"></div></div>
+          <div class="hcol" style="width:70px" data-col="session">Session<div class="resize-handle"></div></div>
+          <div class="hcol" style="width:120px" data-col="agent">Agent<div class="resize-handle"></div></div>
+          <div class="hcol" style="width:70px" data-col="team">Team<div class="resize-handle"></div></div>
+          <div class="hcol" style="width:70px" data-col="sender">Sender<div class="resize-handle"></div></div>
+          <div class="hcol" style="width:75px" data-col="etype">Type<div class="resize-handle"></div></div>
+          <div class="hcol" style="flex:1" data-col="payload">Payload<div class="resize-handle"></div></div>
+        </div>
+        <div id="events-list"></div>
+      </div>
+      <div id="sidebar">
+        <div class="sidebar-section" id="sec-agents">
+          <h3>Agents</h3>
+          <div class="section-body"><div class="empty">No agents</div></div>
+        </div>
+        <div class="sidebar-section" id="sec-sessions">
+          <h3>Sessions</h3>
+          <div class="section-body"><div class="empty">No sessions</div></div>
+        </div>
+        <div class="sidebar-section" id="sec-teams">
+          <h3>Teams</h3>
+          <div class="section-body"><div class="empty">No teams</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Agents Tab -->
+    <div id="tab-agents" class="tab-content">
+      <div class="agent-tree-container">
+        <table class="agent-tree" id="agents-table">
+          <thead>
+            <tr>
+              <th>Agent</th>
+              <th>Status</th>
+              <th>Session</th>
+              <th>Last Event</th>
+              <th>Last Seen</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Sessions Tab -->
+    <div id="tab-sessions" class="tab-content">
+      <div class="data-table-container">
+        <table class="data-table" id="sessions-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Created At</th>
+              <th>Messages</th>
+              <th>Agents</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Teams Tab -->
+    <div id="tab-teams" class="tab-content">
+      <div class="data-table-container">
+        <table class="data-table" id="teams-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Members</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- 详情弹窗 -->
+  <div id="detail-modal">
+    <div id="detail-panel">
+      <div id="detail-header">
+        <h3>Event Detail</h3>
+        <button id="detail-close">&times;</button>
+      </div>
+      <div id="detail-body">
+        <pre id="detail-json"></pre>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ── 配置 ──
+    const WS_URL = (location.protocol === 'https:' ? 'wss:' : 'ws:')
+                 + '//' + location.host + '/monitor/ws';
+    const MAX_EVENTS = 500;
+    const EPS_WINDOW = 5000;
+
+    // 列宽配置：col-key -> width (px 或 'flex')
+    const colWidths = {
+      ts: 60,
+      session: 70,
+      agent: 120,
+      team: 70,
+      sender: 70,
+      etype: 75,
+      payload: 'flex',
+    };
+
+    // ── 状态 ──
+    let ws = null;
+    let paused = false;
+    let eventCount = 0;
+    let eventTimes = [];
+    let filterText = '';
+    let filterSender = '';  // '' | 'agent' | 'gateway' | 'system'
+    let sessions = {};
+    let agents = {};      // agent_id -> {id, name, session_id, phase, last_event, last_ts}
+    let teams = {};
+    let activeTab = 'events';
+
+    // ── DOM 引用 ──
+    const $eventsList = document.getElementById('events-list');
+    const $eventsHeaderRow = document.getElementById('events-header-row');
+    const $filterInput = document.getElementById('filter-input');
+    const $btnPause = document.getElementById('btn-pause');
+    const $btnClear = document.getElementById('btn-clear');
+    const $connStatus = document.getElementById('conn-status');
+    const $detailModal = document.getElementById('detail-modal');
+    const $detailJson = document.getElementById('detail-json');
+    const $detailClose = document.getElementById('detail-close');
+
+    // ── WebSocket 连接 ──
+    function connect() {
+      updateStatus('connecting', 'Connecting...');
+      ws = new WebSocket(WS_URL);
+
+      ws.onopen = () => {
+        updateStatus('connected', 'Connected');
+        console.log('[Monitor] WebSocket connected');
+      };
+
+      ws.onmessage = (ev) => {
+        try {
+          const msg = JSON.parse(ev.data);
+          handleMessage(msg);
+        } catch (err) {
+          console.error('[Monitor] JSON parse error:', err);
+        }
+      };
+
+      ws.onclose = () => {
+        updateStatus('disconnected', 'Disconnected — reconnecting...');
+        ws = null;
+        setTimeout(connect, 3000);
+      };
+
+      ws.onerror = (err) => {
+        console.error('[Monitor] WebSocket error:', err);
+      };
+    }
+
+    function updateStatus(cls, text) {
+      $connStatus.className = cls;
+      $connStatus.textContent = text;
+    }
+
+    // ── 消息处理 ──
+    function handleMessage(msg) {
+      if (msg.type === 'event') {
+        handleEvent(msg.data);
+      } else if (msg.type === 'state') {
+        handleState(msg.data);
+      }
+    }
+
+    function handleEvent(data) {
+      eventCount++;
+      const now = Date.now();
+      eventTimes.push(now);
+      while (eventTimes.length > 0 && eventTimes[0] < now - EPS_WINDOW) {
+        eventTimes.shift();
+      }
+
+      // 过滤：agent_id / session_id 文本匹配
+      if (filterText && !data.agent_id.includes(filterText) && !data.session_id.includes(filterText)) {
+        return;
+      }
+      // 过滤：sender_type 下拉筛选
+      if (filterSender && data.sender_type !== filterSender) {
+        return;
+      }
+
+      if (!paused) {
+        appendEventRow(data);
+      }
+
+      // 更新统计
+      document.getElementById('stat-events').textContent = eventCount;
+      document.getElementById('stat-eps').textContent = eventTimes.length;
+
+      // 更新 Agent 状态缓存
+      // 注意：只有真正的 Agent（sender_type === 'agent'）才加入 agents 列表
+      // Gateway（gateway_feishu:d 等）不是 Agent，不显示在 Agent 面板中
+      if (data.agent_id) {
+        const isAgent = data.sender_type === 'agent';
+        // 只有真正的 Agent 才创建条目；Gateway / System 不加入 Agent 列表
+        if (!agents[data.agent_id] && isAgent) {
+          agents[data.agent_id] = { id: data.agent_id, name: '', session_id: data.session_id, phase: 'idle', parent_id: null };
+        }
+        // 只对已知的 Agent 更新状态（Gateway 事件不进入 agents 列表）
+        if (agents[data.agent_id]) {
+          if (data.event_type === 'done') agents[data.agent_id].phase = 'done';
+          else if (data.event_type === 'error') agents[data.agent_id].phase = 'error';
+          else if (data.event_type === 'cancelled') agents[data.agent_id].phase = 'cancelled';
+          else if (data.event_type === 'progress') agents[data.agent_id].phase = 'running';
+          else if (data.event_type === 'phase_changed') {
+            agents[data.agent_id].phase = data.payload?.to_phase || 'running';
+            agents[data.agent_id].current_tool = data.payload?.current_tool || null;
+          }
+          agents[data.agent_id].last_event = data.event_type;
+          agents[data.agent_id].last_ts = data.ts;
+        }
+        // subagent_spawned：记录父子关系（由 Agent 发出，sender_type 为 agent）
+        if (data.event_type === 'subagent_spawned') {
+          const p = data.payload || {};
+          if (!agents[p.child_id]) {
+            agents[p.child_id] = { id: p.child_id, name: p.child_name || '', session_id: data.session_id, phase: 'idle', parent_id: p.parent_id };
+          }
+          agents[p.child_id].name = p.child_name || agents[p.child_id].name;
+          agents[p.child_id].parent_id = p.parent_id;
+          agents[p.child_id].depth = p.depth;
+        }
+        renderAgents();
+      }
+    }
+
+    function handleState(data) {
+      // Sessions
+      sessions = {};
+      (data.sessions || []).forEach(s => { sessions[s.id] = s; });
+      renderSessions();
+
+      // Agents：从 state 更新 name、status 和 parent_id
+      (data.agents || []).forEach(a => {
+        if (!agents[a.id]) {
+          agents[a.id] = { id: a.id, name: a.name || '', session_id: a.session_id, phase: 'idle', parent_id: a.parent_id, team_name: a.team_name };
+        }
+        agents[a.id].name = a.name || agents[a.id].name || '';
+        agents[a.id].status = a.status;
+        agents[a.id].session_id = a.session_id;
+        agents[a.id].task_id = a.task_id;
+        agents[a.id].parent_id = a.parent_id;
+        agents[a.id].team_name = a.team_name || agents[a.id].team_name;
+      });
+      renderAgents();
+      renderAgentsTable();
+
+      // Teams
+      teams = {};
+      (data.teams || []).forEach(t => { teams[t.name] = t; });
+      renderTeams();
+      renderTeamsTable();
+
+      // Sessions table
+      renderSessionsTable();
+
+      document.getElementById('stat-sessions').textContent = Object.keys(sessions).length;
+      document.getElementById('stat-agents').textContent = Object.keys(agents).length;
+      document.getElementById('stat-subs').textContent = data.subscriber_count || 0;
+    }
+
+    // ── 渲染事件行 ──
+    function appendEventRow(data) {
+      const row = document.createElement('div');
+      row.className = 'event-row';
+      row.dataset.event = JSON.stringify(data);
+
+      const ts = new Date(data.ts * 1000).toLocaleTimeString('zh-CN', {
+        hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit'
+      });
+      const etypeClass = 'etype-' + (data.event_type || 'default');
+      const payloadStr = JSON.stringify(data.payload || {}).slice(0, 200);
+
+      // sender_type 徽章
+      const senderType = data.sender_type || 'unknown';
+      const senderClass = 'sender-' + (['agent', 'gateway', 'system'].includes(senderType) ? senderType : 'default');
+      const senderBadge = `<span class="sender-badge ${senderClass}">${escapeHtml(senderType)}</span>`;
+
+      // 从 agents 缓存获取 name 和 team
+      const agentCache = agents[data.agent_id] || {};
+      const agentName = agentCache.name || '';
+      const agentDisplay = agentName
+        ? `${escapeHtml(truncate(agentName, 10))}(${escapeHtml(truncate(data.agent_id, 6))})`
+        : escapeHtml(truncate(data.agent_id, 12));
+      const teamName = agentCache.team_name || '';
+
+      row.innerHTML = `
+        <div class="cell ts" style="width:${colWidthPx('ts')}">${ts}</div>
+        <div class="cell session" style="width:${colWidthPx('session')}" title="${escapeHtml(data.session_id)}">${truncate(data.session_id, 8)}</div>
+        <div class="cell agent" style="width:${colWidthPx('agent')}" title="${escapeHtml(data.agent_id)}">${agentDisplay}</div>
+        <div class="cell team" style="width:${colWidthPx('team')}" title="${escapeHtml(teamName)}">${escapeHtml(truncate(teamName, 8))}</div>
+        <div class="cell sender" style="width:${colWidthPx('sender')}">${senderBadge}</div>
+        <div class="cell etype ${etypeClass}" style="width:${colWidthPx('etype')}">${escapeHtml(data.event_type)}</div>
+        <div class="cell payload" style="flex:1" title="${escapeHtml(payloadStr)}">${escapeHtml(payloadStr)}</div>
+      `;
+
+      // 点击显示详情
+      row.addEventListener('click', () => showEventDetail(data));
+
+      $eventsList.insertBefore(row, $eventsList.firstChild);
+
+      while ($eventsList.children.length > MAX_EVENTS) {
+        $eventsList.removeChild($eventsList.lastChild);
+      }
+    }
+
+    function colWidthPx(key) {
+      const w = colWidths[key];
+      return w === 'flex' ? 'auto' : w + 'px';
+    }
+
+    // ── 详情弹窗 ──
+    function showEventDetail(data) {
+      $detailJson.textContent = JSON.stringify(data, null, 2);
+      $detailModal.classList.add('show');
+    }
+
+    function hideEventDetail() {
+      $detailModal.classList.remove('show');
+    }
+
+    $detailClose.addEventListener('click', hideEventDetail);
+    $detailModal.addEventListener('click', (e) => {
+      if (e.target === $detailModal) hideEventDetail();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') hideEventDetail();
+    });
+
+    // ── 渲染侧边栏 ──
+    function renderAgents() {
+      const body = document.querySelector('#sec-agents .section-body');
+      const items = Object.values(agents);
+      if (items.length === 0) {
+        body.innerHTML = '<div class="empty">No agents</div>';
+        return;
+      }
+      body.innerHTML = items.map(a => {
+        const displayName = a.name ? `${escapeHtml(truncate(a.name, 12))}(${escapeHtml(truncate(a.id, 8))})` : escapeHtml(truncate(a.id, 20));
+        const badgeClass = a.phase || 'idle';
+        return `<div class="item">
+          <span class="name" title="${escapeHtml(a.id)}">${displayName}</span>
+          <span class="badge ${badgeClass}">${a.phase}</span>
+        </div>`;
+      }).join('');
+    }
+
+    function renderSessions() {
+      const body = document.querySelector('#sec-sessions .section-body');
+      const items = Object.values(sessions);
+      if (items.length === 0) {
+        body.innerHTML = '<div class="empty">No sessions</div>';
+        return;
+      }
+      body.innerHTML = items.map(s => {
+        const agentCount = Object.values(agents).filter(a => a.session_id === s.id).length;
+        return `<div class="item">
+          <span class="name" title="${escapeHtml(s.id)}">${escapeHtml(truncate(s.id, 20))}</span>
+          <span class="badge">${agentCount} agents</span>
+        </div>`;
+      }).join('');
+    }
+
+    function renderTeams() {
+      const body = document.querySelector('#sec-teams .section-body');
+      const items = Object.values(teams);
+      if (items.length === 0) {
+        body.innerHTML = '<div class="empty">No teams</div>';
+        return;
+      }
+      body.innerHTML = items.map(t => `<div class="item">
+        <span class="name">${escapeHtml(t.name)}</span>
+        <span class="badge">${t.member_count || 0} members</span>
+      </div>`).join('');
+    }
+
+    // ── 全局表格渲染 ──
+    // ── Agent 树状表格渲染 ──
+    function renderAgentsTable() {
+      const tbody = document.querySelector('#agents-table tbody');
+      const items = Object.values(agents);
+      if (items.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#8c959f;padding:20px;">No agents</td></tr>';
+        return;
+      }
+
+      // 构建父子映射：parent_id -> [children]
+      const childrenMap = {};
+      items.forEach(a => {
+        const pid = a.parent_id || 'root';
+        if (!childrenMap[pid]) childrenMap[pid] = [];
+        childrenMap[pid].push(a);
+      });
+
+      // 根节点：parent_id 为 null
+      const roots = items.filter(a => !a.parent_id).sort((a, b) => a.id.localeCompare(b.id));
+
+      let html = '';
+      function renderNode(agent, depth) {
+        const hasChildren = childrenMap[agent.id] && childrenMap[agent.id].length > 0;
+        const indent = depth * 18;
+        const badgeClass = agent.phase || 'idle';
+        const lastTs = agent.last_ts ? new Date(agent.last_ts * 1000).toLocaleTimeString('zh-CN') : '-';
+        const display = agent.name ? `${escapeHtml(truncate(agent.name, 14))}(${escapeHtml(truncate(agent.id, 6))})` : escapeHtml(truncate(agent.id, 20));
+
+        let prefix = '';
+        if (depth > 0) {
+          prefix = '<span class="tree-line">└─</span>';
+        }
+
+        let toggle = '';
+        if (hasChildren) {
+          toggle = `<span class="tree-toggle" data-agent-id="${agent.id}" onclick="toggleAgentTree('${agent.id}')">▼</span>`;
+        } else {
+          toggle = '<span class="tree-indent"></span>';
+        }
+
+        const toolInfo = agent.current_tool ? ` 🔧${escapeHtml(truncate(agent.current_tool, 12))}` : '';
+        html += `<tr data-agent-id="${agent.id}" data-depth="${depth}">
+          <td>
+            <div class="tree-cell" style="padding-left:${indent}px">
+              ${toggle}${prefix}
+              <span class="mono" title="${escapeHtml(agent.id)}">${display}</span>
+            </div>
+          </td>
+          <td><span class="badge ${badgeClass}">${agent.phase}</span>${toolInfo}</td>
+          <td class="mono" title="${escapeHtml(agent.session_id)}">${escapeHtml(truncate(agent.session_id, 12))}</td>
+          <td>${escapeHtml(agent.last_event || '-')}</td>
+          <td>${lastTs}</td>
+        </tr>`;
+
+        if (hasChildren) {
+          const children = childrenMap[agent.id].sort((a, b) => a.id.localeCompare(b.id));
+          children.forEach(child => renderNode(child, depth + 1));
+        }
+      }
+
+      roots.forEach(root => renderNode(root, 0));
+      tbody.innerHTML = html;
+    }
+
+    function toggleAgentTree(agentId) {
+      const rows = document.querySelectorAll('#agents-table tbody tr');
+      let toggling = false;
+      let targetDepth = -1;
+      let doHide = false;
+
+      rows.forEach(row => {
+        if (row.dataset.agentId === agentId) {
+          const toggle = row.querySelector('.tree-toggle');
+          doHide = toggle && toggle.textContent === '▼';
+          if (toggle) toggle.textContent = doHide ? '▶' : '▼';
+          targetDepth = parseInt(row.dataset.depth);
+          toggling = true;
+          return;
+        }
+        if (toggling) {
+          const depth = parseInt(row.dataset.depth);
+          if (depth <= targetDepth) {
+            toggling = false;
+            return;
+          }
+          if (doHide) {
+            row.classList.add('collapsed');
+            // 同时折叠后代的 toggle 状态
+            const childToggle = row.querySelector('.tree-toggle');
+            if (childToggle) childToggle.textContent = '▶';
+          } else {
+            row.classList.remove('collapsed');
+          }
+        }
+      });
+    }
+
+    function renderSessionsTable() {
+      const tbody = document.querySelector('#sessions-table tbody');
+      const items = Object.values(sessions);
+      if (items.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#8c959f;padding:20px;">No sessions</td></tr>';
+        return;
+      }
+      tbody.innerHTML = items.map(s => {
+        const agentCount = Object.values(agents).filter(a => a.session_id === s.id).length;
+        return `<tr>
+          <td class="mono" title="${escapeHtml(s.id)}">${escapeHtml(truncate(s.id, 20))}</td>
+          <td>${escapeHtml(s.created_at || '-')}</td>
+          <td>${s.msg_count || 0}</td>
+          <td>${agentCount}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    function renderTeamsTable() {
+      const tbody = document.querySelector('#teams-table tbody');
+      const items = Object.values(teams);
+      if (items.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="2" style="text-align:center;color:#8c959f;padding:20px;">No teams</td></tr>';
+        return;
+      }
+      tbody.innerHTML = items.map(t => `<tr>
+        <td>${escapeHtml(t.name)}</td>
+        <td>${t.member_count || 0}</td>
+      </tr>`).join('');
+    }
+
+    // ── 列宽拖拽 ──
+    let resizingCol = null;
+    let resizeStartX = 0;
+    let resizeStartWidth = 0;
+
+    document.querySelectorAll('.resize-handle').forEach(handle => {
+      handle.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        const hcol = handle.parentElement;
+        const colKey = hcol.dataset.col;
+        resizingCol = colKey;
+        resizeStartX = e.clientX;
+        const styleWidth = hcol.style.width;
+        resizeStartWidth = styleWidth === 'flex' ? 200 : parseInt(styleWidth, 10);
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+      });
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!resizingCol) return;
+      const delta = e.clientX - resizeStartX;
+      const newWidth = Math.max(40, resizeStartWidth + delta);
+      colWidths[resizingCol] = newWidth;
+
+      // 更新表头
+      const hcol = document.querySelector(`.hcol[data-col="${resizingCol}"]`);
+      if (hcol) hcol.style.width = newWidth + 'px';
+
+      // 更新所有事件行的对应列
+      const selector = `.event-row .cell.${resizingCol}`;
+      document.querySelectorAll(selector).forEach(cell => {
+        cell.style.width = newWidth + 'px';
+        cell.style.flex = 'none';
+      });
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (resizingCol) {
+        resizingCol = null;
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      }
+    });
+
+    // ── Tab 切换 ──
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tab = btn.dataset.tab;
+        if (tab === activeTab) return;
+
+        // 更新按钮状态
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        // 更新内容显示
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        document.getElementById('tab-' + tab).classList.add('active');
+
+        activeTab = tab;
+
+        // 重新渲染对应表格
+        if (tab === 'agents') renderAgentsTable();
+        else if (tab === 'sessions') renderSessionsTable();
+        else if (tab === 'teams') renderTeamsTable();
+      });
+    });
+
+    // ── 工具函数 ──
+    function escapeHtml(s) {
+      if (!s) return '';
+      return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+    function truncate(s, n) {
+      if (!s) return '';
+      return s.length > n ? s.slice(0, n) + '...' : s;
+    }
+
+    // ── 交互事件 ──
+    $filterInput.addEventListener('input', (e) => {
+      filterText = e.target.value.trim();
+    });
+
+    const $filterSender = document.getElementById('filter-sender');
+    $filterSender.addEventListener('change', (e) => {
+      filterSender = e.target.value;
+    });
+
+    $btnPause.addEventListener('click', () => {
+      paused = !paused;
+      $btnPause.textContent = paused ? 'Resume' : 'Pause';
+      $btnPause.classList.toggle('active', paused);
+    });
+
+    $btnClear.addEventListener('click', () => {
+      $eventsList.innerHTML = '';
+      eventCount = 0;
+      eventTimes = [];
+      document.getElementById('stat-events').textContent = '0';
+      document.getElementById('stat-eps').textContent = '0';
+    });
+
+    // 侧边栏折叠
+    document.querySelectorAll('.sidebar-section h3').forEach(h3 => {
+      h3.addEventListener('click', () => {
+        h3.parentElement.classList.toggle('collapsed');
+      });
+    });
+
+    // ── 启动 ──
+    connect();
+  </script>
+</body>
+</html>

@@ -202,9 +202,11 @@ class CronScheduler:
 
         由 Session 初始化时调用（参见 Session.__post_init__）。
         """
+        raw_tasks: list[dict] = []
         try:
             raw_tasks = self._session.storage.list_cron_tasks(self._session_id)
-        except Exception as e:
+        except (OSError, ValueError) as e:
+            # 存储层 I/O 错误或数据格式错误，记录后跳过恢复
             logger.warning(
                 "CronScheduler.load_durable_tasks failed | session_id={} error={}",
                 self._session_id[:8], e,
@@ -214,19 +216,23 @@ class CronScheduler:
         for raw in raw_tasks:
             try:
                 task = CronTask.from_dict(raw)
-                # 跳过已删除的
-                if task.status == "deleted":
-                    continue
-                self._tasks[task.task_id] = task
-                logger.debug(
-                    "CronTask restored | task_id={} mode={} next_run={}",
-                    task.task_id, task.mode, task.next_run_at,
-                )
-            except Exception as e:
+            except (ValueError, KeyError, TypeError) as e:
+                # 单条任务数据损坏，跳过并记录详细错误
                 logger.warning(
-                    "CronTask.restore failed | raw={} error={}",
+                    "CronTask.restore skipped (corrupted data) | raw={} error={}",
                     raw, e,
                 )
+                continue
+
+            # 跳过已删除的
+            if task.status == "deleted":
+                continue
+
+            self._tasks[task.task_id] = task
+            logger.debug(
+                "CronTask restored | task_id={} mode={} next_run={}",
+                task.task_id, task.mode, task.next_run_at,
+            )
 
         logger.info(
             "CronScheduler loaded durable tasks | session_id={} count={}",
@@ -253,7 +259,14 @@ class CronScheduler:
                 now = datetime.now(timezone.utc)
 
                 # 检查待注入的暂存任务（root_agent 尚未创建时暂存）
-                await self._drain_pending_triggers()
+                try:
+                    await self._drain_pending_triggers()
+                except Exception as e:
+                    self._error_count += 1
+                    logger.exception(
+                        "CronScheduler drain_pending_triggers error | session_id={} error={}",
+                        self._session_id[:8], e,
+                    )
 
                 # 检查到期任务
                 due_tasks = [
@@ -262,18 +275,27 @@ class CronScheduler:
                 ]
 
                 for task in due_tasks:
-                    await self._schedule_trigger(task)
+                    try:
+                        await self._schedule_trigger(task)
+                    except Exception as e:
+                        self._error_count += 1
+                        logger.exception(
+                            "CronScheduler _schedule_trigger error | task_id={} error={}",
+                            task.task_id, e,
+                        )
 
                 await asyncio.sleep(self.CHECK_INTERVAL)
 
         except asyncio.CancelledError:
             logger.debug("CronScheduler cancelled | session_id={}", self._session_id[:8])
+            raise
         except Exception as e:
             self._error_count += 1
-            logger.error(
+            logger.exception(
                 "CronScheduler fatal error | session_id={} error={}",
                 self._session_id[:8], e,
             )
+            raise
 
     async def _schedule_trigger(self, task: CronTask) -> None:
         """

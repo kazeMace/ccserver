@@ -372,8 +372,8 @@ def test_interactive_mode_ask_tool_denied(tmp_path):
 # ─── FilterEmitter 透传 permission_request ───────────────────────────────────
 
 
-def test_filter_emitter_passes_permission_request_in_final_only():
-    """final_only 模式下，permission_request 事件必须透传，否则 agent 会永久挂起"""
+def test_filter_emitter_final_only_blocks_intermediate_events():
+    """final_only + stream=False 时，只透传 done/error，过滤 token/tool_start"""
 
     class RecordEmitter(BaseEmitter):
         def __init__(self):
@@ -383,36 +383,39 @@ def test_filter_emitter_passes_permission_request_in_final_only():
             self.events.append(event)
 
     inner = RecordEmitter()
-    fe = FilterEmitter(inner, mode="final_only")
+    fe = FilterEmitter(inner, verbosity="final_only", stream=False)
 
-    _run(fe.emit({"type": "permission_request", "tool": "Bash", "input": {}}))
     _run(fe.emit({"type": "token", "content": "hello"}))
+    _run(fe.emit({"type": "tool_start", "tool": "Bash", "preview": "ls"}))
     _run(fe.emit({"type": "done", "content": "done"}))
 
     event_types = [e["type"] for e in inner.events]
-    assert "permission_request" in event_types   # 必须透传
-    assert "token" not in event_types             # final_only 过滤 token
+    assert "done" in event_types
+    assert "token" not in event_types
+    assert "tool_start" not in event_types
 
 
-def test_filter_emitter_passes_ask_user_in_streaming():
-    """streaming 模式下，ask_user 事件也必须透传"""
+def test_filter_emitter_delegates_emit_ask_user():
+    """emit_ask_user 必须委托给内部 emitter"""
 
-    class RecordEmitter(BaseEmitter):
+    class MockInner(BaseEmitter):
         def __init__(self):
-            self.events = []
+            self.called = False
+            self.result = "user answer"
 
         async def emit(self, event: dict) -> None:
-            self.events.append(event)
+            pass
 
-    inner = RecordEmitter()
-    fe = FilterEmitter(inner, mode="streaming")
+        async def emit_ask_user(self, questions: list) -> str:
+            self.called = True
+            return self.result
 
-    _run(fe.emit({"type": "ask_user", "questions": []}))
-    _run(fe.emit({"type": "tool_start", "tool": "Bash", "preview": "ls"}))
+    inner = MockInner()
+    fe = FilterEmitter(inner, verbosity="verbose", interactive=True)
+    result = _run(fe.emit_ask_user([{"question": "What?"}]))
 
-    event_types = [e["type"] for e in inner.events]
-    assert "ask_user" in event_types       # 必须透传
-    assert "tool_start" not in event_types  # streaming 过滤 tool_start
+    assert inner.called
+    assert result == "user answer"
 
 
 def test_filter_emitter_delegates_emit_permission_request():
@@ -431,7 +434,7 @@ def test_filter_emitter_delegates_emit_permission_request():
             return self.result
 
     inner = MockInner()
-    fe = FilterEmitter(inner, mode="final_only")
+    fe = FilterEmitter(inner, verbosity="verbose", interactive=True)
     result = _run(fe.emit_permission_request("Bash", {"command": "ls"}))
 
     assert inner.called

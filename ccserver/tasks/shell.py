@@ -19,7 +19,7 @@ BTBash.run(run_in_background=True)
     ├── ShellTaskState(...)
     ├── Session._shell_tasks[id] = state  ← 注册
     ├── subprocess = asyncio.create_subprocess_shell(...)
-    ├── proc_started.set_result(subprocess)
+    ├── state.mark_running(pid=subprocess.pid, proc=subprocess)
     └── 返回 ToolResult(background_task_id="b1")
 
 Session._shell_tasks[id].proc.wait()  →  进程结束时自动触发完成处理
@@ -96,25 +96,6 @@ def is_shell_task_state(obj: object) -> bool:
 
 # ─── ShellTaskState ───────────────────────────────────────────────────────────
 
-def _make_proc_started_future() -> "asyncio.Future[asyncio.subprocess.Process]":
-    """
-    为 ShellTaskState.proc_started 字段创建 Future。
-
-    使用独立函数而非 lambda，规避 asyncio.get_running_loop() 的 DeprecationWarning。
-    详见 field 注释。
-    """
-    try:
-        loop = asyncio.get_running_loop()
-        return loop.create_future()
-    except RuntimeError:
-        # 同步上下文（无运行中事件循环）下，创建临时循环用于构造 future，
-        # 之后立即关闭。mark_running 会用真正的 proc future 替换此值。
-        loop = asyncio.new_event_loop()
-        fut = loop.create_future()
-        loop.close()
-        return fut
-
-
 @dataclass
 class ShellTaskState:
     """
@@ -170,15 +151,10 @@ class ShellTaskState:
         失败/终止原因的描述文本。
 
     start_time : datetime | None
-        进程实际启动的时间（proc_started Future  resolved 时记录）。
+        进程实际启动的时间（mark_running 被调用时记录）。
 
     end_time : datetime | None
         进程结束（completed/failed/killed）的时间。
-
-    proc_started : asyncio.Future
-        用于延迟填充 pid 和 proc。
-        BTBash 在创建 ShellTaskState 后立即返回，proc 稍后通过
-        Future 注入，避免 async/await 阻塞工具返回值。
     """
 
     id: str
@@ -204,13 +180,6 @@ class ShellTaskState:
     # ── 时间戳 ───────────────────────────────────────────────────────────────
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
-
-    # ── 内部信号 ─────────────────────────────────────────────────────────────
-    # 进程对象填充的 Promise，允许 BTBash.run() 同步创建 State 后异步填充 proc。
-    # default_factory 使用独立函数，规避 lambda 中 get_running_loop 的警告。
-    proc_started: "asyncio.Future[asyncio.subprocess.Process]" = field(
-        default_factory=_make_proc_started_future
-    )
 
     # ── 只读属性 ─────────────────────────────────────────────────────────────
 

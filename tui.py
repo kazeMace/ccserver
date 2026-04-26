@@ -24,7 +24,7 @@ from ccserver import (
     SESSIONS_BASE,
 )
 from ccserver.config import (
-    PROJECT_DIR, DB_PATH, SYSTEM_FILE, APPEND_SYSTEM,
+    PROJECT_DIR, DB_PATH, INJECT_SYSTEM_FILE, APPEND_SYSTEM,
     STORAGE_BACKEND, MONGO_URI, MONGO_DB, REDIS_URL, REDIS_CACHE_SIZE, REDIS_TTL,
 )
 from ccserver.storage import build_storage
@@ -149,7 +149,7 @@ async def tui_main(system: str | None = None, append_system: bool = False):
         f" | {DIM}{MODEL} | "
         f"session: {session.id[:8]}{RESET}\n"
         f"{DIM}workdir: {session.workdir}{RESET}\n"
-        f"{DIM}project: {PROJECT_DIR}{RESET}\n"
+        f"{DIM}project: {PROJECT_DIR or '(none)'}{RESET}\n"
         f"{DIM}{_status_line()}{RESET}\n"
         f"Type {CYAN}/help{RESET} for commands.\n"
     )
@@ -293,12 +293,12 @@ async def tui_main(system: str | None = None, append_system: bool = False):
 
 def main():
     parser = argparse.ArgumentParser(description="CCServer TUI")
-    parser.add_argument("--system-file", metavar="PATH", help="注入的 system prompt md 文件路径（覆盖 CCSERVER_SYSTEM_FILE）")
+    parser.add_argument("--system-file", metavar="PATH", help="注入的 system prompt md 文件路径（覆盖 CCSERVER_INJECT_SYSTEM_FILE）")
     parser.add_argument("--append-system", action="store_true", default=None, help="追加到 workflow 末尾（覆盖 CCSERVER_APPEND_SYSTEM）")
     args = parser.parse_args()
 
     # 命令行参数优先，否则读环境变量（与 server.py 对齐）
-    system_path = args.system_file or SYSTEM_FILE
+    system_path = args.system_file or INJECT_SYSTEM_FILE
     append = args.append_system if args.append_system is not None else APPEND_SYSTEM
 
     try:

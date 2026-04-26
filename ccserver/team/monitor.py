@@ -1,7 +1,7 @@
 """
 team.monitor — TeamHealthMonitor 实现。
 
-功能：定期扫描所有 Session 中的 Team，检查 Dispatcher、PermissionRelay、
+功能：定期扫描所有 Session 中的 Team，检查 Dispatcher、
       MailboxPoller 是否存活，自动重启死亡的组件（自愈）。
 """
 
@@ -11,7 +11,6 @@ from loguru import logger
 from ccserver import agent_registry
 from ccserver.team.mailbox import TeamMailbox
 from ccserver.team.dispatcher import TeamTaskDispatcher
-from ccserver.team.permission_relay import TeamPermissionRelay
 from ccserver.team.poller import TeamMailboxPoller
 
 
@@ -21,7 +20,6 @@ class TeamHealthMonitor:
 
     以固定间隔扫描所有已注册 Team 的关键后台协程：
       - TeamTaskDispatcher
-      - TeamPermissionRelay
       - TeamMailboxPoller（附着在 BackgroundAgentHandle 上）
 
     发现死亡的组件时自动调用 start() 重启，并记录警告日志。
@@ -72,7 +70,7 @@ class TeamHealthMonitor:
             logger.error("TeamHealthMonitor fatal error | error={}", e)
 
     async def _check_all_teams(self) -> None:
-        """遍历所有 Session 的 TeamRegistry，检查 Dispatcher 和 Relay。"""
+        """遍历所有 Session 的 TeamRegistry，检查 Dispatcher 存活。"""
         # _sessions 是内存中的 Session 对象字典，list_all() 返回的是 dict 元数据，不能用
         sessions = list(self.session_manager._sessions.values())
         for session in sessions:
@@ -93,22 +91,22 @@ class TeamHealthMonitor:
                         "TeamHealthMonitor: dispatcher dead, restarting | team={}",
                         team.name,
                     )
-                    dispatcher = TeamTaskDispatcher(team, mailbox)
+                    dispatcher = TeamTaskDispatcher(
+                        team, mailbox, event_bus=session.event_bus
+                    )
                     dispatcher.start()
                     team._dispatcher = dispatcher
                     self._restart_count += 1
 
-                # 检查 PermissionRelay
-                relay = getattr(team, "_relay", None)
-                if relay is None or not relay.is_alive:
-                    logger.warning(
-                        "TeamHealthMonitor: relay dead, restarting | team={}",
-                        team.name,
-                    )
-                    relay = TeamPermissionRelay(team, mailbox)
-                    relay.start()
-                    team._relay = relay
-                    self._restart_count += 1
+                # EventBus 订阅者泄漏检测
+                if session.event_bus is not None:
+                    sub_count = session.event_bus.subscriber_count()
+                    if sub_count > 100:
+                        logger.warning(
+                            "TeamHealthMonitor: EventBus subscriber leak detected | "
+                            "session={} subscribers={} ids={}",
+                            session.id[:8], sub_count, session.event_bus.subscriber_ids()
+                        )
 
     async def _check_all_pollers(self) -> None:
         """遍历全局 BackgroundAgentHandle，检查 TeamMailboxPoller。"""

@@ -1,66 +1,54 @@
 """
-team.mailbox — 基于 StorageAdapter 的持久化 Mailbox 客户端。
+team.mailbox — 基于 MailboxBackend 的持久化 Mailbox 客户端。
 
 每个 (team_name, recipient) 对应一个独立的收件箱，
-消息以 JSON Lines（file 后端）或数据库行（sqlite/mongo 后端）持久化。
+消息通过 MailboxBackend 持久化（默认使用 StorageAdapterBackend）。
+
+P4 改动：
+  - 从直接依赖 StorageAdapter 改为依赖 MailboxBackend 接口
+  - send() / fetch_messages() / mark_read() 改为 async
+  - 删除 _maybe_await 同步桥接逻辑
 """
 
-import asyncio
-import inspect
-from typing import Any, Optional
+from typing import Optional
 
 from loguru import logger
 
-from ccserver.storage.base import StorageAdapter
 from .protocol import TeamMessage, deserialize_message
+from .mailbox_backend import MailboxBackend, StorageAdapterBackend
 
 
 class TeamMailbox:
     """
     团队持久化邮箱客户端。
 
-    封装 StorageAdapter 的 inbox 相关方法，提供发送、读取、标记已读等高层接口。
-    兼容同步与异步 StorageAdapter。
+    封装 MailboxBackend 的高层接口，提供发送、读取、标记已读等功能。
+    不再直接感知 StorageAdapter，Backend 可插拔替换。
+
+    Args:
+        team_name: 团队名称
+        backend:   MailboxBackend 实例，或为 StorageAdapter 实例（自动包装）
     """
 
-    def __init__(self, team_name: str, adapter: Optional[StorageAdapter]):
+    def __init__(self, team_name: str, backend: Optional[MailboxBackend] = None):
         self.team_name = team_name
-        self.adapter = adapter
+        if backend is None or hasattr(backend, "append_inbox_message"):
+            # 向后兼容：传入 StorageAdapter 时自动包装为 StorageAdapterBackend
+            self.backend = StorageAdapterBackend(backend)
+        else:
+            self.backend = backend
 
-    @staticmethod
-    def _maybe_await(coro_or_result: Any) -> Any:
+    async def send(self, message: TeamMessage) -> None:
         """
-        兼容同步与异步 adapter。
-        如果返回值是协程对象，则运行事件循环直到完成。
-        """
-        if inspect.isawaitable(coro_or_result):
-            try:
-                loop = asyncio.get_running_loop()
-                import concurrent.futures
-
-                with concurrent.futures.ThreadPoolExecutor() as pool:
-                    future = pool.submit(asyncio.run, coro_or_result)
-                    return future.result()
-            except RuntimeError:
-                return asyncio.run(coro_or_result)
-        return coro_or_result
-
-    def send(self, message: TeamMessage) -> None:
-        """
-        向指定接收者 inbox 发送一条消息（同步封装，内部自动桥接 async adapter）。
+        向指定接收者 inbox 发送一条消息（异步）。
 
         Args:
             message: 要发送的 TeamMessage 实例
         """
-        if self.adapter is None:
-            logger.warning("Mailbox send skipped | no adapter")
-            return
-        self._maybe_await(
-            self.adapter.append_inbox_message(
-                self.team_name,
-                message.to_agent,
-                message.to_dict(),
-            )
+        await self.backend.append(
+            self.team_name,
+            message.to_agent,
+            message.to_dict(),
         )
         logger.debug(
             "Mailbox sent | team={} to={} type={} msg_id={}",
@@ -70,30 +58,35 @@ class TeamMailbox:
             message.msg_id,
         )
 
-    def broadcast(self, message: TeamMessage, recipients: list[str], exclude: Optional[str] = None) -> None:
+    async def broadcast(
+        self,
+        message: TeamMessage,
+        recipients: list[str],
+        exclude: Optional[str] = None,
+    ) -> None:
         """
-        向多个接收者广播同一条消息。
+        向多个接收者广播同一条消息（异步）。
 
         Args:
-            message:   要广播的消息模板（to_agent 会被覆盖）
+            message:    要广播的消息模板（to_agent 会被覆盖）
             recipients: 接收者 agent_id 列表
-            exclude:   可选，排除某个 agent_id（通常排除发送者自己）
+            exclude:    可选，排除某个 agent_id（通常排除发送者自己）
         """
         for recipient in recipients:
             if exclude and recipient == exclude:
                 continue
             msg_copy = message.__class__.from_dict(message.to_dict())
             msg_copy.to_agent = recipient
-            self.send(msg_copy)
+            await self.send(msg_copy)
 
-    def fetch_messages(
+    async def fetch_messages(
         self,
         recipient: str,
         unread_only: bool = False,
         limit: int = 100,
     ) -> list[TeamMessage]:
         """
-        获取指定接收者的 mailbox 消息列表。
+        获取指定接收者的 mailbox 消息列表（异步）。
 
         Args:
             recipient:   接收者 agent_id
@@ -103,31 +96,23 @@ class TeamMailbox:
         Returns:
             TeamMessage 子类实例列表
         """
-        if self.adapter is None:
-            return []
-        rows = self._maybe_await(
-            self.adapter.fetch_inbox_messages(
-                self.team_name,
-                recipient,
-                unread_only=unread_only,
-                limit=limit,
-            )
+        rows = await self.backend.fetch(
+            self.team_name,
+            recipient,
+            unread_only=unread_only,
+            limit=limit,
         )
         return [deserialize_message(r) for r in rows]
 
-    def mark_read(self, recipient: str, msg_ids: list[str]) -> None:
+    async def mark_read(self, recipient: str, msg_ids: list[str]) -> None:
         """
-        将指定消息标记为已读。
+        将指定消息标记为已读（异步）。
 
         Args:
             recipient: 接收者 agent_id
             msg_ids:   要标记的消息 ID 列表
         """
-        if self.adapter is None or not msg_ids:
-            return
-        self._maybe_await(
-            self.adapter.mark_inbox_read(self.team_name, recipient, msg_ids)
-        )
+        await self.backend.mark_read(self.team_name, recipient, msg_ids)
         logger.debug(
             "Mailbox marked read | team={} recipient={} count={}",
             self.team_name,

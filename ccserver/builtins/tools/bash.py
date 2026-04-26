@@ -3,6 +3,7 @@ Bash tool — aligned with Claude Code's Bash tool conventions.
 """
 
 import asyncio
+import shlex
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -76,7 +77,76 @@ class BTBash(BuiltinTools):
     }
 
     # 硬编码兜底黑名单：无论任何配置都拒绝，防止最危险的操作
-    _HARDBLOCK = ["rm -rf /", "shutdown", "reboot", "> /dev/"]
+    # 每条记录为 (检测模式, 人类可读描述)
+    # 模式支持两种形式：
+    #   - 字符串：做子串匹配（简单命令）
+    #   - 元组：shlex 分词后的 token 序列匹配（防止空格/引号绕过）
+    _HARDBLOCK: frozenset[tuple[str, str]] = frozenset({
+        ("rm -rf /", "recursive delete root filesystem"),
+        ("shutdown", "system shutdown"),
+        ("reboot", "system reboot"),
+        ("> /dev/", "redirect to system device"),
+    })
+
+    def _check_hardblock(self, cmd: str) -> ToolResult | None:
+        """
+        检查命令是否命中硬编码黑名单。
+
+        采用双层检测策略：
+        1. 子串匹配：对简单危险命令做快速拦截
+        2. Token 匹配：对 shlex 分词后的 token 序列做精确匹配，
+           防止通过空格、引号、换行等手法绕过
+
+        同时递归检查 shell wrapper 的 -c 参数内容
+        （如 sh -c "rm -rf /"）。
+        """
+        # 第一层：子串匹配（保留向后兼容的快速路径）
+        for pattern, desc in self._HARDBLOCK:
+            if pattern in cmd:
+                return ToolResult.error(f"Blocked: {desc}")
+
+        # 第二层：shlex 分词后的 token 匹配
+        try:
+            tokens = shlex.split(cmd)
+        except ValueError:
+            # shlex 分词失败（如未闭合引号），退回到子串匹配
+            return None
+
+        if not tokens:
+            return None
+
+        # 检查 token 序列中是否包含危险命令
+        # 例如：["rm", "-rf", "/"] 中包含 "rm" 和 "/"
+        first_token = tokens[0].lower()
+
+        # 检查 rm + 根目录相关参数
+        if first_token == "rm":
+            # 检查是否包含根目录作为参数
+            has_recursive = any(t.startswith("-") and "r" in t for t in tokens[1:])
+            has_root = any(t == "/" or t == "/." for t in tokens[1:])
+            if has_recursive and has_root:
+                return ToolResult.error("Blocked: recursive delete root filesystem")
+
+        # 检查 shutdown / reboot / poweroff / halt
+        if first_token in ("shutdown", "reboot", "poweroff", "halt", "init"):
+            return ToolResult.error(f"Blocked: system control command '{first_token}'")
+
+        # 递归检查 shell wrapper 的 -c 参数
+        # 例如：sh -c "rm -rf /" 或 bash -c "rm -rf /"
+        if first_token in ("sh", "bash", "zsh", "dash", "ksh"):
+            # 查找 -c 参数的位置
+            try:
+                c_idx = tokens.index("-c")
+                if c_idx + 1 < len(tokens):
+                    inner_cmd = tokens[c_idx + 1]
+                    # 递归检查内层命令
+                    inner_result = self._check_hardblock(inner_cmd)
+                    if inner_result:
+                        return inner_result
+            except ValueError:
+                pass  # 无 -c 参数
+
+        return None
 
     def __init__(
         self,
@@ -115,9 +185,10 @@ class BTBash(BuiltinTools):
         cmd = command.strip()
 
         # 硬编码兜底黑名单（最高优先级，不可被配置覆盖）
-        for blocked in self._HARDBLOCK:
-            if blocked in cmd:
-                return ToolResult.error(f"Blocked command pattern: '{blocked}'")
+        # 使用 shlex 分词后检查，防止简单绕过（如空格、引号包裹）
+        blocked_result = self._check_hardblock(cmd)
+        if blocked_result:
+            return blocked_result
 
         # 运行时从 settings 读取 allow/deny，支持动态变更
         if not self.settings.is_command_allowed("Bash", cmd):
@@ -226,8 +297,7 @@ class BTBash(BuiltinTools):
 
         task_id = generate_shell_id()
 
-        # 2. 构造任务状态（pending）
-        # proc_started 稍后在 _register_background_done 中被填充
+        # 2. 构造任务状态（pending），稍后 mark_running 填充进程信息
         task = ShellTaskState(
             id=task_id,
             command=command,

@@ -43,6 +43,8 @@ class TeamMailboxPoller:
         self._loop_count: int = 0
         self._delivered_count: int = 0
         self._error_count: int = 0
+        # 已投递消息 ID 集合（内存级去重，防止 EventBus 和 Mailbox 双重投递）
+        self._delivered_ids: set[str] = set()
 
     def start(self) -> None:
         """启动后台轮询协程。"""
@@ -70,7 +72,7 @@ class TeamMailboxPoller:
             while True:
                 self._loop_count += 1
                 try:
-                    msgs = self.mailbox.fetch_messages(
+                    msgs = await self.mailbox.fetch_messages(
                         self.recipient,
                         unread_only=True,
                         limit=50,
@@ -91,6 +93,15 @@ class TeamMailboxPoller:
                     )
                     msg_ids = []
                     for msg in msgs:
+                        # 去重：如果该消息 ID 已被 EventBus 通道投递过，则跳过
+                        if msg.msg_id in self._delivered_ids:
+                            logger.debug(
+                                "Poller dedup skipped | recipient={} msg_id={}",
+                                self.recipient, msg.msg_id,
+                            )
+                            msg_ids.append(msg.msg_id)  # 仍标记为已读，避免重复拉取
+                            continue
+
                         payload = {
                             "msg_type": msg.msg_type,
                             "from_agent": msg.from_agent,
@@ -121,12 +132,13 @@ class TeamMailboxPoller:
                             payload["completed_status"] = getattr(msg, "completed_status", None)
 
                         await self.inbox.put(payload)
+                        self._delivered_ids.add(msg.msg_id)
                         msg_ids.append(msg.msg_id)
                         self._delivered_count += 1
 
                     if msg_ids:
                         try:
-                            self.mailbox.mark_read(self.recipient, msg_ids)
+                            await self.mailbox.mark_read(self.recipient, msg_ids)
                         except Exception as e:
                             self._error_count += 1
                             logger.error(

@@ -4,45 +4,24 @@ tests/test_agent_handle.py — BackgroundAgentHandle 生命周期与集成测试
 覆盖：
   - BackgroundAgentHandle.cancel() + agent_task_state.mark_cancelled 联动
   - register_handle / unregister_handle 全局注册表
-  - forward_agent_events 对 agent_task_state 的状态更新
+  - is_running() 辅助方法
   - handle._task.done() 检测
 
-注意：这些测试覆盖 agent_handle.py 中 test_agent_task.py 未覆盖的部分。
+注意：forward_agent_events / _poll_agent_progress / outbox 已在 EventBus 重构中删除，
+对应的状态更新逻辑移入 agent.py 的 _forward_bus_events 闭包，
+由 test_event_bus.py 覆盖总线行为，agent 集成测试覆盖完整流程。
 """
 
 import asyncio
 import pytest
 
-from ccserver.agent_handle import (
-    BackgroundAgentHandle,
-    forward_agent_events,
-)
+from ccserver.agent_handle import BackgroundAgentHandle
 from ccserver.agent_registry import (
     register_handle,
     unregister_handle,
     _HANDLE_REGISTRY,
 )
 from ccserver.tasks import AgentTaskState, AgentTaskStatus
-
-
-# ─── Mock parent emitter ──────────────────────────────────────────────────────
-
-
-class MockEmitter:
-    def __init__(self):
-        self.progress_calls: list[dict] = []
-        self.done_calls: list[dict] = []
-
-    async def emit_task_progress(self, task_id, status, output="", progress=None):
-        self.progress_calls.append({
-            "task_id": task_id, "status": status, "output": output, "progress": progress,
-        })
-
-    async def emit_task_done(self, task_id, status, output="", exit_code=None, reason=None):
-        self.done_calls.append({
-            "task_id": task_id, "status": status, "output": output,
-            "exit_code": exit_code, "reason": reason,
-        })
 
 
 # ─── register_handle / unregister_handle ──────────────────────────────────────
@@ -53,8 +32,6 @@ class TestHandleRegistry:
 
     def test_register_and_get(self):
         """注册后可通过 agent_id 查到 handle。"""
-        from ccserver import agent_handle as ah
-
         handle = BackgroundAgentHandle(
             agent_id="reg-test-agent",
             task_id=None,
@@ -70,8 +47,6 @@ class TestHandleRegistry:
 
     def test_unregister_removes_handle(self):
         """unregister 后注册表中不再有该 handle。"""
-        from ccserver import agent_handle as ah
-
         handle = BackgroundAgentHandle(
             agent_id="unreg-test-agent",
             task_id=None,
@@ -108,7 +83,7 @@ class TestHandleCancel:
         应调用其 mark_cancelled() 并更新 phase 为 cancelled。
         """
         state = AgentTaskState(id="a00000c01", agent_id="cancel-agent")
-        state.mark_running()  # 模拟 agent 正在运行
+        state.mark_running()
 
         class MockState:
             phase = "running"
@@ -148,97 +123,59 @@ class TestHandleCancel:
         await handle.cancel()
 
 
-# ─── forward_agent_events + agent_task_state ───────────────────────────────────
+# ─── is_running() ──────────────────────────────────────────────────────────────
 
 
-class TestForwardAgentEventsWithState:
-    """forward_agent_events 对 agent_task_state 的状态更新。"""
-
-    @pytest.mark.anyio
-    async def test_done_updates_agent_task_state(self):
-        """
-        outbox 收到 done 时，forward_agent_events 应：
-        1. 调用 agent_task_state.mark_completed(result=...)
-        2. 推送 emit_task_done(status=completed)
-        """
-        outbox: asyncio.Queue = asyncio.Queue()
-        await outbox.put({"type": "done", "content": "analysis complete"})
-
-        state = AgentTaskState(id="a00000s01", agent_id="state-agent")
-        state.mark_running()
-
-        handle = BackgroundAgentHandle(
-            agent_id="state-agent",
-            task_id=None,
-            agent_task_id="a00000s01",
-            outbox=outbox,
-            agent_task_state=state,
-        )
-        emitter = MockEmitter()
-
-        await forward_agent_events(handle, emitter)
-
-        # agent_task_state 更新为 completed
-        assert state.status == AgentTaskStatus.COMPLETED
-        assert state.result == "analysis complete"
-
-        # emitter 收到 task_done
-        assert len(emitter.done_calls) == 1
-        assert emitter.done_calls[0]["status"] == "completed"
-        assert emitter.done_calls[0]["output"] == "analysis complete"
+class TestHandleIsRunning:
+    """is_running() 辅助方法测试。"""
 
     @pytest.mark.anyio
-    async def test_error_updates_agent_task_state(self):
-        """
-        outbox 收到 error 时，应更新 agent_task_state 为 failed，
-        并推送 emit_task_done(status=failed)。
-        """
-        outbox: asyncio.Queue = asyncio.Queue()
-        await outbox.put({"type": "error", "error": "LLM timeout"})
-
-        state = AgentTaskState(id="a00000s02", agent_id="err-agent")
-        state.mark_running()
-
+    async def test_is_running_true_when_task_alive(self):
+        """_task 未完成时 is_running() 返回 True。"""
         handle = BackgroundAgentHandle(
-            agent_id="err-agent",
+            agent_id="run-agent",
             task_id=None,
-            agent_task_id="a00000s02",
-            outbox=outbox,
-            agent_task_state=state,
+            agent_task_id="a00000r01",
         )
-        emitter = MockEmitter()
 
-        await forward_agent_events(handle, emitter)
+        async def keep_alive():
+            await asyncio.sleep(60)
 
-        assert state.status == AgentTaskStatus.FAILED
-        assert state.error == "LLM timeout"
-        assert emitter.done_calls[0]["status"] == "failed"
-        assert "LLM timeout" in emitter.done_calls[0]["reason"]
+        handle._task = asyncio.create_task(keep_alive())
+        try:
+            assert handle.is_running() is True
+        finally:
+            handle._task.cancel()
+            try:
+                await handle._task
+            except asyncio.CancelledError:
+                pass
 
     @pytest.mark.anyio
-    async def test_cancelled_updates_agent_task_state(self):
-        """
-        outbox 收到 cancelled 时，应更新 agent_task_state 为 cancelled。
-        """
-        outbox: asyncio.Queue = asyncio.Queue()
-        await outbox.put({"type": "cancelled"})
-
-        state = AgentTaskState(id="a00000s03", agent_id="can-agent")
-        state.mark_running()
-
+    async def test_is_running_false_when_no_task(self):
+        """_task 为 None 时 is_running() 返回 False。"""
         handle = BackgroundAgentHandle(
-            agent_id="can-agent",
+            agent_id="no-task-agent",
             task_id=None,
-            agent_task_id="a00000s03",
-            outbox=outbox,
-            agent_task_state=state,
+            agent_task_id="a00000r02",
         )
-        emitter = MockEmitter()
+        assert handle.is_running() is False
 
-        await forward_agent_events(handle, emitter)
+    @pytest.mark.anyio
+    async def test_is_running_false_after_task_done(self):
+        """_task 已完成时 is_running() 返回 False。"""
+        handle = BackgroundAgentHandle(
+            agent_id="done-agent2",
+            task_id=None,
+            agent_task_id="a00000r03",
+        )
 
-        assert state.status == AgentTaskStatus.CANCELLED
-        assert emitter.done_calls[0]["status"] == "cancelled"
+        async def instant():
+            pass
+
+        handle._task = asyncio.create_task(instant())
+        await handle._task  # 等待完成
+        assert handle.is_running() is False
 
 
 # ─── handle._task done 检测 ───────────────────────────────────────────────────
@@ -248,10 +185,10 @@ class TestHandleTaskDetection:
     """handle.state 和 _task.done() 状态检测。"""
 
     @pytest.mark.anyio
-    async def test_has_running_returns_true_when_task_running(self):
+    async def test_task_not_done_while_running(self):
         """_task 未完成时，_task.done() 返回 False。"""
         handle = BackgroundAgentHandle(
-            agent_id="run-agent",
+            agent_id="run-agent2",
             task_id=None,
             agent_task_id="a00000t01",
         )

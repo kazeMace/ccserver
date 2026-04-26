@@ -53,6 +53,7 @@ class AgentScheduler:
             agent_def=agent_def,
             agent_name=agent_name,
             task_id=task_id,
+            is_persistent=True,  # 用户显式创建的 agent 默认永久驻留
         )
         self._handles[handle.agent_id] = handle
         logger.info(

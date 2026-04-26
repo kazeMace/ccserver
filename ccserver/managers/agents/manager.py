@@ -45,6 +45,7 @@ class AgentDef:
     output_mode: str | None = None            # 输出模式；None 等同于 interactive（默认，完整事件流）
     is_teammate: bool = False                 # True = Teammate 角色，额外允许 Task 工具
     is_team_capable: bool = False             # True = 该 agent 支持 Agent Team 功能
+    is_persistent: bool = False               # True = 永久驻留，完成后不自动清理
     round_limit: int | None = None            # 覆盖全局 SUB_ROUND_LIMIT；None = 使用全局默认值
     limit_strategy: str = "last_text"         # round limit 兜底策略（last_text/report/callback）
 
@@ -134,6 +135,10 @@ class AgentLoader:
         is_team_capable_raw = meta.get("is_team_capable", "false")
         is_team_capable = str(is_team_capable_raw).strip().lower() in ("true", "1", "yes")
 
+        # is_persistent: 永久驻留，完成后不自动从 agent_tasks 清理
+        is_persistent_raw = meta.get("is_persistent", "false")
+        is_persistent = str(is_persistent_raw).strip().lower() in ("true", "1", "yes")
+
         # round_limit: 覆盖全局 SUB_ROUND_LIMIT，不填则 None
         round_limit = None
         round_limit_raw = meta.get("round_limit")
@@ -158,6 +163,7 @@ class AgentLoader:
             output_mode=output_mode,
             is_teammate=is_teammate,
             is_team_capable=is_team_capable,
+            is_persistent=is_persistent,
             round_limit=round_limit,
             limit_strategy=limit_strategy,
         )

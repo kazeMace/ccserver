@@ -20,14 +20,22 @@ class TeamTaskDispatcher:
     随 Team 创建启动，负责扫描待分配任务并将其投递给空闲 teammate。
     调度规则（Ready Rule）：
         task.status == "pending" AND task_manager.can_start(task) == True
+
+    EventBus 重构后：
+      - 订阅 EventBus 的 idle 事件，收到后立即触发调度（事件驱动）
+      - 保留 30 秒兜底扫描，防止事件丢失时死锁
+      - 删除原有 5 秒定时盲扫主循环
     """
+
+    # 兜底扫描间隔（秒）
+    FALLBACK_INTERVAL = 30.0
 
     def __init__(
         self,
         team: Team,
         mailbox: TeamMailbox,
         task_manager=None,
-        interval: float = 5.0,
+        event_bus=None,
     ):
         """
         初始化调度器。
@@ -36,12 +44,12 @@ class TeamTaskDispatcher:
             team:         Team 实例
             mailbox:      TeamMailbox 实例（用于向 teammate 发任务消息）
             task_manager: 可选的任务管理器，实现 ready 任务扫描与绑定
-            interval:     调度扫描间隔（秒），默认 5 秒
+            event_bus:    Session 级 EventBus 实例，用于订阅 idle 事件
         """
         self.team = team
         self.mailbox = mailbox
         self.task_manager = task_manager
-        self.interval = interval
+        self._event_bus = event_bus
         self._task: asyncio.Task | None = None
         self._loop_count: int = 0
         self._assigned_count: int = 0
@@ -69,18 +77,47 @@ class TeamTaskDispatcher:
         return self._task is not None and not self._task.done()
 
     async def _run(self) -> None:
-        """核心调度循环：扫描 idle teammate 和 ready task，自动分配。"""
+        """核心调度循环：事件驱动 + 兜底扫描。"""
         try:
-            while True:
-                self._loop_count += 1
-                if self.task_manager is not None:
-                    await self._dispatch_once()
-                await asyncio.sleep(self.interval)
+            if self._event_bus is not None:
+                # 同时启动 EventBus 监听和兜底扫描
+                await asyncio.gather(
+                    self._event_bus_loop(),
+                    self._fallback_loop(),
+                    return_exceptions=True,
+                )
+            else:
+                # 无 EventBus，走纯兜底扫描
+                await self._fallback_loop()
         except asyncio.CancelledError:
             logger.debug("TeamTaskDispatcher cancelled | team={}", self.team.name)
         except Exception as e:
             self._failed_count += 1
             logger.error("TeamTaskDispatcher fatal error | team={} error={}", self.team.name, e)
+
+    async def _event_bus_loop(self) -> None:
+        """订阅 EventBus idle 事件，收到后立即触发调度。"""
+        from ccserver.event_bus import EventType
+
+        filter_fn = lambda e: e.type == EventType.IDLE
+        sub_id = f"dispatcher_{self.team.name}"
+        async with self._event_bus.subscribe(sub_id, filter_fn=filter_fn) as sub:
+            while True:
+                event = await sub.get(timeout=self.FALLBACK_INTERVAL)
+                if event is not None:
+                    logger.debug(
+                        "Dispatcher triggered by idle event | team={} agent_id={}",
+                        self.team.name, event.agent_id,
+                    )
+                if self.task_manager is not None:
+                    await self._dispatch_once()
+
+    async def _fallback_loop(self) -> None:
+        """30 秒兜底扫描：防止事件丢失时死锁。"""
+        while True:
+            await asyncio.sleep(self.FALLBACK_INTERVAL)
+            if self.task_manager is not None:
+                await self._dispatch_once()
 
     async def _dispatch_once(self) -> None:
         """
@@ -126,7 +163,7 @@ class TeamTaskDispatcher:
                 task_prompt=task.description or task.subject,
                 text=f"[Dispatcher] 分配任务 #{task.id}: {task.subject}",
             )
-            self.mailbox.send(msg)
+            await self.mailbox.send(msg)
             self.task_manager.bind_agent(task.id, member.agent_id)
 
             self._assigned_count += 1

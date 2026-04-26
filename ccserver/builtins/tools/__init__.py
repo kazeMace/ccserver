@@ -15,6 +15,7 @@ from .task_stop import BTTaskStop
 from .ask_user import BTAskUser, ASK_USER_SIGNAL
 from .web_search import BTWebSearch
 from .web_fetch import BTWebFetch
+from .duckduckgo_search import BTDDGWebSearch
 from .send_message import BTSendMessage
 from .constants import CHILD_DEFAULT_TOOLS, CHILD_DISALLOWED_TOOLS, TEAMMATE_EXTRA_TOOLS
 
@@ -41,6 +42,7 @@ __all__ = [
     "ASK_USER_SIGNAL",
     "BTWebSearch",
     "BTWebFetch",
+    "BTDDGWebSearch",
     "BTSendMessage",
     "CHILD_DEFAULT_TOOLS",
     "CHILD_DISALLOWED_TOOLS",
