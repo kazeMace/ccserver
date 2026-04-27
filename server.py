@@ -1726,7 +1726,7 @@ async def chat_push(x_session_id: str = Header(..., alias="X-Session-Id")):
 # ─── Monitor Dashboard ─────────────────────────────────────────────────────────
 
 
-@app.get("/chat-web", summary="WebChat client HTML page")
+@app.get("/webui/chat", summary="WebChat client HTML page")
 def webchat_page():
     """
     返回 WebChat 客户端 HTML 页面。
