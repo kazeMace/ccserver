@@ -114,6 +114,10 @@ fabric.properties
 \#*\#
 .\#*
 
+# ─── CCServer 敏感配置（含 token/secret，不上传）─────────────────────────────────
+.ccserver/
+**/channels.json
+
 # ─── CCServer 运行时数据 ──────────────────────────────────────────────────────────
 sessions/
 logs/
