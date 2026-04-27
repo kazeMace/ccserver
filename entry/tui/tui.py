@@ -94,6 +94,65 @@ def _read_system_file(path: str | None) -> str | None:
     return p.read_text(encoding="utf-8")
 
 
+# ─── 定时任务 Push 监听 ───────────────────────────────────────────────────────
+
+
+async def _push_listener(session, emitter) -> None:
+    """
+    进程内 EventBus 监听协程，接收定时任务 / 后台 Agent 的主动推送。
+
+    直接订阅 session.event_bus，只关注 DONE 事件，收到后通过 TUIEmitter 输出。
+    在主循环等待用户输入（prompt_async）期间后台运行。
+
+    Args:
+        session:  当前 Session 实例，提供 event_bus。
+        emitter:  TUIEmitter 实例，用于统一输出格式。
+    """
+    from ccserver.event_bus import EventType
+
+    event_bus = getattr(session, "event_bus", None)
+    if event_bus is None:
+        return
+
+    sub_id = f"tui_push_{session.id[:8]}"
+
+    try:
+        async with event_bus.subscribe(
+            sub_id,
+            filter_fn=lambda e: e.type == EventType.DONE,
+        ) as sub:
+            while True:
+                try:
+                    event = await sub.get(timeout=5.0)
+                except asyncio.CancelledError:
+                    break
+
+                if event is None:
+                    continue
+
+                content = (event.payload or {}).get("content", "")
+                if not content:
+                    continue
+
+                # 在主循环等待用户输入时，输出到终端
+                # prompt_toolkit 的 prompt_async 不会被打断，print 会显示在 prompt 上方
+                print(
+                    f"\n{CYAN}┌─ 📬 服务端推送 ──────────────────────────────{RESET}",
+                    flush=True,
+                )
+                print(f"{CYAN}│{RESET} {content}", flush=True)
+                print(
+                    f"{CYAN}└───────────────────────────────────────────────{RESET}\n",
+                    flush=True,
+                )
+
+    except asyncio.CancelledError:
+        pass
+    except Exception as e:
+        # 订阅出错静默忽略，不影响主循环
+        print(f"{YELLOW}[push] 监听出错: {e}{RESET}", flush=True)
+
+
 # ─── Main TUI loop ────────────────────────────────────────────────────────────
 
 
@@ -109,6 +168,11 @@ async def tui_main(system: str | None = None, append_system: bool = False):
     runner = AgentRunner(system=system, append_system=append_system)
     session = session_manager.create()
     emitter = TUIEmitter()
+
+    # 启动 EventBus push 监听协程：在主循环等待用户输入期间接收定时任务推送
+    _push_task: asyncio.Task = asyncio.create_task(
+        _push_listener(session, emitter)
+    )
 
     # 三个独立的输出控制参数（可通过 slash 命令修改）
     current_verbosity: str = "verbose"   # "verbose" | "final_only"
@@ -286,6 +350,13 @@ async def tui_main(system: str | None = None, append_system: bool = False):
             break
         except Exception as err:
             print(f"{RED}⏺ Error: {err}{RESET}")
+
+    # 退出时取消 push 监听协程
+    _push_task.cancel()
+    try:
+        await _push_task
+    except asyncio.CancelledError:
+        pass
 
     if hasattr(_storage, "close"):
         await _storage.close()

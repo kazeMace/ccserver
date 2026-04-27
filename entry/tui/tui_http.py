@@ -479,6 +479,103 @@ async def api_chat_stream(
     return final_text
 
 
+# ─── 定时任务 Push 监听 ───────────────────────────────────────────────────────
+
+
+async def push_listener(session_id: str) -> None:
+    """
+    后台长连接协程，订阅 GET /chat/push 端点。
+
+    在主循环等待用户输入期间持续运行，将服务端主动推送的消息（定时任务、
+    后台 Agent 回复）打印到终端。
+
+    重连策略：连接断开后 2 秒自动重连，直到协程被取消。
+
+    Args:
+        session_id: 当前会话 ID，通过 X-Session-Id header 传给服务端。
+    """
+    reconnect_delay = 2.0
+
+    while True:
+        try:
+            async with httpx.AsyncClient(timeout=None) as client:
+                async with client.stream(
+                    "GET",
+                    f"{BASE_URL}/chat/push",
+                    headers={"X-Session-Id": session_id},
+                ) as resp:
+                    if resp.status_code != 200:
+                        # 端点不可用（旧版服务端），静默等待重连
+                        await asyncio.sleep(reconnect_delay)
+                        continue
+
+                    buf = ""
+                    async for chunk in resp.aiter_text():
+                        buf += chunk
+                        # 按 \n\n 分割 SSE 事件
+                        while "\n\n" in buf:
+                            part, buf = buf.split("\n\n", 1)
+                            line = part.strip()
+                            if line.startswith(":"):
+                                # keepalive comment，忽略
+                                continue
+                            if not line.startswith("data:"):
+                                continue
+                            raw = line[5:].strip()
+                            if not raw:
+                                continue
+                            try:
+                                event = json.loads(raw)
+                            except json.JSONDecodeError:
+                                continue
+
+                            _render_push_event(event)
+
+        except asyncio.CancelledError:
+            # 主循环退出时取消协程，正常退出
+            return
+        except Exception:
+            # 连接失败（服务端重启等），等待后重连
+            pass
+
+        await asyncio.sleep(reconnect_delay)
+
+
+def _render_push_event(event: dict) -> None:
+    """
+    渲染来自 /chat/push 的服务端推送事件到终端。
+
+    在主循环等待用户输入（prompt_async）期间，直接 print 到 stdout，
+    prompt_toolkit 会自动重绘输入行。
+
+    Args:
+        event: 已解析的 SSE 事件字典。
+    """
+    t = event.get("type", "")
+
+    if t == "token":
+        # push 通道的流式 token（通常定时任务不走流式，但兼容处理）
+        sys.stdout.write(event.get("content", ""))
+        sys.stdout.flush()
+
+    elif t == "done":
+        content = event.get("content", "")
+        if content:
+            # 用醒目格式区分 push 消息和正常对话
+            print(f"\n{CYAN}┌─ 📬 服务端推送 ──────────────────────────────{RESET}", flush=True)
+            print(f"{CYAN}│{RESET} {content}", flush=True)
+            print(f"{CYAN}└───────────────────────────────────────────────{RESET}\n", flush=True)
+
+    elif t == "tool_start":
+        tool = event.get("tool", "")
+        preview = event.get("preview", "")
+        print(f"\n{GREEN}⏺ [push] {tool}{RESET}({DIM}{preview}{RESET})", flush=True)
+
+    elif t == "error":
+        msg = event.get("message", "")
+        print(f"\n{RED}⏺ [push] 错误: {msg}{RESET}", flush=True)
+
+
 # ─── 主循环 ───────────────────────────────────────────────────────────────────
 
 
@@ -505,6 +602,9 @@ async def tui_main():
         return
 
     session_id = session["id"]
+
+    # 启动 push 监听协程：在主循环等待用户输入期间接收定时任务 / 后台 Agent 推送
+    _push_task: asyncio.Task = asyncio.create_task(push_listener(session_id))
 
     # 三个独立的输出控制参数（通过 slash 命令修改）
     current_verbosity: str = "verbose"
@@ -574,6 +674,9 @@ async def tui_main():
                 session = api_create_session(http)
                 session_id = session["id"]
                 print(f"{GREEN}⏺ New session: {session_id[:8]}{RESET}")
+                # 重启 push 监听协程，切换到新 session
+                _push_task.cancel()
+                _push_task = asyncio.create_task(push_listener(session_id))
                 continue
 
             if user_input == "/sessions":
@@ -682,6 +785,13 @@ async def tui_main():
             break
         except Exception as err:
             print(f"{RED}⏺ Error: {err}{RESET}")
+
+    # 退出时取消 push 监听协程
+    _push_task.cancel()
+    try:
+        await _push_task
+    except asyncio.CancelledError:
+        pass
 
     http.close()
 

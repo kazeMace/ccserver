@@ -1185,17 +1185,34 @@
         tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#8c959f;padding:20px;">No cron tasks</td></tr>';
         return;
       }
+      const typeLabels = {
+        cron: '定时循环',
+        interval: '固定间隔',
+        once: '单次触发',
+        countdown: '倒计时',
+      };
       tbody.innerHTML = items.map(t => {
         const badgeClass = t.status || 'scheduled';
-        const modeLabel = t.mode === 'recurring' ? '循环' : '一次性';
-        const scheduleDisplay = t.cron_expr || '-';
+        const modeLabel = typeLabels[t.trigger_type] || t.trigger_type || '-';
+        let scheduleDisplay = '-';
+        if (t.trigger_type === 'cron' && t.cron_expr) {
+          scheduleDisplay = t.cron_expr;
+        } else if (t.trigger_type === 'interval' && t.interval_seconds) {
+          scheduleDisplay = `${t.interval_seconds}s`;
+        } else if (t.trigger_type === 'once' && t.run_at) {
+          scheduleDisplay = formatDate(t.run_at);
+        } else if (t.trigger_type === 'countdown' && t.interval_seconds) {
+          scheduleDisplay = `${t.interval_seconds}s (from creation)`;
+        } else if (t.cron_expr) {
+          scheduleDisplay = t.cron_expr;
+        }
         const nextRun = t.next_run_at ? formatDate(t.next_run_at) : '-';
         const durableBadge = t.durable ? '<span class="badge scheduled">是</span>' : '<span class="badge">否</span>';
         return `<tr>
           <td class="mono" title="${escapeHtml(t.task_id)}">${escapeHtml(truncate(t.task_id, 14))}</td>
           <td class="mono" title="${escapeHtml(t.session_id)}">${escapeHtml(truncate(t.session_id, 12))}</td>
           <td>${escapeHtml(modeLabel)}</td>
-          <td class="mono" title="${escapeHtml(t.cron_expr)}">${escapeHtml(scheduleDisplay)}</td>
+          <td class="mono" title="${escapeHtml(scheduleDisplay)}">${escapeHtml(scheduleDisplay)}</td>
           <td>${escapeHtml(nextRun)}</td>
           <td>${t.trigger_count || 0}</td>
           <td><span class="badge ${badgeClass}">${escapeHtml(t.status)}</span></td>
@@ -1209,8 +1226,9 @@
       try {
         const d = new Date(isoStr);
         return d.toLocaleString('zh-CN', {
+          year: 'numeric',
           month: '2-digit', day: '2-digit',
-          hour: '2-digit', minute: '2-digit'
+          hour: '2-digit', minute: '2-digit', second: '2-digit',
         });
       } catch {
         return isoStr;

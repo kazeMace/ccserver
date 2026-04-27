@@ -591,10 +591,50 @@ class TaskScheduler:
                     task.task_id, e,
                 )
 
+        # ── 4. 如果 agent 处于 idle/done 状态，主动触发它运行 ──
+        if root is not None and root.state.phase in ("idle", "done"):
+            asyncio.create_task(self._trigger_agent_run(root, task.task_id))
+
         logger.debug(
             "ScheduledTask injected | task_id={} prompt={!r:.50}",
             task.task_id, task.prompt[:50],
         )
+
+    async def _trigger_agent_run(self, root, task_id: str) -> None:
+        """
+        当定时任务触发时，如果 root agent 处于 idle/done 状态，
+        临时将 emitter 替换为 BusEmitter，调用 _loop() 处理 inbox。
+
+        事件通过 EventBus 广播，所有在线的客户端（SSE/WebSocket）均可收到。
+        执行完成后恢复原始 emitter，避免影响后续正常聊天流程。
+        """
+        from ccserver.emitters.bus_emitter import BusEmitter
+
+        original_emitter = root.emitter
+        bus_emitter = BusEmitter(
+            bus=self._session.event_bus,
+            agent_id=root.context.agent_id,
+            session_id=self._session.id,
+            sender_type="scheduler",
+        )
+        root.emitter = bus_emitter
+        try:
+            logger.info(
+                "ScheduledTask triggering agent run | task_id={} agent_id={} phase={}",
+                task_id, root.context.agent_id, root.state.phase,
+            )
+            await root._loop()
+        except Exception as e:
+            logger.error(
+                "ScheduledTask agent run failed | task_id={} error={}",
+                task_id, e,
+            )
+        finally:
+            root.emitter = original_emitter
+            logger.debug(
+                "ScheduledTask agent run finished | task_id={} emitter restored",
+                task_id,
+            )
 
     async def _drain_pending_triggers(self) -> None:
         """

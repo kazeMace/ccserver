@@ -259,6 +259,84 @@ class ChannelGateway:
         return result
 
     # ═════════════════════════════════════════════════════════════════════════════
+    #  Push 路由注册（用于定时任务 / 后台 Agent 主动推送）
+    # ═════════════════════════════════════════════════════════════════════════════
+
+    async def register_push_route(
+        self,
+        session_id: str,
+        channel_id: str,
+        account_id: str,
+        to: str,
+        chat_type: str = "direct",
+        thread_id: str | None = None,
+        reply_to_id: str | None = None,
+    ) -> None:
+        """
+        预注册推送路由。
+
+        当 channel adapter 启动时，可调用本方法预先绑定"定时任务触发时
+        把消息发给谁"的路由信息。不需要等待用户发消息触发 dispatch_inbound。
+
+        典型使用场景：
+          - Discord/飞书 Bot 启动后，将"管理频道"绑定为推送目标
+          - TUI 启动后注册 session，确保定时任务回复能路由到正确的 session
+
+        Args:
+            session_id:   目标 Session ID。
+            channel_id:   channel 标识（如 "discord", "feishu"）。
+            account_id:   Bot 账户标识。
+            to:           接收推送的目标 ID（用户 ID 或频道/群 ID）。
+            chat_type:    消息类型，"direct" 或 "group"。
+            thread_id:    群组 ID（chat_type="group" 时使用）。
+            reply_to_id:  回复引用的消息 ID（可选）。
+        """
+        # 确保 session 存在
+        session = self.session_manager.get(session_id)
+        if session is None:
+            logger.warning(
+                "register_push_route: session not found | id={} channel={}",
+                session_id[:8], channel_id,
+            )
+            return
+
+        # 写入路由表（与 _set_route 相同格式，dispatch_inbound 会覆盖更新）
+        self._routes[session_id] = {
+            "channel_id": channel_id,
+            "account_id": account_id,
+            "to": to,
+            "chat_type": chat_type,
+            "thread_id": thread_id,
+            "sender_id": to,
+            "sender_name": "",
+            "reply_to_id": reply_to_id,
+            "timestamp": None,
+        }
+
+        # 订阅 OutboundBus（外部 channel adapter 接收 DONE 事件后发送回复）
+        if self.outbound_bus and channel_id != "webchat":
+            # 构造一个最小化的 InboundMessage 用于 _subscribe_outbound
+            from ccserver.channels.base import InboundMessage
+            dummy_msg = InboundMessage(
+                channel_id=channel_id,
+                account_id=account_id,
+                sender_id=to,
+                text="",
+                chat_type=chat_type,
+                thread_id=thread_id,
+                message_id=reply_to_id or "",
+            )
+            await self._subscribe_outbound(session_id, dummy_msg)
+
+        # 启动 EventBus 订阅（监听 DONE 事件，触发 OutboundBus 推送）
+        await self._ensure_event_subscription(session_id)
+
+        logger.info(
+            "Push route registered | session={} channel={} to={}",
+            session_id[:8], channel_id, to,
+        )
+
+    # ═════════════════════════════════════════════════════════════════════════════
     #  入站消息处理
     # ═════════════════════════════════════════════════════════════════════════════
 

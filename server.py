@@ -23,7 +23,7 @@ if _project_dir_env:
 else:
     print(
         "[WARN] CCSERVER_PROJECT_DIR is not set. "
-        "Sessions will use temporary directories under /tmp/ as project_root. "
+        "Sessions will use temporary directories under the system temp dir as project_root. "
         "All project-level configs (CLAUDE.md, skills, agents, hooks, commands, MCP) will be empty.",
         file=sys.stderr,
     )
@@ -1625,7 +1625,121 @@ async def chat_ws(websocket: WebSocket) -> None:
             await _channel_gateway.cleanup_session(session.id)
 
 
+# ─── Chat: push events (定时任务 / 后台 Agent 推送) ───────────────────────────────
+
+
+@app.get(
+    "/chat/push",
+    summary="Long-lived SSE stream for server-initiated push events (cron, background agents)",
+)
+async def chat_push(x_session_id: str = Header(..., alias="X-Session-Id")):
+    """
+    长连接 SSE 推送端点，用于接收服务端主动推送的消息（定时任务、后台 Agent 回复等）。
+
+    与 /chat/stream 的区别：
+      - /chat/stream：客户端发消息后收流式回复，结束即关闭
+      - /chat/push：  客户端常驻连接，随时收服务端主动推送
+
+    前端用法：
+      1. 对话建立后（拿到 session_id），立即连接本端点并保持
+      2. 收到 done 事件时，将 content 作为 assistant 消息追加到界面
+      3. 收到 token 事件时，流式追加到当前气泡
+      4. 连接断开时自动重连（建议 2s 后重连）
+
+    BusEmitter 发布的事件字段与 SSEEmitter 不同：
+      token  → payload.token    (BusEmitter) vs content (SSEEmitter)
+      done   → payload.content  (两者一致)
+      error  → payload.error    (BusEmitter) vs message (SSEEmitter)
+    本端点统一归一化为 SSEEmitter 格式后再推出，前端无需区分来源。
+
+    Header：X-Session-Id 必须是已存在的 session id。
+    """
+    session = session_manager.get(x_session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail=f"Session '{x_session_id}' not found.")
+
+    event_bus = getattr(session, "event_bus", None)
+    if event_bus is None:
+        raise HTTPException(status_code=500, detail="Session has no event_bus.")
+
+    sub_id = f"webchat_push_{x_session_id[:8]}_{id(asyncio.current_task())}"
+
+    async def _generate() -> AsyncIterator[str]:
+        # 只接收本 session 的事件
+        filter_fn = lambda e: e.session_id == x_session_id
+
+        async with event_bus.subscribe(sub_id, filter_fn=filter_fn) as sub:
+            while True:
+                try:
+                    agent_event = await sub.get(timeout=30.0)
+                except asyncio.CancelledError:
+                    break
+
+                if agent_event is None:
+                    # 超时，发一个 keepalive comment 防止代理断连
+                    yield ": keepalive\n\n"
+                    continue
+
+                etype = agent_event.type
+                payload = agent_event.payload or {}
+
+                # ── 归一化为前端 SSEEmitter 格式 ──────────────────────────────
+                if etype == "token":
+                    # BusEmitter: payload.token；SSEEmitter: content
+                    text = payload.get("token") or payload.get("content", "")
+                    if not text:
+                        continue
+                    data = json.dumps({"type": "token", "content": text})
+
+                elif etype == "done":
+                    content = payload.get("content", "")
+                    data = json.dumps({
+                        "type": "done",
+                        "content": content,
+                        "session_id": x_session_id,
+                        "push": True,   # 标记来自 push 通道，前端不重复创建气泡
+                    })
+
+                elif etype == "error":
+                    msg = payload.get("error") or payload.get("message", "未知错误")
+                    data = json.dumps({"type": "error", "message": msg})
+
+                elif etype == "tool_start":
+                    tool = payload.get("tool_name") or payload.get("tool", "")
+                    preview = payload.get("preview", "")
+                    data = json.dumps({"type": "tool_start", "tool": tool, "preview": preview})
+
+                elif etype == "tool_done":
+                    tool = payload.get("tool_name") or payload.get("tool", "")
+                    output = payload.get("result") or payload.get("output", "")
+                    data = json.dumps({"type": "tool_result", "tool": tool, "output": output})
+
+                else:
+                    # 其他事件类型透传（task_started / task_progress / task_done 等）
+                    data = json.dumps({"type": etype, **payload})
+
+                yield f"data: {data}\n\n"
+
+    return StreamingResponse(_generate(), media_type="text/event-stream")
+
+
 # ─── Monitor Dashboard ─────────────────────────────────────────────────────────
+
+
+@app.get("/chat-web", summary="WebChat client HTML page")
+def webchat_page():
+    """
+    返回 WebChat 客户端 HTML 页面。
+
+    单文件纯 HTML + JS 实现，通过 /chat/stream SSE 与 ccserver 通信。
+    支持流式输出、工具调用展示、ask_user 交互、permission_request 授权。
+    """
+    from fastapi.responses import HTMLResponse
+    from pathlib import Path
+    html_path = Path(__file__).parent / "web" / "chat.html"
+    if not html_path.exists():
+        return HTMLResponse("<h1>chat.html not found</h1>", status_code=404)
+    return HTMLResponse(content=html_path.read_text(encoding="utf-8"))
 
 
 @app.get("/monitor", summary="Monitor dashboard HTML page")

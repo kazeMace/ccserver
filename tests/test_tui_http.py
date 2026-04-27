@@ -18,7 +18,7 @@ tests/test_tui_http.py — tui_http 客户端组件单元测试。
 import asyncio
 import pytest
 
-from clients.tui_http import (
+from entry.tui.tui_http import (
     BackgroundTaskManager,
     BGRunningTask,
     BG_RUNNING,
