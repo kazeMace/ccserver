@@ -1,4 +1,8 @@
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ccserver.builtins.tools.base import ToolResult
 
 
 class BaseEmitter(ABC):
@@ -13,6 +17,10 @@ class BaseEmitter(ABC):
 
     def fmt_token(self, text: str) -> dict:
         return self._fmt("token", content=text)
+
+    def fmt_thinking(self, text: str) -> dict:
+        """thinking block 增量内容事件，供前端渲染思考过程。"""
+        return self._fmt("thinking", content=text)
 
     def fmt_tool_start(self, name: str, preview: str) -> dict:
         return self._fmt("tool_start", tool=name, preview=preview)
@@ -177,11 +185,29 @@ class BaseEmitter(ABC):
     async def emit_token(self, text: str):
         await self.emit(self.fmt_token(text))
 
+    async def emit_thinking(self, text: str):
+        """发送 thinking 增量内容（模型思考过程，可选展示给用户）。"""
+        await self.emit(self.fmt_thinking(text))
+
     async def emit_tool_start(self, name: str, preview: str):
         await self.emit(self.fmt_tool_start(name, preview))
 
     async def emit_tool_result(self, name: str, output: str):
         await self.emit(self.fmt_tool_result(name, output))
+
+    async def emit_tool_result_with_image(self, name: str, result: "ToolResult") -> None:
+        """
+        发送含图像的工具结果。
+
+        默认实现：只发送文本描述部分，忽略图像数据。
+        各渠道子类（TUIEmitter、SSEEmitter 等）可重写此方法以渲染图像。
+
+        Args:
+            name:   工具名称。
+            result: 多模态 ToolResult（has_image=True）。
+        """
+        # 降级：只发文本描述
+        await self.emit_tool_result(name, result.content_text)
 
     async def emit_subagent_done(self, content: str):
         await self.emit(self.fmt_subagent_done(content))

@@ -128,6 +128,10 @@ class AgentTaskState:
     parent_id: str | None = None  # 父 Agent 的 agent_id，用于溯源树状关系
     is_persistent: bool = False   # True = 永久驻留，完成后不自动清理
 
+    # ── 工具 / Skills 元数据（由 spawn_background 在创建时注入）────────────
+    tools: list[str] = field(default_factory=list)   # 已启用的内置工具名列表
+    skills: list[str] | None = None                  # skills_override；None 表示使用 session 全局 skills
+
     # ── 状态 ────────────────────────────────────────────────────────────────
     status: str = AgentTaskStatus.PENDING
 

@@ -239,8 +239,8 @@ class SessionManager:
         # 为每个 session 创建独立的临时目录
         project_root = self.project_root
         if project_root is None:
-            import tempfile
-            project_root = Path(tempfile.gettempdir()) / f"ccserver-session-{sid}"
+            from ccserver.config import TEMP_DIR
+            project_root = TEMP_DIR / f"ccserver-session-{sid}"
             project_root.mkdir(parents=True, exist_ok=True)
             logger.info(
                 "Session using temporary project_root | id={} path={}",

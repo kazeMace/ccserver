@@ -10,11 +10,13 @@ def _reload_config():
     return ccserver.config
 
 
-def test_project_dir_defaults_to_cwd(tmp_path, monkeypatch):
+def test_project_dir_defaults_to_none(tmp_path, monkeypatch):
+    """当 CCSERVER_PROJECT_DIR 未设置时，PROJECT_DIR 为 None（server 模式）。"""
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("CCSERVER_PROJECT_DIR", raising=False)
     config = _reload_config()
-    assert config.PROJECT_DIR == tmp_path.resolve()
+    # 未设置环境变量时，PROJECT_DIR 为 None（由 Session 使用临时目录）
+    assert config.PROJECT_DIR is None
 
 
 def test_project_dir_from_env(tmp_path, monkeypatch):

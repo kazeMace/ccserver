@@ -32,14 +32,21 @@ class ToolResult:
             "is_error": <self.is_error>
         }
 
-    content:   String sent back to the LLM. Keep it focused — the LLM reads
-               this to decide its next step. Truncate large outputs.
+    content:   String or list sent back to the LLM.
+               - str:  普通文本结果（绝大多数工具）
+               - list: 多模态 content blocks（视觉工具，格式与 Anthropic API 对齐）
+                       示例：[
+                           {"type": "image", "source": {"type": "base64",
+                            "media_type": "image/png", "data": "..."}},
+                           {"type": "text", "text": "截图完成 1920x1080"}
+                       ]
     is_error:  True signals to the LLM that the tool failed. The LLM will
                attempt to recover or report the problem rather than continuing
                as if the call succeeded.
     """
 
-    content: str
+    # content 支持 str（普通工具）或 list（视觉/多模态工具），向后兼容
+    content: str | list
     is_error: bool = False
 
     @classmethod
@@ -50,14 +57,93 @@ class ToolResult:
     def error(cls, message: str) -> "ToolResult":
         return cls(content=message, is_error=True)
 
+    @classmethod
+    def multimodal(cls, blocks: list) -> "ToolResult":
+        """
+        构造多模态 ToolResult（视觉工具专用）。
+
+        Args:
+            blocks: Anthropic multimodal content blocks 列表，例如：
+                    [{"type": "image", "source": {...}}, {"type": "text", "text": "..."}]
+
+        Returns:
+            ToolResult with list content.
+        """
+        assert isinstance(blocks, list) and len(blocks) > 0, "blocks 不能为空"
+        return cls(content=blocks, is_error=False)
+
     def to_api_dict(self, tool_use_id: str) -> dict:
-        """Render as an Anthropic tool_result content block."""
+        """
+        Render as an Anthropic tool_result content block.
+        支持 content 为 str 或 list（多模态）。
+
+        注意：image_thumbnail 是内部约定 block，不发送给 Anthropic API。
+              过滤掉后，只保留 Anthropic 认识的 image / text block。
+        """
+        if isinstance(self.content, list):
+            # 过滤掉内部使用的 image_thumbnail block（Anthropic API 不认识）
+            api_content = [b for b in self.content if b.get("type") != "image_thumbnail"]
+        else:
+            api_content = self.content
         return {
             "type": "tool_result",
             "tool_use_id": tool_use_id,
-            "content": self.content,
+            "content": api_content,
             "is_error": self.is_error,
         }
+
+    # ── 多模态辅助属性 ────────────────────────────────────────────────────────
+
+    @property
+    def has_image(self) -> bool:
+        """是否包含图像 block（视觉工具截图结果）。"""
+        if isinstance(self.content, list):
+            return any(b.get("type") == "image" for b in self.content)
+        return False
+
+    @property
+    def content_text(self) -> str:
+        """
+        提取纯文本摘要。
+
+        - str content：直接返回
+        - list content：拼接所有 text block 的文字，无文字时返回占位符
+        用于 emit_tool_result、日志、EventBus preview 等只需文本的场景。
+        """
+        if isinstance(self.content, str):
+            return self.content
+        parts = [b.get("text", "") for b in self.content if b.get("type") == "text"]
+        return " | ".join(p for p in parts if p) or "[multimodal content]"
+
+    def get_image_base64(self) -> str | None:
+        """
+        提取第一张图像的 base64 数据（完整分辨率）。
+
+        Returns:
+            base64 字符串，或 None（无图像时）。
+        """
+        if isinstance(self.content, list):
+            for b in self.content:
+                if b.get("type") == "image":
+                    return b.get("source", {}).get("data")
+        return None
+
+    def get_thumbnail_base64(self) -> str | None:
+        """
+        提取缩略图 base64（视觉工具在 content 末尾附加的 thumbnail block）。
+
+        约定：视觉工具在 content list 中通过 {"type": "image_thumbnail", ...} 附加缩略图，
+        缩略图尺寸 ≤ 400px，用于 TUI/飞书等低带宽渠道预览。
+
+        Returns:
+            缩略图 base64，或 None（无缩略图时降级到完整图像）。
+        """
+        if isinstance(self.content, list):
+            for b in self.content:
+                if b.get("type") == "image_thumbnail":
+                    return b.get("source", {}).get("data")
+        # 无缩略图时返回完整图像（调用方自行决定是否使用）
+        return None
 
 
 # ─── ToolParam ────────────────────────────────────────────────────────────────
@@ -213,6 +299,16 @@ class BuiltinTools(ABC):
     name: str = ""
     description: str = ""
     params: dict[str, ToolParam] = {}
+
+    # ── 元数据（可选，供权限过滤和 UI 展示使用）────────────────────────────────
+    # risk:  工具的风险等级。
+    #          "low"    — 只读、无副作用（Read、Glob、Grep、WebFetch）
+    #          "medium" — 有副作用但可恢复（Write、Edit、Bash）
+    #          "high"   — 不可逆或影响范围广（删除文件、网络请求、系统调用）
+    #        settings.max_tool_risk 可用于过滤 risk 超出阈值的工具。
+    # tags:  分类标签列表，供 UI 分组和按需过滤使用，例如 ["fs", "network", "input"]。
+    risk: str = "medium"
+    tags: list[str] = []
 
     # ── Schema ────────────────────────────────────────────────────────────────
 

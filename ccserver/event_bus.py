@@ -70,6 +70,7 @@ class EventType:
       - message_appended 消息追加到对话历史
       - message_compacted 消息压缩完成
       - hook_executed    Hook 执行完成
+      - image           图像内容（截图、生成图、图表等，含 image_base64 和描述）
     """
     TOKEN           = "token"
     TOOL_START      = "tool_start"
@@ -92,6 +93,8 @@ class EventType:
     MESSAGE_APPENDED = "message_appended"
     MESSAGE_COMPACTED = "message_compacted"
     HOOK_EXECUTED   = "hook_executed"
+    # ── 多媒体内容事件 ──────────────────────────────────────────────────────────
+    IMAGE           = "image"            # 图像内容（截图、生成图、图表等）
 
 
 # ── AgentEvent ────────────────────────────────────────────────────────────────
@@ -160,6 +163,8 @@ class AgentEvent:
                           "tool_input": dict, "description": str}
         permission_resp:{"request_id": str, "approved": bool,
                           "feedback": str | None}
+        image:          {"tool_name": str, "image_base64": str,
+                          "description": str}
     """
     type:        str
     agent_id:    str

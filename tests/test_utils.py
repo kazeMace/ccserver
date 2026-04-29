@@ -163,9 +163,9 @@ def test_estimate_tokens_formula():
     content = "x" * 400
     msgs = [{"role": "user", "content": content}]
     token_estimate = estimate_tokens(msgs)
-    # str(msgs) 的长度约是 content 长度 + 少量 JSON 结构开销
-    raw_len = len(str(msgs))
-    assert token_estimate == raw_len // 4
+    # estimate_tokens 逐条消息累加 len(str(m))，不含外层 list 括号
+    raw_len = sum(len(str(m)) for m in msgs)
+    assert token_estimate == raw_len // 4, f"Expected {raw_len // 4}, got {token_estimate}"
 
 
 # ─── generate_message_id() ───────────────────────────────────────────────────

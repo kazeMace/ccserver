@@ -1,9 +1,13 @@
 import asyncio
 import json
+from typing import TYPE_CHECKING
 
 from fastapi import WebSocket
 
 from .base import BaseEmitter
+
+if TYPE_CHECKING:
+    from ccserver.builtins.tools.base import ToolResult
 
 
 class WSEmitter(BaseEmitter):
@@ -182,7 +186,41 @@ class WSEmitter(BaseEmitter):
                 reason=payload.get("reason"),
             )
 
+        # 图像内容事件 — 推送图像数据给前端渲染
+        if etype == EventType.IMAGE:
+            return self._fmt(
+                "screen_image",
+                tool=payload.get("tool_name", "ScreenCapture"),
+                image_base64=payload.get("image_base64", ""),
+                description=payload.get("description", ""),
+            )
+
         return None
+
+    async def emit_tool_result_with_image(self, name: str, result: "ToolResult") -> None:
+        """
+        WS 模式：发送含图像的工具结果。
+
+        推送两个事件到 WebSocket：
+        1. tool_result — 文本描述
+        2. screen_image — 图像 base64（前端渲染预览图）
+
+        Args:
+            name:   工具名称。
+            result: 多模态 ToolResult（has_image=True）。
+        """
+        # 1. 文字描述
+        await self.emit(self.fmt_tool_result(name, result.content_text))
+
+        # 2. 图像事件（缩略图优先）
+        img_b64 = result.get_thumbnail_base64() or result.get_image_base64()
+        if img_b64:
+            await self.emit(self._fmt(
+                "screen_image",
+                tool=name,
+                image_base64=img_b64,
+                description=result.content_text,
+            ))
 
     # ── AskUserQuestion / Permission 双向交互 ────────────────────────────────
 

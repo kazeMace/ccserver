@@ -127,8 +127,10 @@ KNOWN_EVENTS: dict[str, dict] = {
     "agent:compact:before":      {"mode": "observing", "phase": "p0", "execution": "parallel", "collect": "all"},
     "agent:compact:after":       {"mode": "observing", "phase": "p0", "execution": "parallel", "collect": "all"},
     "agent:limit":               {"mode": "observing", "phase": "p0", "execution": "parallel", "collect": "all"},
+    "agent:reply:before":        {"mode": "modifying", "phase": "p1", "execution": "parallel", "collect": "all"},
 
     # 子 Agent 生命周期
+    "subagent:spawn:before":     {"mode": "observing", "phase": "p1", "execution": "parallel", "collect": "all"},
     "subagent:spawning":         {"mode": "observing", "phase": "p0", "execution": "parallel", "collect": "all"},
     "subagent:spawned":          {"mode": "observing", "phase": "p1", "execution": "parallel", "collect": "all"},
     "subagent:ended":            {"mode": "observing", "phase": "p0", "execution": "parallel", "collect": "all"},
@@ -1259,7 +1261,10 @@ class HookLoader:
             )
             text = ""
             if response.content:
-                text = response.content[0].text.strip()
+                # 跳过 ThinkingBlock，取第一个 TextBlock
+                text_block = next((b for b in response.content if getattr(b, "type", None) == "text"), None)
+                if text_block is not None:
+                    text = text_block.text.strip()
         except Exception as e:
             logger.exception("prompt llm call failed | source={} error={}", entry.source, e)
             return HookResult()

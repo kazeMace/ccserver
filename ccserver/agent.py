@@ -444,6 +444,23 @@ class Agent:
             getattr(agent_def, "name", None) if agent_def else None,
         )
 
+        # hook: subagent:spawn:before — 子代理派生前（observing，用于审计/记录）
+        # spawn_child 是同步方法，使用 create_task 异步发布 hook，不阻塞主流程
+        try:
+            asyncio.get_running_loop()
+            asyncio.create_task(self.session.hooks.emit_void(
+                "subagent:spawn:before",
+                {
+                    "prompt_preview": prompt[:200],
+                    "agent_name": agent_name,
+                    "agent_def": getattr(agent_def, "name", None) if agent_def else None,
+                    "depth": self.context.depth + 1,
+                },
+                self._build_hook_ctx(),
+            ))
+        except RuntimeError:
+            pass  # 无事件循环时（如单元测试）静默跳过
+
         # ── skills：子代理默认无 skill catalog，除非 agent_def.skills 显式指定 ──
         if agent_def is not None and agent_def.skills is not None:
             child_skills_override = agent_def.skills   # list[str]，可能是空列表
@@ -695,6 +712,8 @@ class Agent:
             prompt=prompt,
             parent_id=child.context.parent_id,
             is_persistent=is_persistent,
+            tools=list(child.tools.keys()),
+            skills=child.skills_override,
         )
         agent_task_state.inbox = asyncio.Queue()  # 子 Agent 的输入队列
         # 3.1 同步 child.context.inbox 与 handle.inbox，使外部消息能正确投递
@@ -1291,6 +1310,16 @@ class Agent:
                 if response.stop_reason != "tool_use":
                     logger.debug("Loop done  | agent={} rounds={} reply_len={}", self.aid_label, round_num + 1, len(round_text))
                     logger.debug("Loop final_text | agent={} text={!r}", self.aid_label, round_text)
+
+                    # hook: agent:reply:before — LLM 完成回复、发出 done 之前（modifying，可修改最终回复）
+                    reply_hook = await self.session.hooks.emit(
+                        "agent:reply:before",
+                        {"reply": round_text, "round_num": round_num + 1},
+                        self._build_hook_ctx(),
+                    )
+                    if reply_hook.message is not None:
+                        round_text = reply_hook.message
+
                     await self._set_phase("done")
                     # 子代理发 subagent_done，根代理发 done，语义区分
                     if self.context.is_orchestrator:
@@ -1476,7 +1505,10 @@ class Agent:
                 max_tokens=1000,
             )
             assert response.content, f"LLM returned empty content in _on_limit_summarize for {self.aid_label}"
-            summary = response.content[0].text
+            # 跳过 ThinkingBlock，取第一个 TextBlock（deepseek 等端点默认开启 thinking）
+            text_block = next((b for b in response.content if getattr(b, "type", None) == "text"), None)
+            assert text_block is not None, f"_on_limit_summarize: no TextBlock in response, types={[getattr(b,'type',None) for b in response.content]}"
+            summary = text_block.text
         except Exception as e:
             logger.error("_on_limit_summarize failed | agent={} error={}", self.aid_label, e)
             return await self._finish_with_last_text(last_text)
@@ -1706,8 +1738,16 @@ class Agent:
                     tools=self._schemas,
                     max_tokens=8000,
                 ) as stream:
-                    async for text in stream.text_stream:
-                        await self.emitter.emit_token(text)
+                    # 遍历完整事件流，区分 text_delta（正文）和 thinking_delta（思考过程）
+                    async for chunk in stream:
+                        chunk_type = getattr(chunk, "type", None)
+                        if chunk_type == "content_block_delta":
+                            delta = getattr(chunk, "delta", None)
+                            delta_type = getattr(delta, "type", None)
+                            if delta_type == "text_delta":
+                                await self.emitter.emit_token(getattr(delta, "text", ""))
+                            elif delta_type == "thinking_delta":
+                                await self.emitter.emit_thinking(getattr(delta, "thinking", ""))
                     response = await stream.get_final_message()
 
                 # 发布 llm_response 事件
@@ -2022,7 +2062,7 @@ class Agent:
                 if tool:
                     logger.debug("Tool call  | agent={} tool={} input={}", self.aid_label, name, input_)
                     result = await tool(**input_)
-                    logger.debug("Tool result| agent={} tool={} result={!r}", self.aid_label, name, result.content[:200] if result.content else "")
+                    logger.debug("Tool result| agent={} tool={} result={!r}", self.aid_label, name, result.content_text[:200] if result.content_text else "")
                 else:
                     logger.warning("Unknown tool | agent={} tool={}", self.aid_label, name)
                     result = ToolResult.error(f"Unknown tool: {name}")
@@ -2030,7 +2070,11 @@ class Agent:
             tool_duration_ms = int((datetime.now(timezone.utc) - tool_start_ts).total_seconds() * 1000)
             self.state.current_tool = None
 
-            await self.emitter.emit_tool_result(name, result.content)
+            # 多模态结果（含图像）走 emit_tool_result_with_image，普通结果走原路径
+            if result.has_image:
+                await self.emitter.emit_tool_result_with_image(name, result)
+            else:
+                await self.emitter.emit_tool_result(name, result.content_text)
 
             # 发布详细的 tool_done 事件到 EventBus，供 monitor 展示工具调用详情
             await self.session.event_bus.publish(AgentEvent(
@@ -2043,23 +2087,37 @@ class Agent:
                     "tool_use_id": block_id,
                     "duration_ms": tool_duration_ms,
                     "is_error": result.is_error,
-                    "result_preview": (result.content or "")[:200],
+                    "result_preview": result.content_text[:200],
                     "tool_input_preview": preview,
+                    "has_image": result.has_image,
                 },
             ))
             # hook: tool:call:after / tool:call:failure（observing）
             if result.is_error:
                 await self.session.hooks.emit_void(
                     "tool:call:failure",
-                    {"tool_name": name, "tool_use_id": block_id, "tool_input": input_, "error": result.content or ""},
+                    {"tool_name": name, "tool_use_id": block_id, "tool_input": input_, "error": result.content_text or ""},
                     self._build_hook_ctx(),
                 )
             else:
                 await self.session.hooks.emit_void(
                     "tool:call:after",
-                    {"tool_name": name, "tool_use_id": block_id, "tool_input": input_, "tool_response": result.content or ""},
+                    {"tool_name": name, "tool_use_id": block_id, "tool_input": input_, "tool_response": result.content_text or ""},
                     self._build_hook_ctx(),
                 )
+            # hook: tool:result:persist — 工具结果持久化前（observing，适合审计/记录）
+            await self.session.hooks.emit_void(
+                "tool:result:persist",
+                {
+                    "tool_name": name,
+                    "tool_use_id": block_id,
+                    "tool_input": input_,
+                    "is_error": result.is_error,
+                    "result_text": result.content_text or "",
+                    "has_image": result.has_image,
+                },
+                self._build_hook_ctx(),
+            )
             results.append(result.to_api_dict(block_id))
 
         # ── 并行等待所有 Agent 工具完成（仅当存在多个 Agent 调用时）──
@@ -2087,7 +2145,7 @@ class Agent:
                 tool_duration_ms = int((datetime.now(timezone.utc) - ts).total_seconds() * 1000)
                 self.state.current_tool = None
 
-                await self.emitter.emit_tool_result("Agent", result.content)
+                await self.emitter.emit_tool_result("Agent", result.content_text)
 
                 await self.session.event_bus.publish(AgentEvent(
                     type=EventType.TOOL_DONE,
@@ -2099,7 +2157,7 @@ class Agent:
                         "tool_use_id": bid,
                         "duration_ms": tool_duration_ms,
                         "is_error": result.is_error,
-                        "result_preview": (result.content or "")[:200],
+                        "result_preview": result.content_text[:200],
                         "tool_input_preview": preview,
                     },
                 ))
@@ -2107,13 +2165,13 @@ class Agent:
                 if result.is_error:
                     await self.session.hooks.emit_void(
                         "tool:call:failure",
-                        {"tool_name": "Agent", "tool_use_id": bid, "tool_input": inp, "error": result.content or ""},
+                        {"tool_name": "Agent", "tool_use_id": bid, "tool_input": inp, "error": result.content_text or ""},
                         self._build_hook_ctx(),
                     )
                 else:
                     await self.session.hooks.emit_void(
                         "tool:call:after",
-                        {"tool_name": "Agent", "tool_use_id": bid, "tool_input": inp, "tool_response": result.content or ""},
+                        {"tool_name": "Agent", "tool_use_id": bid, "tool_input": inp, "tool_response": result.content_text or ""},
                         self._build_hook_ctx(),
                     )
 

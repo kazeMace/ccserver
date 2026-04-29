@@ -3,8 +3,12 @@ import itertools
 import sys
 import threading
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from .base import BaseEmitter
+
+if TYPE_CHECKING:
+    from ccserver.builtins.tools.base import ToolResult
 
 # ─── ANSI 颜色常量 ─────────────────────────────────────────────────────────────
 
@@ -260,6 +264,54 @@ class TUIEmitter(BaseEmitter):
                     print(f"  {i}. {opt.get('label', '')} — {opt.get('description', '')}", flush=True)
         elif t == "error":
             print(f"\n{RED}⏺ Error: {event['message']}{RESET}", flush=True)
+
+    async def emit_tool_result_with_image(self, name: str, result: "ToolResult") -> None:
+        """
+        TUI 模式：渲染含图像的工具结果。
+
+        检测终端类型：
+        - iTerm2：使用 imgcat 协议（base64 inline image）
+        - Kitty：使用 Kitty Graphics Protocol
+        - 其他终端：降级为文字描述 + ASCII 图像信息
+        """
+        from typing import TYPE_CHECKING
+        import base64
+        import os
+
+        # 先打印文字描述
+        print(f"{DIM}  → {result.content_text[:200]}{RESET}", flush=True)
+
+        # 尝试内联渲染图像（缩略图优先，节省终端空间）
+        img_b64 = result.get_thumbnail_base64() or result.get_image_base64()
+        if not img_b64:
+            return
+
+        term = os.environ.get("TERM_PROGRAM", "")
+        term_kit = os.environ.get("TERM", "")
+
+        if term == "iTerm.app":
+            # iTerm2 inline image protocol
+            img_bytes = base64.b64decode(img_b64)
+            size = len(img_bytes)
+            header = f"\033]1337;File=inline=1;size={size};width=auto;height=auto:"
+            sys.stdout.buffer.write(header.encode())
+            sys.stdout.buffer.write(img_bytes)
+            sys.stdout.buffer.write(b"\a\n")
+            sys.stdout.buffer.flush()
+        elif "kitty" in term_kit:
+            # Kitty graphics protocol（简化版，分块传输）
+            img_bytes = base64.b64decode(img_b64)
+            chunk_size = 4096
+            chunks = [img_bytes[i:i+chunk_size] for i in range(0, len(img_bytes), chunk_size)]
+            for idx, chunk in enumerate(chunks):
+                chunk_b64 = base64.b64encode(chunk).decode()
+                more = 1 if idx < len(chunks) - 1 else 0
+                sys.stdout.write(f"\033_Ga=T,f=100,m={more};{chunk_b64}\033\\")
+            sys.stdout.write("\n")
+            sys.stdout.flush()
+        else:
+            # 其他终端：只显示文字（已在上方打印）
+            print(f"{DIM}  [图像可在支持 iTerm2/Kitty 的终端中预览]{RESET}", flush=True)
 
     async def emit_ask_user(self, questions: list) -> str:
         """

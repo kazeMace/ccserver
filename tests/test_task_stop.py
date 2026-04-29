@@ -15,7 +15,7 @@ from pathlib import Path
 
 from ccserver.session import Session
 from ccserver.tasks import ShellTaskState, TaskStatus, generate_shell_id
-from ccserver.builtins.tools.task_stop import BTTaskStop
+from ccserver.builtins.tools.task.task_stop import BTTaskStop
 
 
 class TestTaskStopSuccess:

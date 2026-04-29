@@ -354,6 +354,10 @@ class MonitorCollector:
             # 根 Agent（如果存在）
             root_agent = getattr(session, "root_agent", None)
             if root_agent is not None:
+                # skills_override=None 表示用 session 全局 skills，取实际 skill 名列表展示
+                root_skills = root_agent.skills_override
+                if root_skills is None:
+                    root_skills = [s["name"] for s in session.skills.list_skills()]
                 agents_data.append({
                     "id": root_agent.context.agent_id,
                     "task_id": None,
@@ -362,12 +366,18 @@ class MonitorCollector:
                     "session_id": session.id,
                     "parent_id": None,
                     "team_name": agent_team_map.get(root_agent.context.agent_id),
+                    "tools": list(root_agent.tools.keys()),
+                    "skills": root_skills,
                 })
 
             # Agent 任务（后台子 Agent）
             agent_tasks = getattr(session, "agent_tasks", None)
             if agent_tasks is not None:
                 for task in agent_tasks.list_all():
+                    # skills=None 表示子 agent 使用 session 全局 skills，取实际列表展示
+                    task_skills = task.skills
+                    if task_skills is None:
+                        task_skills = [s.name for s in session.skills.list_skills()]
                     agents_data.append({
                         "id": task.agent_id,
                         "task_id": task.id,
@@ -376,6 +386,8 @@ class MonitorCollector:
                         "session_id": session.id,
                         "parent_id": task.parent_id,
                         "team_name": agent_team_map.get(task.agent_id),
+                        "tools": list(task.tools),
+                        "skills": task_skills,
                     })
 
             # Team

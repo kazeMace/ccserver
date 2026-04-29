@@ -9,6 +9,8 @@ from ccserver.utils import safe_path
 class BTGlob(BuiltinTools):
 
     name = "Glob"
+    risk = "low"
+    tags = ["fs", "read-only"]
 
     description = (
         "Find files in the workspace by glob pattern (file name / path pattern matching). "

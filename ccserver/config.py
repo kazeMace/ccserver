@@ -1,9 +1,32 @@
 import os
+import tempfile
 from pathlib import Path
+
+# ─── 临时目录 ─────────────────────────────────────────────────────────────────
+
+# 系统临时目录，进程启动时计算一次。
+# macOS 上 tempfile.gettempdir() 返回 /var/folders/...，/tmp 是其符号链接。
+# 统一用此常量避免各模块重复调用，也避免 hardcode /tmp 在跨平台时出错。
+TEMP_DIR: Path = Path(tempfile.gettempdir())
 
 # ─── Model ────────────────────────────────────────────────────────────────────
 
 MODEL = os.getenv("CCSERVER_MODEL", "claude-sonnet-4-6")
+
+# VLM 模型：用于视觉工具（ScreenFind 等）的多模态推理，必须支持图像输入。
+# 默认 claude-sonnet-4-6（支持多模态）；可通过环境变量单独配置，与主 MODEL 解耦。
+VLM_MODEL = os.getenv("CCSERVER_VLM_MODEL", "claude-sonnet-4-6")
+
+# VLM 专用 API Key 和 Base URL（用于 ScreenFind 等视觉工具，独立于主 model 的端点）。
+# 未设置时 fallback 到 ANTHROPIC_API_KEY / ANTHROPIC_BASE_URL（与主 adapter 共用端点）。
+VLM_API_KEY  = os.getenv("CCSERVER_VLM_API_KEY")   # None 表示未配置，使用主 key
+VLM_BASE_URL = os.getenv("CCSERVER_VLM_BASE_URL")  # None 表示未配置，使用主 base_url
+
+# VLM 路由配置（Phase 4）
+# 显式指定 VLM provider（如 "zhipuai"、"qwen"、"anthropic"），未设置时自动按 autoPriority 选择
+VLM_PROVIDER = os.getenv("CCSERVER_VLM_PROVIDER")  # None = 自动选择
+# 覆盖 autoPriority 排序，数值越低越优先（通常不需要设置）
+VLM_PRIORITY = os.getenv("CCSERVER_VLM_PRIORITY", "")  # "" 表示使用默认 autoPriority
 
 # ─── Provider ─────────────────────────────────────────────────────────────────
 
@@ -14,9 +37,13 @@ PROVIDER = os.getenv("CCSERVER_PROVIDER", "anthropic")
 CCSERVER_BASE_URL = os.getenv("CCSERVER_BASE_URL", "")
 CCSERVER_API_KEY = os.getenv("CCSERVER_API_KEY", "")
 
+# Provider 专用 API Keys（Phase 2）
+QWEN_API_KEY = os.getenv("QWEN_API_KEY", "")            # 通义千问
+ZHIPUAI_API_KEY = os.getenv("ZHIPUAI_API_KEY", "")      # 智谱 GLM
+
 # ─── Context compaction ───────────────────────────────────────────────────────
 
-THRESHOLD = int(os.getenv("CCSERVER_THRESHOLD", "60000"))   # chars/4 ≈ tokens
+THRESHOLD = int(os.getenv("CCSERVER_THRESHOLD", "120000"))  # chars/4 ≈ tokens；调大避免普通对话频繁 compact
 KEEP_RECENT = int(os.getenv("CCSERVER_KEEP_RECENT", "20"))   # tool results to keep untruncated
 
 # ─── Agent loop limits ────────────────────────────────────────────────────────

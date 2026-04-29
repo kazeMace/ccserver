@@ -386,7 +386,7 @@ def get_session(session_id: str) -> dict:
     "/sessions/{session_id}/tasks",
     summary="List all shell background tasks for a session",
 )
-def list_shell_tasks(session_id: str) -> list[dict]:
+def list_shell_tasks(session_id: str) -> dict:
     """
     返回当前 Session 中所有后台 shell 任务的状态。
 
@@ -742,7 +742,7 @@ def toggle_scheduled_task(session_id: str, task_id: str) -> dict:
     "/sessions/{session_id}/agent-tasks",
     summary="List all agent background tasks for a session",
 )
-def list_agent_tasks(session_id: str) -> list[dict]:
+def list_agent_tasks(session_id: str) -> dict:
     """
     返回当前 Session 中所有后台 Agent 任务的状态。
 

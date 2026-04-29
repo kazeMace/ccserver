@@ -9,6 +9,8 @@ from ccserver.utils import safe_path
 class BTGrep(BuiltinTools):
 
     name = "Grep"
+    risk = "low"
+    tags = ["fs", "read-only"]
 
     description = (
         "Search files in the workspace by regular expression pattern (content search). "

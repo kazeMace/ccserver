@@ -184,7 +184,8 @@ class SQLiteStorageAdapter(StorageAdapter):
     # ── session 生命周期 ───────────────────────────────────────────────────────
 
     def get_workdir(self, session_id: str) -> Path:
-        return Path(f"/tmp/ccserver/{session_id}/workdir")
+        from ccserver.config import TEMP_DIR
+        return TEMP_DIR / f"ccserver-session-{session_id}" / "workdir"
 
     def create_session(self, record: SessionRecord) -> None:
         with self._conn() as conn:

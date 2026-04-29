@@ -171,6 +171,7 @@ class PromptLib:
         adapter: "ModelAdapter",
         settings: "ProjectSettings",
         emitter: "BaseEmitter | None" = None,
+        model: str = "",
     ) -> dict[str, "BuiltinTools"]:
         """
         返回该 PromptLib 所管理的内置工具字典。
@@ -186,6 +187,13 @@ class PromptLib:
         WebSearch 选择策略（同一时刻只注册一个 WebSearch）：
           - lib_id == "claude_code" 且 adapter 是 AnthropicAdapter → Anthropic BTWebSearch
           - 其余情况 → DuckDuckGo BTDDGWebSearch（不依赖 Anthropic）
+
+        Args:
+            session: 当前 session
+            adapter: ModelAdapter 实例
+            settings: 项目设置
+            emitter: 事件发射器
+            model:     主模型名称（用于 VLM 路由决策）
         """
         from ccserver.builtins.tools import (
             BTBash,
@@ -249,6 +257,25 @@ class PromptLib:
         # 定时任务工具（始终注册）
         from ccserver.managers.cron.tools import build_cron_tools
         tools.update(build_cron_tools(session.cron_scheduler))
+
+        # ── 系统操作层工具（始终注册）──────────────────────────────────────
+        # ScreenCapture / InputClick / InputType 是纯系统操作，无 AI 依赖
+        from ccserver.builtins.tools import (
+            BTScreenCapture,
+            BTInputClick,
+            BTInputType,
+        )
+        tools["ScreenCapture"] = BTScreenCapture()
+        tools["InputClick"] = BTInputClick()
+        tools["InputType"] = BTInputType()
+
+        # ── AI 理解层工具（extra，按需注册）───────────────────────────────────
+        # ScreenFind 需要 VLM，属于 extra_tools；模块不存在时跳过（尚未安装）
+        try:
+            from ccserver.extra_tools.vision import BTScreenFind
+            tools["ScreenFind"] = BTScreenFind(session=session, adapter=adapter, model=model)
+        except ImportError:
+            pass
 
         return tools
 

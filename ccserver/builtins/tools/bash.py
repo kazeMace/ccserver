@@ -1,8 +1,15 @@
 """
-Bash tool — aligned with Claude Code's Bash tool conventions.
+Bash tool — 跨平台 Shell 执行工具。
+
+平台分发逻辑：
+- macOS / Linux：使用 bash -c <command>
+- Windows：使用 powershell -NonInteractive -Command <command>
+
+危险命令黑名单在各平台均有对应规则，见 _check_hardblock()。
 """
 
 import asyncio
+import platform as platform_module
 import shlex
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -26,14 +33,17 @@ from ccserver.settings import ProjectSettings
 class BTBash(BuiltinTools):
 
     name = "Bash"
+    risk = "high"
+    tags = ["shell", "system"]
 
     description = (
         "Execute a shell command in the workspace. "
         "Use for running tests, builds, git operations, package installs, "
         "file system operations, or any system task that has no dedicated tool. "
+        "On macOS/Linux runs via bash; on Windows runs via PowerShell. "
         "Do NOT use for file searches — use Glob (find by name pattern) or "
         "Grep (find by content) tools instead; they are faster and safer. "
-        "Output is capped at 50 KB; pipe through head/tail to limit large outputs."
+        "Output is capped at 50 KB; pipe through head/tail (Unix) or Select-Object (PowerShell) to limit large outputs."
     )
 
     params = {
@@ -41,7 +51,8 @@ class BTBash(BuiltinTools):
             type="string",
             description=(
                 "The shell command to execute. "
-                "Runs in bash with cwd set to the workspace root. "
+                "On macOS/Linux: bash syntax (&&, ;, pipes, env vars with $VAR). "
+                "On Windows: PowerShell syntax (semicolons to chain, $env:VAR for env vars). "
                 "Chain multiple commands with && (stop on failure) or ; (continue on failure). "
                 "Avoid interactive commands that prompt for input — they will hang until timeout. "
                 "For file searches, prefer Glob/Grep tools over find/grep shell commands."
@@ -78,13 +89,16 @@ class BTBash(BuiltinTools):
 
     def _check_hardblock(self, cmd: str) -> ToolResult | None:
         """
-        检查命令是否命中硬编码黑名单。
+        检查命令是否命中硬编码黑名单（跨平台）。
+
+        Unix / Windows 规则均在此函数中处理：
+        - Unix：rm -rf /、shutdown、reboot、写入 /dev 设备等
+        - Windows：rd /s /q C:\、format C:、Stop-Computer 等
 
         采用基于 shlex 分词的 token 级精确匹配，防止通过空格、
         引号、换行、sudo 前缀、完整路径等手法绕过。
 
-        同时递归检查 shell wrapper 的 -c 参数内容
-        （如 sh -c "rm -rf /"）。
+        同时递归检查 shell wrapper 的 -c / -Command 参数内容。
         """
         try:
             tokens = shlex.split(cmd)
@@ -112,13 +126,15 @@ class BTBash(BuiltinTools):
             return None
 
         actual_cmd = tokens[cmd_idx].lower()
-        # 处理完整路径：/bin/rm → rm
+        # 处理完整路径：/bin/rm → rm，C:\Windows\System32\cmd.exe → cmd.exe
         actual_cmd = Path(actual_cmd).name
+        # 去掉 Windows 可执行文件扩展名：cmd.exe → cmd，powershell.exe → powershell
+        if actual_cmd.endswith(".exe"):
+            actual_cmd = actual_cmd[:-4]
         args = tokens[cmd_idx + 1:]
 
-        # ── 检查 rm + 递归 + 根目录 ──
+        # ── Unix: rm + 递归 + 根目录 ──────────────────────────────────────────
         if actual_cmd == "rm":
-            # 处理 -- 选项结束标记：rm -- -rf / 中 -- 后的参数不再视为选项
             try:
                 dd_idx = args.index("--")
                 args_after_dd = args[dd_idx + 1:]
@@ -132,27 +148,67 @@ class BTBash(BuiltinTools):
             )
             has_root = any(t == "/" or t == "/." for t in args_after_dd)
             if has_recursive and has_root:
-                return ToolResult.error(
-                    "Blocked: recursive delete root filesystem"
-                )
+                return ToolResult.error("Blocked: recursive delete root filesystem")
 
-        # ── 检查系统控制命令 ──
+        # ── Unix: 系统控制命令 ─────────────────────────────────────────────────
         if actual_cmd in ("shutdown", "reboot", "poweroff", "halt", "init"):
             return ToolResult.error(
                 f"Blocked: system control command '{actual_cmd}'"
             )
 
-        # ── 检查重定向到系统设备 ──
+        # ── Unix: 重定向到系统设备 ─────────────────────────────────────────────
         # 如 "> /dev/sda"、"dd if=/dev/zero of=/dev/sda"
         for i, t in enumerate(tokens):
             if t in (">", ">>", "1>", "1>>", "2>", "2>>"):
                 if i + 1 < len(tokens) and tokens[i + 1].startswith("/dev/"):
                     return ToolResult.error("Blocked: redirect to system device")
-            # dd 命令的 of=/dev/sda 形式
             if t.startswith("of=/dev/") or t.startswith("if=/dev/"):
                 return ToolResult.error("Blocked: direct device access")
 
-        # ── 递归检查 shell wrapper 的 -c 参数 ──
+        # ── Windows: rd /s /q + 根目录或系统盘 ────────────────────────────────
+        # rd /s /q C:\ 或 rmdir /s /q C:\
+        if actual_cmd in ("rd", "rmdir"):
+            args_lower = [a.lower() for a in args]
+            has_s = "/s" in args_lower or "-s" in args_lower
+            # 检测目标是否指向盘根（C:\、D:\ 等）
+            has_drive_root = any(
+                len(a) <= 4 and len(a) >= 2 and a[1] in (":", ":\\")
+                for a in args
+            )
+            if has_s and has_drive_root:
+                return ToolResult.error("Blocked: recursive delete drive root (rd /s)")
+
+        # ── Windows: format 命令（格式化磁盘） ────────────────────────────────
+        if actual_cmd == "format":
+            return ToolResult.error("Blocked: disk format command")
+
+        # ── Windows: PowerShell 系统控制 Cmdlet ──────────────────────────────
+        # Stop-Computer（关机）、Restart-Computer（重启）
+        if actual_cmd in ("stop-computer", "restart-computer"):
+            return ToolResult.error(
+                f"Blocked: system control cmdlet '{actual_cmd}'"
+            )
+
+        # ── Windows: reg delete 删除注册表根键 ────────────────────────────────
+        if actual_cmd == "reg":
+            args_lower = [a.lower() for a in args]
+            if args_lower and args_lower[0] == "delete":
+                # 检测是否操作注册表根键（HKLM\\ 或 HKCU\\ 等两级以内）
+                root_keys = ("hklm", "hkcu", "hkcr", "hku", "hkcc",
+                             "hkey_local_machine", "hkey_current_user",
+                             "hkey_classes_root", "hkey_users",
+                             "hkey_current_config")
+                if len(args_lower) > 1 and any(
+                    args_lower[1].startswith(r) for r in root_keys
+                ):
+                    # 只有路径深度 <= 1（即操作根键本身）才拦截
+                    path_parts = args_lower[1].replace("/", "\\").split("\\")
+                    if len(path_parts) <= 2:
+                        return ToolResult.error(
+                            "Blocked: deleting registry root key"
+                        )
+
+        # ── Unix: 递归检查 shell wrapper 的 -c 参数 ───────────────────────────
         if actual_cmd in ("sh", "bash", "zsh", "dash", "ksh", "fish"):
             try:
                 c_idx = tokens.index("-c")
@@ -162,6 +218,19 @@ class BTBash(BuiltinTools):
                         return inner_result
             except ValueError:
                 pass
+
+        # ── Windows: 递归检查 powershell -Command / -c 内容 ──────────────────
+        if actual_cmd in ("powershell", "pwsh"):
+            for flag in ("-command", "-c"):
+                try:
+                    flag_idx = [t.lower() for t in tokens].index(flag)
+                    if flag_idx + 1 < len(tokens):
+                        inner_result = self._check_hardblock(tokens[flag_idx + 1])
+                        if inner_result:
+                            return inner_result
+                    break
+                except ValueError:
+                    pass
 
         return None
 
@@ -193,6 +262,38 @@ class BTBash(BuiltinTools):
         if self._session is None:
             return None
         return self._session.shell_tasks
+
+    @staticmethod
+    def _is_windows() -> bool:
+        """检测当前是否运行在 Windows 上。"""
+        return platform_module.system() == "Windows"
+
+    @staticmethod
+    def _build_exec_argv(command: str) -> list[str]:
+        """
+        根据当前平台构造 subprocess exec 参数列表。
+
+        - macOS / Linux：["bash", "-c", command]
+        - Windows：["powershell", "-NonInteractive", "-Command", command]
+
+        使用 exec 模式（create_subprocess_exec）而非 shell=True，
+        可以明确指定解释器，避免平台默认 shell 行为差异。
+
+        Args:
+            command: 用户传入的 shell 命令字符串
+
+        Returns:
+            可直接传给 create_subprocess_exec 的 argv 列表
+        """
+        if platform_module.system() == "Windows":
+            # PowerShell 比 cmd.exe 更现代，支持管道、&&、字符串操作等
+            # -NonInteractive：禁止交互提示（如 profile 加载、确认框）
+            # -Command：后接命令字符串，等价于 bash 的 -c
+            return ["powershell", "-NonInteractive", "-Command", command]
+        else:
+            # macOS 和 Linux 统一使用 bash
+            # 大多数系统均预装 bash，兼容性最好
+            return ["bash", "-c", command]
 
     async def validate(self, **kwargs) -> ToolResult | None:
         error = await super().validate(**kwargs)
@@ -260,8 +361,9 @@ class BTBash(BuiltinTools):
         前台执行：等待 subprocess 完成，返回标准输出和退出码。
         这是 run_in_background=False 时的执行路径。
         """
-        proc = await asyncio.create_subprocess_shell(
-            command,
+        argv = self._build_exec_argv(command)
+        proc = await asyncio.create_subprocess_exec(
+            *argv,
             cwd=str(self.workdir),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
@@ -335,9 +437,10 @@ class BTBash(BuiltinTools):
                 task_id
             )
 
-        # 4. 启动 subprocess
-        proc = await asyncio.create_subprocess_shell(
-            command,
+        # 4. 启动 subprocess（使用 exec 模式，明确指定平台解释器）
+        argv = self._build_exec_argv(command)
+        proc = await asyncio.create_subprocess_exec(
+            *argv,
             cwd=str(self.workdir),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,

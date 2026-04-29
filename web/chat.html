@@ -539,6 +539,50 @@
       40% { transform: scale(1.2); opacity: 1; }
     }
 
+    /* ── 回复正文 block ── */
+    .response-block {
+      background: #f8faff;
+      border: 1px solid #dde8ff;
+      border-left: 3px solid var(--primary);
+      border-radius: var(--radius-sm);
+      padding: 10px 14px;
+      margin-bottom: 6px;
+      line-height: 1.7;
+    }
+
+    /* ── thinking block ── */
+    .thinking-block {
+      background: #f8f6ff;
+      border: 1px solid #e0d9f7;
+      border-radius: var(--radius-sm);
+      margin-bottom: 8px;
+      overflow: hidden;
+      font-size: 12px;
+    }
+    .thinking-block-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      background: #f0ebff;
+      cursor: pointer;
+      user-select: none;
+      color: #7c5cbf;
+      font-weight: 500;
+    }
+    .thinking-block-header:hover { background: #e8e0ff; }
+    .thinking-block-body {
+      display: none;
+      padding: 8px 10px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: #555;
+      max-height: 300px;
+      overflow-y: auto;
+      line-height: 1.5;
+    }
+    .thinking-block-body.expanded { display: block; }
+
     /* ── 后台任务卡 ── */
     .task-card {
       background: var(--bg);
@@ -919,9 +963,13 @@ function appendMessage(role, text, options) {
   const bubble = document.createElement('div');
   bubble.className = `bubble ${role}${opt.streaming ? ' streaming-cursor' : ''}`;
 
+  // 正文内容放到独立 _textNode div，使 tool-card / thinking-block 等兄弟节点不被覆盖
+  const textNode = document.createElement('div');
   if (text) {
-    bubble.innerHTML = renderMarkdown(text);
+    textNode.innerHTML = renderMarkdown(text);
   }
+  bubble.appendChild(textNode);
+  bubble._textNode = textNode;
 
   const meta = document.createElement('div');
   meta.className = 'bubble-meta';
@@ -1049,6 +1097,16 @@ function appendToolCard(parentBubble, toolName, preview) {
         outEl.textContent = output;
         body.appendChild(outEl);
       }
+    },
+    setImage(base64, description) {
+      // 工具返回图像时在工具卡内展示截图预览
+      body.classList.add('expanded');
+      toggle.textContent = '▲';
+      const img = document.createElement('img');
+      img.src = 'data:image/png;base64,' + base64;
+      img.style.cssText = 'max-width:100%;border-radius:6px;margin-top:4px;display:block;';
+      img.alt = description || '截图';
+      body.appendChild(img);
     },
     setError() {
       statusDot.className = 'tool-status error';
@@ -1304,10 +1362,15 @@ async function sendMessage() {
   // 显示 thinking 指示器
   appendThinkingIndicator();
 
-  let assistantBubble = null;         // 当前助手气泡
-  let assistantText = '';             // 累积的 token 文本
-  let currentToolCard = null;         // 当前工具卡
-  const currentToolName = '';         // 当前工具名（用于 permission 卡关闭时显示）
+  // ── 瀑布 block 状态 ──────────────────────────────────────────────────────────
+  // 所有 block 都在同一个助手气泡里往下堆叠，不互相覆盖。
+  // 类型切换时在气泡内创建新子 block；同类型连续内容追加到当前子 block。
+  let assistantBubble = null;     // 本轮唯一的助手气泡（首次 SSE 事件时创建）
+  let lastBlockType = null;       // 上一个 block 类型：'thinking' | 'token' | 'tool' | ...
+  let currentThinkingBody = null; // 当前 thinking block 的 body 元素
+  let currentTextNode = null;     // 当前正文 div 元素
+  let currentTextRaw = '';        // 当前正文原始文本
+  let currentToolCard = null;     // 当前工具卡
 
   state.abortController = new AbortController();
 
@@ -1371,9 +1434,7 @@ async function sendMessage() {
   } finally {
     state.isStreaming = false;
     state.abortController = null;
-    if (assistantBubble) {
-      assistantBubble.classList.remove('streaming-cursor');
-    }
+    if (assistantBubble) assistantBubble.classList.remove('streaming-cursor');
     setInputDisabled(false);
     elInput.focus();
   }
@@ -1383,30 +1444,71 @@ async function sendMessage() {
   function handleSSEEvent(event) {
     const type = event.type;
 
-    if (type === 'token') {
-      // LLM 流式 token
+    if (type === 'thinking') {
+      // ── thinking：在气泡内追加 thinking 子 block ──────────────────────────
       removeThinkingIndicator();
-
       if (!assistantBubble) {
         assistantBubble = appendMessage('assistant', '', { streaming: true });
       }
 
-      assistantText += event.content || '';
-      assistantBubble.dataset.rawText = assistantText;
-      assistantBubble.innerHTML = renderMarkdown(assistantText);
-      // 重新加上流式光标
+      // 类型切换时在气泡内创建新的 thinking block
+      if (lastBlockType !== 'thinking' || !currentThinkingBody) {
+        const block = document.createElement('div');
+        block.className = 'thinking-block';
+
+        const header = document.createElement('div');
+        header.className = 'thinking-block-header';
+        header.innerHTML = '💭 思考过程 <span style="margin-left:auto;font-size:10px;">▲</span>';
+
+        const body = document.createElement('div');
+        body.className = 'thinking-block-body expanded';
+
+        header.addEventListener('click', () => {
+          body.classList.toggle('expanded');
+          header.querySelector('span').textContent = body.classList.contains('expanded') ? '▲' : '▼';
+        });
+
+        block.appendChild(header);
+        block.appendChild(body);
+        assistantBubble.appendChild(block);
+
+        currentThinkingBody = body;
+        lastBlockType = 'thinking';
+      }
+
+      currentThinkingBody.textContent += event.content || '';
+      scrollToBottom();
+
+    } else if (type === 'token') {
+      // ── token：在气泡内追加正文 div，类型切换时新建 div ──────────────────
+      removeThinkingIndicator();
+      if (!assistantBubble) {
+        assistantBubble = appendMessage('assistant', '', { streaming: true });
+      }
+
+      if (lastBlockType !== 'token' || !currentTextNode) {
+        currentTextNode = document.createElement('div');
+        currentTextNode.className = 'response-block';
+        assistantBubble.appendChild(currentTextNode);
+        currentTextRaw = '';
+        lastBlockType = 'token';
+      }
+
+      currentTextRaw += event.content || '';
+      assistantBubble.dataset.rawText = currentTextRaw;
+      currentTextNode.innerHTML = renderMarkdown(currentTextRaw);
       assistantBubble.classList.add('streaming-cursor');
       scrollToBottom();
 
     } else if (type === 'tool_start') {
-      // 工具开始调用
+      // ── tool：在气泡内追加工具卡 ─────────────────────────────────────────
       removeThinkingIndicator();
-
       if (!assistantBubble) {
         assistantBubble = appendMessage('assistant', '', { streaming: true });
       }
 
       currentToolCard = appendToolCard(assistantBubble, event.tool, event.preview);
+      lastBlockType = 'tool';
       scrollToBottom();
 
     } else if (type === 'tool_result') {
@@ -1451,29 +1553,37 @@ async function sendMessage() {
       }
 
     } else if (type === 'ask_user') {
-      // agent 需要用户回答
+      // ask_user 追加到当前气泡内
       removeThinkingIndicator();
-
-      if (!assistantBubble) {
-        assistantBubble = appendMessage('assistant', '', { streaming: true });
-      }
+      if (!assistantBubble) assistantBubble = appendMessage('assistant', '', {});
       assistantBubble.classList.remove('streaming-cursor');
-
       appendAskUserCard(assistantBubble, event.questions || [event]);
+      lastBlockType = 'ask_user';
       setStatus('等待回答', 'streaming');
       scrollToBottom();
 
     } else if (type === 'permission_request') {
-      // agent 需要用户批准工具调用
+      // permission 追加到当前气泡内
       removeThinkingIndicator();
-
-      if (!assistantBubble) {
-        assistantBubble = appendMessage('assistant', '', { streaming: true });
-      }
+      if (!assistantBubble) assistantBubble = appendMessage('assistant', '', {});
       assistantBubble.classList.remove('streaming-cursor');
-
       appendPermissionCard(assistantBubble, event.tool, event.input);
+      lastBlockType = 'permission';
       setStatus('等待授权', 'streaming');
+      scrollToBottom();
+
+    } else if (type === 'screen_image') {
+      // 截图追加到当前工具卡或气泡内
+      if (currentToolCard) {
+        currentToolCard.setImage(event.image_base64, event.description || '');
+      } else {
+        if (!assistantBubble) assistantBubble = appendMessage('assistant', '', {});
+        const img = document.createElement('img');
+        img.src = 'data:image/png;base64,' + event.image_base64;
+        img.style.cssText = 'max-width:100%;border-radius:6px;display:block;margin-top:6px;';
+        img.alt = event.description || '截图';
+        assistantBubble.appendChild(img);
+      }
       scrollToBottom();
 
     } else if (type === 'compact') {
@@ -1486,20 +1596,20 @@ async function sendMessage() {
     } else if (type === 'done') {
       // 本轮完成
       removeThinkingIndicator();
+      if (assistantBubble) assistantBubble.classList.remove('streaming-cursor');
 
-      if (assistantBubble) {
-        assistantBubble.classList.remove('streaming-cursor');
-      }
+      // 重置瀑布状态，下一轮从头开始
+      assistantBubble = null;
+      lastBlockType = null;
+      currentThinkingBody = null;
+      currentTextNode = null;
+      currentTextRaw = '';
 
       // 保存 session_id，并建立 push 长连接
       if (event.session_id && !state.sessionId) {
         state.sessionId = event.session_id;
         elSessionIdDisplay.textContent = event.session_id.slice(0, 12) + '...';
-
-        // 用发送的消息作为会话标题
         addSessionToSidebar(event.session_id, text.slice(0, 30));
-
-        // 建立 push 长连接，接收定时任务 / 后台 Agent 主动推送
         connectPush(event.session_id);
       }
 
@@ -1507,17 +1617,12 @@ async function sendMessage() {
 
     } else if (type === 'error') {
       removeThinkingIndicator();
-
-      if (!assistantBubble) {
-        assistantBubble = appendMessage('assistant', '');
-      }
-
+      if (!assistantBubble) assistantBubble = appendMessage('assistant', '');
       const errEl = document.createElement('div');
       errEl.style.cssText = 'color:var(--error-text);background:var(--error-bg);padding:8px 10px;border-radius:6px;font-size:12px;margin-top:4px;';
       errEl.textContent = `❌ ${event.message || '发生错误'}`;
       assistantBubble.appendChild(errEl);
       assistantBubble.classList.remove('streaming-cursor');
-
       setStatus('错误', 'error');
       scrollToBottom();
     }
@@ -1634,9 +1739,15 @@ function handlePushEvent(event, sessionId) {
       pushStreamBubble = appendMessage('assistant', '', { streaming: true });
       pushStreamText = '';
     }
+    if (!pushStreamBubble._textNode) {
+      const textDiv = document.createElement('div');
+      textDiv.className = 'response-block';
+      pushStreamBubble.appendChild(textDiv);
+      pushStreamBubble._textNode = textDiv;
+    }
     pushStreamText += event.content || '';
     pushStreamBubble.dataset.rawText = pushStreamText;
-    pushStreamBubble.innerHTML = renderMarkdown(pushStreamText);
+    pushStreamBubble._textNode.innerHTML = renderMarkdown(pushStreamText);
     pushStreamBubble.classList.add('streaming-cursor');
     scrollToBottom();
 

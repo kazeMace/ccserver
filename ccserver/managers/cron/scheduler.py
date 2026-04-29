@@ -109,6 +109,7 @@ class TaskScheduler:
         enabled: bool = True,
         max_triggers: int | None = None,
         end_time: datetime | None = None,
+        execution_policy: Literal["fixed_rate", "fixed_delay"] = "fixed_delay",
     ) -> ScheduledTask:
         """
         创建定时任务。
@@ -124,6 +125,9 @@ class TaskScheduler:
             enabled:          是否启用，默认 True。
             max_triggers:     最大触发次数，None 表示无限。
             end_time:         截止时间（UTC），None 表示永不过期。
+            execution_policy: interval 类型任务的执行策略：
+                              fixed_rate  — 按计划时间推进（不管上次是否完成）
+                              fixed_delay — 上次触发后再延迟 interval_seconds
 
         Returns:
             新建的 ScheduledTask 实例。
@@ -167,6 +171,7 @@ class TaskScheduler:
             end_time=end_time,
             next_run_at=next_run_at,
             jitter_max=jitter_max,
+            execution_policy=execution_policy,
             durable=durable,
             status="scheduled",
             created_at=now,
@@ -413,7 +418,24 @@ class TaskScheduler:
                                 )
                             continue
 
-                        await self._schedule_trigger(task)
+                        # fixed_rate: 在触发之前就计算下次运行时间，保证频率不受执行耗时影响
+                        # fixed_delay: 在触发后重新计算，保证上次完成后再等 interval_seconds
+                        if task.trigger_type == "interval" and task.execution_policy == "fixed_rate":
+                            next_run = self._compute_next_run(
+                                trigger_type=task.trigger_type,
+                                cron_expr=task.cron_expr,
+                                interval_seconds=task.interval_seconds,
+                                run_at=task.run_at,
+                                base_time=now,
+                                last_triggered_at=now,  # 以计划触发时间为基准
+                            )
+                            task.status = "scheduled"
+                            task.next_run_at = next_run
+                            if task.durable:
+                                self._save_task(task)
+
+                        # 用 create_task 并发触发，不阻塞调度循环
+                        asyncio.create_task(self._schedule_trigger(task, planned_at=now))
                     except Exception as e:
                         self._error_count += 1
                         logger.exception(
@@ -434,14 +456,18 @@ class TaskScheduler:
             )
             raise
 
-    async def _schedule_trigger(self, task: ScheduledTask) -> None:
+    async def _schedule_trigger(self, task: ScheduledTask, planned_at: Optional[datetime] = None) -> None:
         """
         为到期任务安排触发（应用 jitter 后注入 inbox）。
 
+        此方法通过 asyncio.create_task() 被并发调用，不会阻塞调度主循环。
+
         Args:
-            task: 已到期的 ScheduledTask。
+            task:       已到期的 ScheduledTask。
+            planned_at: 计划触发时间（调度循环的 now），用于 fixed_rate 策略下
+                        计算下次 next_run_at。若为 None，则使用当前时间。
         """
-        # 应用确定性 jitter
+        # 应用确定性 jitter（sleep 在后台 task 内部，不阻塞调度循环）
         if task.jitter_max > 0:
             delay = compute_jitter_delay(task.jitter_max, task.jitter_seed)
         else:
@@ -472,8 +498,19 @@ class TaskScheduler:
                 "ScheduledTask completed ({}) | task_id={} trigger_count={}",
                 task.trigger_type, task.task_id, task.trigger_count,
             )
-        else:
-            # 循环任务：重新计算下次触发时间
+        elif task.trigger_type == "interval" and task.execution_policy == "fixed_delay":
+            # fixed_delay：上次触发完成后，从当前时间开始计算下次
+            task.status = "scheduled"
+            task.next_run_at = triggered_at + timedelta(seconds=task.interval_seconds)
+            if task.durable:
+                self._save_task(task)
+            logger.info(
+                "ScheduledTask rescheduled (fixed_delay) | task_id={} next_run={}",
+                task.task_id,
+                task.next_run_at.isoformat() if task.next_run_at else None,
+            )
+        elif task.trigger_type != "interval":
+            # cron 类型：在触发后重新计算下次
             task.status = "scheduled"
             task.next_run_at = self._compute_next_run(
                 trigger_type=task.trigger_type,
@@ -490,6 +527,7 @@ class TaskScheduler:
                 task.task_id, task.trigger_type,
                 task.next_run_at.isoformat() if task.next_run_at else None,
             )
+        # interval + fixed_rate 的 next_run_at 已在 _run() 的调度循环里提前设好，此处不重复设置
 
     def _compute_next_run(
         self,

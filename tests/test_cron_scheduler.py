@@ -335,7 +335,7 @@ class TestBTCronCreate:
     @pytest.mark.asyncio
     async def test_run_valid_cron(self):
         sch = _make_scheduler()
-        from ccserver.builtins.tools.cron_create import BTCronCreate
+        from ccserver.builtins.tools.cron.cron_create import BTCronCreate
         tool = BTCronCreate(sch)
         result = await tool.run(cron="*/5 * * * *", prompt="test")
         assert "created" in result.content
@@ -344,7 +344,7 @@ class TestBTCronCreate:
     @pytest.mark.asyncio
     async def test_run_invalid_cron(self):
         sch = _make_scheduler()
-        from ccserver.builtins.tools.cron_create import BTCronCreate
+        from ccserver.builtins.tools.cron.cron_create import BTCronCreate
         tool = BTCronCreate(sch)
         result = await tool.run(cron="not valid", prompt="test")
         assert result.is_error
@@ -353,7 +353,7 @@ class TestBTCronCreate:
     @pytest.mark.asyncio
     async def test_run_nl_schedule(self):
         sch = _make_scheduler()
-        from ccserver.builtins.tools.cron_create import BTCronCreate
+        from ccserver.builtins.tools.cron.cron_create import BTCronCreate
         tool = BTCronCreate(sch)
         result = await tool.run(schedule="每30秒", prompt="check port")
         assert "created" in result.content
@@ -365,7 +365,7 @@ class TestBTCronDelete:
     async def test_delete_existing(self):
         sch = _make_scheduler()
         task = sch.create(prompt="delme", trigger_type="cron", cron_expr="*/5 * * * *")
-        from ccserver.builtins.tools.cron_delete import BTCronDelete
+        from ccserver.builtins.tools.cron.cron_delete import BTCronDelete
         tool = BTCronDelete(sch)
         result = await tool.run(id=task.task_id)
         assert "deleted" in result.content
@@ -374,7 +374,7 @@ class TestBTCronDelete:
     @pytest.mark.asyncio
     async def test_delete_not_found(self):
         sch = _make_scheduler()
-        from ccserver.builtins.tools.cron_delete import BTCronDelete
+        from ccserver.builtins.tools.cron.cron_delete import BTCronDelete
         tool = BTCronDelete(sch)
         result = await tool.run(id="ct00000000")
         assert "not found" in result.content
@@ -385,7 +385,7 @@ class TestBTCronList:
     @pytest.mark.asyncio
     async def test_empty_returns_message(self):
         sch = _make_scheduler()
-        from ccserver.builtins.tools.cron_list import BTCronList
+        from ccserver.builtins.tools.cron.cron_list import BTCronList
         tool = BTCronList(sch)
         result = await tool.run()
         assert "No scheduled tasks" in result.content
@@ -395,7 +395,7 @@ class TestBTCronList:
         sch = _make_scheduler()
         sch.create(prompt="task1", trigger_type="cron", cron_expr="*/5 * * * *")
         sch.create(prompt="task2", trigger_type="cron", cron_expr="0 9 * * 1-5")
-        from ccserver.builtins.tools.cron_list import BTCronList
+        from ccserver.builtins.tools.cron.cron_list import BTCronList
         tool = BTCronList(sch)
         result = await tool.run()
         # 输出包含任务 header

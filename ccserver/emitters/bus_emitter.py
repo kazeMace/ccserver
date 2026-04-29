@@ -17,11 +17,15 @@ Agent 内部代码零改动，只替换注入的 emitter 实例。
 """
 
 import asyncio
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
 from ccserver.emitters.base import BaseEmitter
 from ccserver.event_bus import AgentEvent, EventBus, EventType, SenderType
+
+if TYPE_CHECKING:
+    from ccserver.builtins.tools.base import ToolResult
 
 
 class BusEmitter(BaseEmitter):
@@ -124,6 +128,39 @@ class BusEmitter(BaseEmitter):
         await self._bus.publish(
             self._make_event(EventType.TOOL_DONE, {"tool_name": name, "result": output[:500]})
         )
+
+    async def emit_tool_result_with_image(self, name: str, result: "ToolResult") -> None:
+        """
+        含图像的工具结果。
+
+        向总线同时发布两个事件：
+        1. TOOL_DONE — 文本描述（与普通工具结果格式一致）
+        2. IMAGE — 图像数据（供 SSE/WS/Feishu 等渠道渲染图像）
+
+        Args:
+            name:   工具名称（通常是 "ScreenCapture"）。
+            result: 多模态 ToolResult（has_image=True）。
+        """
+        # 1. 文本描述事件（与普通 emit_tool_result 保持格式一致）
+        await self._bus.publish(
+            self._make_event(
+                EventType.TOOL_DONE,
+                {"tool_name": name, "result": result.content_text[:500]},
+            )
+        )
+        # 2. 图像事件（缩略图优先，无缩略图时用完整图像）
+        img_b64 = result.get_thumbnail_base64() or result.get_image_base64()
+        if img_b64:
+            await self._bus.publish(
+                self._make_event(
+                    EventType.IMAGE,
+                    {
+                        "tool_name": name,
+                        "image_base64": img_b64,
+                        "description": result.content_text,
+                    },
+                )
+            )
 
     async def emit_done(self, content: str) -> None:
         """

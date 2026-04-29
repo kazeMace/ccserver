@@ -63,7 +63,8 @@ class MongoStorageAdapter(StorageAdapter):
     # ── get_workdir（MongoDB 无本地目录，用 /tmp 兜底）──────────────────────────
 
     def get_workdir(self, session_id: str) -> Path:
-        workdir = Path(f"/tmp/ccserver/{session_id}/workdir")
+        from ccserver.config import TEMP_DIR
+        workdir = TEMP_DIR / f"ccserver-session-{session_id}" / "workdir"
         workdir.mkdir(parents=True, exist_ok=True)
         return workdir
 

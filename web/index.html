@@ -651,6 +651,8 @@
               <th>Agent</th>
               <th>Status</th>
               <th>Session</th>
+              <th>Tools</th>
+              <th>Skills</th>
               <th>Last Event</th>
               <th>Last Seen</th>
             </tr>
@@ -891,6 +893,8 @@
         agents[a.id].task_id = a.task_id;
         agents[a.id].parent_id = a.parent_id;
         agents[a.id].team_name = a.team_name || agents[a.id].team_name;
+        agents[a.id].tools = a.tools || agents[a.id].tools || [];
+        agents[a.id].skills = a.skills || agents[a.id].skills || [];
       });
       renderAgents();
       renderAgentsTable();
@@ -1055,7 +1059,7 @@
       const tbody = document.querySelector('#agents-table tbody');
       const items = Object.values(agents);
       if (items.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#8c959f;padding:20px;">No agents</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#8c959f;padding:20px;">No agents</td></tr>';
         return;
       }
 
@@ -1091,6 +1095,8 @@
         }
 
         const toolInfo = agent.current_tool ? ` 🔧${escapeHtml(truncate(agent.current_tool, 12))}` : '';
+        const toolsList = (agent.tools || []).map(t => `<span class="badge idle" style="margin:1px;font-size:10px">${escapeHtml(t)}</span>`).join('');
+        const skillsList = (agent.skills || []).map(s => `<span class="badge done" style="margin:1px;font-size:10px">${escapeHtml(s)}</span>`).join('') || '-';
         html += `<tr data-agent-id="${agent.id}" data-depth="${depth}">
           <td>
             <div class="tree-cell" style="padding-left:${indent}px">
@@ -1100,6 +1106,8 @@
           </td>
           <td><span class="badge ${badgeClass}">${agent.phase}</span>${toolInfo}</td>
           <td class="mono" title="${escapeHtml(agent.session_id)}">${escapeHtml(truncate(agent.session_id, 12))}</td>
+          <td style="max-width:220px;line-height:1.6">${toolsList || '-'}</td>
+          <td style="max-width:180px;line-height:1.6">${skillsList}</td>
           <td>${escapeHtml(agent.last_event || '-')}</td>
           <td>${lastTs}</td>
         </tr>`;

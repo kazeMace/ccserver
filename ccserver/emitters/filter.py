@@ -50,8 +50,8 @@ class FilterEmitter(BaseEmitter):
         if t in ("ask_user", "permission_request"):
             return
 
-        # token 事件：由 stream 开关决定
-        if t == "token":
+        # token / thinking 事件：由 stream 开关决定（thinking 与正文 token 同步显隐）
+        if t in ("token", "thinking"):
             if self._stream:
                 await self._inner.emit(event)
             return
@@ -70,6 +70,15 @@ class FilterEmitter(BaseEmitter):
         if self._verbosity == "verbose":
             return self._fmt("tool_result", tool=name, output=output)
         return super().fmt_tool_result(name, output)
+
+    async def emit_tool_result_with_image(self, name: str, result) -> None:
+        """
+        透传多模态工具结果给内部 emitter。
+        final_only 模式下图像也不展示（与工具调用过程一致）。
+        """
+        if self._verbosity == "final_only":
+            return
+        await self._inner.emit_tool_result_with_image(name, result)
 
     async def emit_ask_user(self, questions: list) -> str:
         """

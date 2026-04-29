@@ -10,7 +10,7 @@ from loguru import logger
 from .config import MODEL, MAIN_ROUND_LIMIT, PROMPT_LIB
 from .session import Session
 from .emitters import BaseEmitter
-from .managers.tools import ToolManager
+from .managers.tools import ToolManager, ExtraToolLoader
 from .builtins.tools import BTAgent
 from .agent import Agent, AgentContext
 from .model import ModelAdapter, get_adapter
@@ -65,7 +65,7 @@ class AgentFactory:
         # 由 PromptLib 构建工具集
         from ccserver.prompts_lib.adapter import get_lib
         lib = get_lib(lib_id)
-        built_tools = lib.build_tools(session, resolved_adapter, settings, emitter=emitter)
+        built_tools = lib.build_tools(session, resolved_adapter, settings, emitter=emitter, model=model)
 
         tool_manager = ToolManager(
             session.project_root,
@@ -73,6 +73,12 @@ class AgentFactory:
             settings,
             tools=built_tools,
         )
+
+        # 加载工程级 / 用户全局 extra tools（.ccserver/tools/ 和 ~/.ccserver/tools/）
+        extra_loader = ExtraToolLoader.from_workdir(session.project_root)
+        for extra_tool in extra_loader.load_all():
+            tool_manager.register_custom_tool(extra_tool)
+
         all_tools = tool_manager.get_all_tools()
         tools = settings.filter_tools(all_tools)
 

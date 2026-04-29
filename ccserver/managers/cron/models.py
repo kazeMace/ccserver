@@ -76,6 +76,15 @@ class ScheduledTask:
         最大随机延迟秒数。触发时随机延迟 [0, jitter_max] 秒，
         用于避免大量任务同时触发（防雷鸣效应）。默认 0 表示不启用。
 
+    execution_policy : "fixed_rate" | "fixed_delay"
+        interval 类型任务的执行策略，其他类型忽略此字段。
+        - fixed_rate  : 按固定频率触发，不管上次执行是否完成。
+                        next_run_at = 本次计划触发时间 + interval_seconds
+                        适合心跳检测、状态轮询等要求时间对齐的场景。
+        - fixed_delay : 上次触发后再等 interval_seconds 才触发下次。
+                        next_run_at = 本次实际触发时间 + interval_seconds
+                        适合任务执行时间不确定、不希望堆积的场景。
+
     durable : bool
         True 时任务写入磁盘，Session 重启后能恢复调度。
 
@@ -121,6 +130,8 @@ class ScheduledTask:
 
     # ── 其他 ──
     jitter_max: int = 0
+    # interval 类型执行策略：fixed_rate=按计划时间推进, fixed_delay=上次触发后延迟
+    execution_policy: Literal["fixed_rate", "fixed_delay"] = "fixed_delay"
     durable: bool = False
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     meta: dict = field(default_factory=dict)
@@ -263,6 +274,7 @@ class ScheduledTask:
             "end_time": self.end_time.isoformat() if self.end_time else None,
             "next_run_at": self.next_run_at.isoformat() if self.next_run_at else None,
             "jitter_max": self.jitter_max,
+            "execution_policy": self.execution_policy,
             "durable": self.durable,
             "status": self.status,
             "created_at": self.created_at.isoformat() if self.created_at else None,
@@ -319,6 +331,7 @@ class ScheduledTask:
             end_time=_parse_dt("end_time"),
             next_run_at=_parse_dt("next_run_at") or datetime.now(timezone.utc),
             jitter_max=data.get("jitter_max", 0),
+            execution_policy=data.get("execution_policy", "fixed_delay"),  # type: ignore[arg-type]
             durable=data.get("durable", False),
             status=data.get("status", "scheduled"),
             created_at=_parse_dt("created_at") or datetime.now(timezone.utc),

@@ -8,7 +8,7 @@ from ccserver.prompts_lib.cc_reverse.v2_1_81.lib import CcReverseV2181
 def _make_adapter(summary_text: str) -> MagicMock:
     """构造一个模拟 ModelAdapter，adapter.create() 返回含指定摘要文本的响应。"""
     mock_response = MagicMock()
-    mock_response.content = [MagicMock(text=summary_text)]
+    mock_response.content = [MagicMock(type="text", text=summary_text)]
     adapter = MagicMock()
     adapter.create = AsyncMock(return_value=mock_response)
     return adapter
