@@ -10,7 +10,7 @@ import importlib
 import json
 from pathlib import Path
 
-from ccserver.prompts_lib.base import PromptLib
+from prompt_library.base import PromptLib
 
 # 注册表：lib_id → PromptLib 实例
 _REGISTRY: dict[str, PromptLib] = {}
@@ -40,10 +40,10 @@ def _auto_register():
         class_name = manifest["class"]
 
         # 将文件系统路径转为 Python 模块路径
-        # 例：ccserver/prompts_lib/cc_reverse/v2_1_81/lib.py
-        #   → ccserver.prompts_lib.cc_reverse.v2_1_81.lib
+        # 例：prompt_library/cc_reverse/v2_1_81/lib.py
+        #   → prompt_library.cc_reverse.v2_1_81.lib
         lib_file = manifest_path.parent / "lib.py"
-        rel = lib_file.relative_to(Path(__file__).parent.parent.parent)
+        rel = lib_file.relative_to(Path(__file__).parent.parent)
         module_path = ".".join(rel.with_suffix("").parts)
 
         module = importlib.import_module(module_path)

@@ -1,7 +1,7 @@
 # tests/prompts_lib/test_adapter.py
 import pytest
-from ccserver.prompts_lib.adapter import get_lib, register
-from ccserver.prompts_lib.base import PromptLib
+from prompt_library.adapter import get_lib, register
+from prompt_library.base import PromptLib
 
 
 def test_get_known_lib():

@@ -12,8 +12,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ccserver.prompts_lib.adapter import get_lib
-from ccserver.prompts_lib.base import PromptLib
+from prompt_library.adapter import get_lib
+from prompt_library.base import PromptLib
 
 if TYPE_CHECKING:
     from ccserver.session import Session

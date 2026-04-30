@@ -1,6 +1,6 @@
 # tests/prompts_lib/test_base.py
 import pytest
-from ccserver.prompts_lib.base import PromptLib
+from prompt_library.base import PromptLib
 
 def test_base_build_system_raises():
     lib = PromptLib()

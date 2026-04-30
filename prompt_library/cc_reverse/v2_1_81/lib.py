@@ -2,15 +2,35 @@
 
 from __future__ import annotations
 
+import json
 import platform
 from pathlib import Path
 
-from ccserver.prompts_lib.base import PromptLib
+from prompt_library.base import PromptLib
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ccserver.session import Session
+
 _SLOTS_DIR = Path(__file__).parent
+
+# tools.json 与此文件同目录，强关联于 cc_reverse:v2.1.81
+_TOOLS_JSON = _SLOTS_DIR / "tools.json"
+
+# 懒加载缓存：{ tool_name: schema_dict }
+_cc_tool_index: dict[str, dict] | None = None
+
+
+def _get_cc_tool_index() -> dict[str, dict]:
+    """读取并缓存 tools.json，按工具名索引。"""
+    global _cc_tool_index
+    if _cc_tool_index is None:
+        if _TOOLS_JSON.exists():
+            tools = json.loads(_TOOLS_JSON.read_text(encoding="utf-8"))
+            _cc_tool_index = {t["name"]: t for t in tools}
+        else:
+            _cc_tool_index = {}
+    return _cc_tool_index
 
 
 def _load(name: str) -> str:
@@ -72,7 +92,7 @@ class CcReverseV2181(PromptLib):
 
             # injected_system 追加到末尾
             if injected_system:
-                result.extend({"type": "text", "text": injected_system})
+                result.append({"type": "text", "text": injected_system})
         return result
 
     def build_skill_catalog(self, skills: list) -> str:
@@ -173,21 +193,7 @@ class CcReverseV2181(PromptLib):
 
         # 1. skill inject（技能目录）
         skills_override = context.get("skills_override")  # None | list[str]
-
-        if skills_override is None:
-            # 根 agent：使用 session 全局 skills + commands
-            local_skills = session.skills.list_skills() if session.skills else []
-            local_commands = session.commands.list_commands() if session.commands else []
-            all_entries = local_skills + local_commands
-        elif len(skills_override) == 0:
-            # subagent 未指定 skills：不注入任何 skill catalog
-            all_entries = []
-        else:
-            # subagent 指定了 skills：只注入列出的 skill 名称
-            allowed = set(skills_override)
-            all_skills = session.skills.list_skills() if session.skills else []
-            all_entries = [s for s in all_skills if s["name"] in allowed]
-
+        all_entries = self._resolve_skill_entries(session, skills_override)
         skill_catalog = self.build_skill_catalog(all_entries)
         if skill_catalog:
             skill_template = _load("system-reminder-skill-inject")
@@ -209,3 +215,49 @@ class CcReverseV2181(PromptLib):
 
         parts.append({"type": "text", "text": text})
         return parts
+
+    def patch_tool_schemas(self, schemas: list[dict]) -> list[dict]:
+        """
+        用 tools.json 中的描述替换工具 schema 的 description 和参数描述。
+        只替换 JSON 中存在的工具，其余工具保持原样。
+        """
+        index = _get_cc_tool_index()
+        if not index:
+            return schemas
+
+        for schema in schemas:
+            name = schema.get("name", "")
+            cc = index.get(name)
+            if cc is None:
+                continue
+
+            cc_input_schema = cc.get("input_schema", {})
+            cc_props = cc_input_schema.get("properties", {})
+            our_input_schema = schema.get("input_schema", {})
+            our_props = our_input_schema.get("properties", {})
+
+            if name == "Agent":
+                # Agent description 是动态生成的（含 agent catalog），不能覆盖。
+                # 但 input_schema 需要从 tools.json 补全：
+                #   1. 补充 tools.json 中有但我们没有的参数（如 model enum、isolation enum）
+                #   2. 用 tools.json 的参数描述覆盖我们的描述
+                #   3. 同步 required 列表
+                for param_name, cc_prop in cc_props.items():
+                    if param_name not in our_props:
+                        our_props[param_name] = cc_prop
+                    else:
+                        # 覆盖描述；保留 enum 等额外字段
+                        our_props[param_name].update(
+                            {k: v for k, v in cc_prop.items() if k != "type"}
+                        )
+                if "required" in cc_input_schema:
+                    our_input_schema["required"] = cc_input_schema["required"]
+                continue
+
+            # 其他工具：替换 description + 参数描述
+            schema["description"] = cc["description"]
+            for param_name, cc_prop in cc_props.items():
+                if param_name in our_props and "description" in cc_prop:
+                    our_props[param_name]["description"] = cc_prop["description"]
+
+        return schemas

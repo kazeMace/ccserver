@@ -2,7 +2,7 @@
 import pytest
 from unittest.mock import MagicMock, AsyncMock
 from ccserver.compactor import Compactor
-from ccserver.prompts_lib.cc_reverse.v2_1_81.lib import CcReverseV2181
+from prompt_library.cc_reverse.v2_1_81.lib import CcReverseV2181
 
 
 def _make_adapter(summary_text: str) -> MagicMock:
