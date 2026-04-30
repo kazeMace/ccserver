@@ -181,9 +181,9 @@ class Agent:
         else:
             self.run_mode = session.settings.run_mode
 
-        from ccserver.prompts_lib.adapter import get_lib
-        lib = get_lib(prompt_version)
-        self.system:List[Dict[str, Any]] = lib.build_system(session, model, language, cch=self.short_aid, injected_system=system, append_system=append_system, is_spawn=is_spawn)
+        from ccserver.prompt_engine import PromptEngine
+        self.prompt_engine: PromptEngine = PromptEngine(prompt_version)
+        self.system:List[Dict[str, Any]] = self.prompt_engine.build_system(session, model, language, cch=self.short_aid, injected_system=system, append_system=append_system, is_spawn=is_spawn)
 
         self.compactor = Compactor(adapter=adapter, model=model)
 
@@ -467,9 +467,8 @@ class Agent:
         else:
             child_skills_override = []                 # 不注入任何 skill catalog
 
-        # 子代理的初始消息也要经过 lib.on_message() 处理
-        from ccserver.prompts_lib.adapter import get_lib
-        initial_message = get_lib(self.prompt_version).on_message(
+        # 子代理的初始消息也要经过 prompt_engine.on_message() 处理
+        initial_message = self.prompt_engine.on_message(
             {"role": "user", "content": prompt}, self.session, [],
             skills_override=child_skills_override,
         )
@@ -572,9 +571,8 @@ class Agent:
             allowed_mcp = set(agent_def.mcp)
             child._schemas += [s for s in self.session.mcp.schemas() if s["name"] in allowed_mcp]
 
-        # 让 prompt lib 对 schema 描述做后处理（如 cc_reverse 替换为 CC 原版描述）
-        from ccserver.prompts_lib.adapter import get_lib
-        child._schemas = get_lib(child.prompt_version).patch_tool_schemas(child._schemas)
+        # 让 prompt_engine 对 schema 描述做后处理（如 cc_reverse 替换为 CC 原版描述）
+        child._schemas = child.prompt_engine.patch_tool_schemas(child._schemas)
 
         child.recorder.schemas = child._schemas
 
@@ -2467,8 +2465,7 @@ class Agent:
 
         消息在写入前统一经过 lib.on_message() 处理（包装格式、注入 reminder 等）。
         """
-        from ccserver.prompts_lib.adapter import get_lib
-        message = get_lib(self.prompt_version).on_message(
+        message = self.prompt_engine.on_message(
             message, self.session, self.context.messages,
             skills_override=self.skills_override,
         )
@@ -2506,8 +2503,7 @@ class Agent:
             self._build_hook_ctx(),
         )
         await self.emitter.emit_compact(reason)
-        from ccserver.prompts_lib.adapter import get_lib
-        lib = get_lib(self.prompt_version)
+        lib = self.prompt_engine
         compacted = await self.compactor.compact(
             self.session,
             self.emitter,

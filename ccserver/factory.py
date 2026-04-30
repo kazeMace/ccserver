@@ -14,6 +14,7 @@ from .managers.tools import ToolManager, ExtraToolLoader
 from .builtins.tools import BTAgent
 from .agent import Agent, AgentContext
 from .model import ModelAdapter, get_adapter
+from .prompt_engine import PromptEngine
 
 
 # ─── AgentFactory ─────────────────────────────────────────────────────────────
@@ -62,10 +63,9 @@ class AgentFactory:
         else:
             resolved_adapter = adapter
 
-        # 由 PromptLib 构建工具集
-        from ccserver.prompts_lib.adapter import get_lib
-        lib = get_lib(lib_id)
-        built_tools = lib.build_tools(session, resolved_adapter, settings, emitter=emitter, model=model)
+        # 由 PromptEngine 构建工具集
+        engine = PromptEngine(lib_id)
+        built_tools = engine.build_tools(session, resolved_adapter, settings, emitter=emitter, model=model)
 
         tool_manager = ToolManager(
             session.project_root,
@@ -116,8 +116,8 @@ class AgentFactory:
         # MCP schema 过滤后追加（__init__ 不持有 settings，无法过滤，由此处补全）
         agent._schemas += settings.filter_mcp_schemas(session.mcp.schemas())
 
-        # 让 prompt lib 对 schema 描述做后处理（如 cc_reverse 替换为 CC 原版描述）
-        agent._schemas = lib.patch_tool_schemas(agent._schemas)
+        # 让 PromptEngine 对 schema 描述做后处理（如 cc_reverse 替换为 CC 原版描述）
+        agent._schemas = engine.patch_tool_schemas(agent._schemas)
 
         # 将根 Agent 挂载到 Session，供外部（如 Monitor）查询根 Agent 信息
         session._root_agent = agent

@@ -1,4 +1,7 @@
-# src/prompts_lib/base.py
+# prompts_lib/base.py
+#
+# PromptLib 基类 — 只定义 prompt 内容相关的接口，不依赖 ccserver 内部模块。
+# 工具构建（build_tools）等强依赖 ccserver 的逻辑由 ccserver/prompt_engine.py 负责。
 
 from __future__ import annotations
 
@@ -6,10 +9,6 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ccserver.session import Session
-    from ccserver.settings import ProjectSettings
-    from ccserver.model import ModelAdapter
-    from ccserver.builtins.tools import BuiltinTools
-    from ccserver.emitters.base import BaseEmitter
 
 
 class PromptLib:
@@ -164,120 +163,6 @@ class PromptLib:
         返回修改后的列表（可以是原列表 in-place 修改后返回）。
         """
         return schemas
-
-    def build_tools(
-        self,
-        session: "Session",
-        adapter: "ModelAdapter",
-        settings: "ProjectSettings",
-        emitter: "BaseEmitter | None" = None,
-        model: str = "",
-    ) -> dict[str, "BuiltinTools"]:
-        """
-        返回该 PromptLib 所管理的内置工具字典。
-        在 factory.py 调用 AgentFactory.create_root() 时被调用。
-
-        子类可覆盖此方法：
-          1. 完全替换工具集（如某些 lib 不需要特定工具）
-          2. 自定义工具初始化参数（如 WebFetch 使用不同 model）
-          3. 注入额外的自定义工具
-
-        默认实现：返回 ccserver 内置工具的默认集合。
-
-        WebSearch 选择策略（同一时刻只注册一个 WebSearch）：
-          - lib_id == "claude_code" 且 adapter 是 AnthropicAdapter → Anthropic BTWebSearch
-          - 其余情况 → DuckDuckGo BTDDGWebSearch（不依赖 Anthropic）
-
-        Args:
-            session: 当前 session
-            adapter: ModelAdapter 实例
-            settings: 项目设置
-            emitter: 事件发射器
-            model:     主模型名称（用于 VLM 路由决策）
-        """
-        from ccserver.builtins.tools import (
-            BTBash,
-            BTRead,
-            BTWrite,
-            BTEdit,
-            BTGlob,
-            BTGrep,
-            BTCompact,
-            BTTaskCreate,
-            BTTaskUpdate,
-            BTTaskGet,
-            BTTaskList,
-            BTTaskStop,
-            BTAskUser,
-            BTWebFetch,
-            BTWebSearch,
-            BTDDGWebSearch,
-            BTAgent,
-            BTSendMessage,
-        )
-        from ccserver.model import AnthropicAdapter
-
-        # 基础工具（不需要 LLM client）
-        tools: dict[str, BuiltinTools] = {
-            "Bash": BTBash(session.project_root, settings, session=session, emitter=emitter),
-            "Read": BTRead(session.project_root),
-            "Write": BTWrite(session.project_root),
-            "Edit": BTEdit(session.project_root),
-            "Glob": BTGlob(session.project_root),
-            "Grep": BTGrep(session.project_root),
-            "Compact": BTCompact(),
-            "TaskCreate": BTTaskCreate(session.tasks),
-            "TaskUpdate": BTTaskUpdate(session.tasks),
-            "TaskGet": BTTaskGet(session.tasks),
-            "TaskList": BTTaskList(session.tasks),
-            "TaskStop": BTTaskStop(session.shell_tasks, session=session),
-            "AskUser": BTAskUser(),
-        }
-
-        # 需要 LLM client 的工具
-        if adapter is not None:
-            tools["WebFetch"] = BTWebFetch(adapter)
-
-            # WebSearch 选择逻辑：同一时刻只注册一个
-            # cc_reverse:v2.1.81 + Anthropic adapter → Anthropic 原生搜索
-            # 其余情况 → DuckDuckGo（不依赖 Anthropic）
-            if self.lib_id == "cc_reverse:v2.1.81" and isinstance(adapter, AnthropicAdapter):
-                tools["WebSearch"] = BTWebSearch(adapter)
-            else:
-                # 其余情况 → 使用 DuckDuckGo（provider-agnostic）
-                tools["WebSearch"] = BTDDGWebSearch(adapter)
-
-        # Agent 工具动态注入
-        tools["Agent"] = BTAgent(agent_catalog=session.agents.build_catalog())
-
-        # Agent Team 通信工具（仅在开启 team 功能时注册）
-        if session.settings.user_agent_team:
-            tools["SendMessage"] = BTSendMessage()
-
-        # 定时任务工具（始终注册）
-        from ccserver.managers.cron.tools import build_cron_tools
-        tools.update(build_cron_tools(session.cron_scheduler))
-
-        # ── 系统操作层工具（始终注册）──────────────────────────────────────
-        # ScreenCapture / InputClick / InputType 是纯系统操作，无 AI 依赖
-        from ccserver.builtins.tools import (
-            BTScreenCapture,
-            BTInputClick,
-            BTInputType,
-        )
-        tools["ScreenCapture"] = BTScreenCapture()
-        tools["InputClick"] = BTInputClick()
-        tools["InputType"] = BTInputType()
-
-        # ── AI 理解层工具（extra，按需注册）───────────────────────────────────
-        # ScreenFind 需要 VLM，属于 extra_tools；模块不存在时跳过（尚未安装）
-        try:
-            from ccserver.extra_tools.vision import BTScreenFind
-            tools["ScreenFind"] = BTScreenFind(session=session, adapter=adapter, model=model)
-        except ImportError:
-            pass
-
-        return tools
 
     def build_compact_messages(self, summary: str, transcript_ref: str) -> list:
         """
