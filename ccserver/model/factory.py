@@ -1,23 +1,204 @@
 """
 factory — 运行时 ModelAdapter 选择工厂。
 
-根据 provider 名称委托给 ProviderRegistry 创建对应的 ModelAdapter。
-保持向后兼容：所有现有 get_adapter() 调用签名不变。
+提供两套 API：
+  1. AdapterFactory.build(endpoint) — 新 API，基于 ModelEndpoint 构造 adapter，
+     自动注入 model_info 和 compat，推荐所有新代码使用。
+  2. get_adapter(provider, **config)  — 旧 API，保留向后兼容，内部调用 ProviderRegistry。
+
+迁移指引：
+  旧：adapter = get_adapter("anthropic")
+  新：adapter = AdapterFactory.build(ModelEndpoint.from_env())
 """
 
 from __future__ import annotations
 
+import os
+import httpx
 from typing import Any
 
 from loguru import logger
 
 from .adapter import ModelAdapter
+from .endpoint import ModelEndpoint, API_TYPE_ANTHROPIC, API_TYPE_OPENAI, API_TYPE_ZHIPUAI, API_TYPE_VOLCANO
 from .plugins.registry import get_provider_registry
+
+
+class AdapterFactory:
+    """
+    根据 ModelEndpoint 构造 ModelAdapter，并注入 model_info 和 compat。
+
+    这是取代 get_adapter(provider, **config) 的新入口。
+    根据 endpoint.api_type 选择对应的 Adapter 实现，
+    然后从 ModelInfoRegistry 和 CompatRegistry 注入能力信息。
+
+    Usage:
+        endpoint = ModelEndpoint.from_env()
+        adapter = AdapterFactory.build(endpoint)
+        # adapter.model_info  → ModelInfo 或 None
+        # adapter.compat      → ModelCompat（协议兼容性）
+        # adapter.supports_image → bool（模型是否理解图像）
+    """
+
+    @staticmethod
+    def build(endpoint: ModelEndpoint) -> ModelAdapter:
+        """
+        根据 ModelEndpoint 构造对应的 ModelAdapter。
+
+        步骤：
+          1. endpoint.resolve() 补全所有 None 字段
+          2. 根据 api_type 选择 adapter 实现
+          3. 从 ModelInfoRegistry 查询 model_info
+          4. 从 CompatRegistry 查询 compat
+          5. 注入到 adapter 实例
+
+        Args:
+            endpoint: ModelEndpoint 实例（允许字段不完整，内部 resolve()）
+
+        Returns:
+            注入了 model_info 和 compat 的 ModelAdapter 实例
+
+        Raises:
+            ValueError: api_type 未知或对应 SDK 未安装
+        """
+        assert endpoint is not None, "endpoint must not be None"
+        assert endpoint.model_id, "endpoint.model_id must not be empty"
+
+        # Step 1: 补全所有 None 字段
+        ep = endpoint.resolve()
+
+        logger.debug("AdapterFactory.build | model_id={} api_type={} provider={} base_url={}",
+                     ep.model_id, ep.api_type, ep.provider, ep.base_url)
+
+        # Step 2: 根据 api_type 创建对应的 adapter 实例
+        adapter = _build_adapter_for_api_type(ep)
+
+        # Step 3: 注入 model_info（从 ModelInfoRegistry 查）
+        from .info.registry import get_registry
+        adapter.model_info = get_registry().get(ep.model_id)
+
+        # Step 4: 注入 compat（从 CompatRegistry 查，带优先级匹配）
+        from .info.compat_registry import get_compat_registry
+        adapter.compat = get_compat_registry().get(ep.model_id, ep.api_type)
+
+        logger.info(
+            "AdapterFactory.build 完成 | model_id={} api_type={} "
+            "supports_image={} supports_image_in_tool_result={} supports_tools={}",
+            ep.model_id, ep.api_type,
+            adapter.supports_image,
+            adapter.supports_image_in_tool_result,
+            adapter.supports_tools,
+        )
+
+        return adapter
+
+
+def _build_adapter_for_api_type(ep: ModelEndpoint) -> ModelAdapter:
+    """
+    根据 api_type 创建底层 adapter 实例（不含 model_info/compat 注入）。
+
+    Args:
+        ep: 已 resolve() 的 ModelEndpoint（api_type 一定非 None）
+
+    Returns:
+        未注入能力信息的 ModelAdapter 实例
+
+    Raises:
+        ValueError: api_type 未知
+    """
+    api_type = ep.api_type or API_TYPE_OPENAI
+
+    if api_type == API_TYPE_ANTHROPIC:
+        return _build_anthropic(ep)
+    elif api_type == API_TYPE_OPENAI:
+        return _build_openai(ep)
+    elif api_type == API_TYPE_ZHIPUAI:
+        return _build_zhipuai(ep)
+    elif api_type == API_TYPE_VOLCANO:
+        return _build_volcano(ep)
+    else:
+        raise ValueError(
+            f"Unknown api_type: {api_type!r}. "
+            f"Supported: {API_TYPE_ANTHROPIC}, {API_TYPE_OPENAI}, {API_TYPE_ZHIPUAI}, {API_TYPE_VOLCANO}"
+        )
+
+
+def _build_anthropic(ep: ModelEndpoint) -> ModelAdapter:
+    """构造 AnthropicAdapter，使用 ep.base_url / ep.api_key。"""
+    from anthropic import AsyncAnthropic
+    from .anthropic_adapter import AnthropicAdapter
+
+    kwargs: dict[str, Any] = {
+        "http_client": httpx.AsyncClient(
+            timeout=httpx.Timeout(connect=5.0, read=600.0, write=600.0, pool=600.0),
+            limits=httpx.Limits(keepalive_expiry=5),
+        ),
+    }
+    if ep.api_key:
+        kwargs["api_key"] = ep.api_key
+    if ep.base_url:
+        kwargs["base_url"] = ep.base_url
+
+    client = AsyncAnthropic(**kwargs)
+    logger.debug("_build_anthropic | base_url={}", ep.base_url)
+    return AnthropicAdapter(client)
+
+
+def _build_openai(ep: ModelEndpoint) -> ModelAdapter:
+    """构造 OpenAIAdapter，使用 ep.base_url / ep.api_key。"""
+    from .openai_adapter import OpenAIAdapter
+
+    adapter = OpenAIAdapter.from_config(base_url=ep.base_url, api_key=ep.api_key)
+    logger.debug("_build_openai | base_url={}", ep.base_url)
+    return adapter
+
+
+def _build_zhipuai(ep: ModelEndpoint) -> ModelAdapter:
+    """构造 ZhipuAIAdapter，使用 ep.api_key。"""
+    from .zhipuai_adapter import ZhipuAIAdapter
+
+    api_key = ep.api_key or os.getenv("ZHIPUAI_API_KEY", "")
+    assert api_key, "ZhipuAI api_key is required. Set ZHIPUAI_API_KEY env var."
+
+    logger.debug("_build_zhipuai | api_key_set={}", bool(api_key))
+    return ZhipuAIAdapter(api_key=api_key, base_url=ep.base_url)
+
+
+def _build_volcano(ep: ModelEndpoint) -> ModelAdapter:
+    """构造 VolcanoAdapter，使用 ep.api_key。"""
+    try:
+        from volcenginesdkarkruntime import Ark
+    except ImportError:
+        raise ImportError(
+            "volcenginesdkarkruntime package is required for Volcano api_type. "
+            "Install it with: pip install volcengine-python-sdk[ark]"
+        )
+    from .volcano_adapter import VolcanoAdapter
+
+    api_key = ep.api_key or os.getenv("VOLC_ACCESSKEY", "")
+    base_url = ep.base_url or os.getenv("ARK_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3")
+    assert api_key, "Volcano api_key is required. Set VOLC_ACCESSKEY env var."
+
+    client = Ark(
+        api_key=api_key,
+        base_url=base_url,
+        http_client=httpx.AsyncClient(
+            timeout=httpx.Timeout(connect=5.0, read=600.0, write=600.0, pool=600.0),
+            limits=httpx.Limits(keepalive_expiry=5),
+        ),
+    )
+    logger.debug("_build_volcano | base_url={}", base_url)
+    return VolcanoAdapter(client)
+
+
+# ── 旧 API（向后兼容）────────────────────────────────────────────────────────────────
 
 
 def get_adapter(provider: str | None = None, **config: Any) -> ModelAdapter:
     """
     根据 provider 名称返回对应的 ModelAdapter 实例。
+
+    【兼容旧接口，建议新代码使用 AdapterFactory.build(endpoint)】
 
     委托给 ProviderRegistry 进行创建，ProviderRegistry 通过 Plugin 系统
     支持动态注册新的 provider。
