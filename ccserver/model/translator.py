@@ -100,13 +100,19 @@ def anthropic_to_openai_messages(
                         text_parts.append(block.get("text", ""))
                     elif block_type == "tool_result":
                         tool_content = block.get("content", "")
-                        # OpenAI role="tool" 只接受字符串，非字符串做降级处理
-                        if not isinstance(tool_content, str):
-                            tool_content = str(tool_content)
+                        # tool_result.content 可能是字符串或 Anthropic multimodal block 列表
+                        if isinstance(tool_content, list):
+                            # 转换 Anthropic content blocks → OpenAI content parts
+                            openai_content = _anthropic_content_blocks_to_openai(tool_content)
+                        elif isinstance(tool_content, str):
+                            openai_content = tool_content
+                        else:
+                            # 兜底：转为字符串
+                            openai_content = str(tool_content)
                         openai_messages.append({
                             "role": "tool",
                             "tool_call_id": block.get("tool_use_id", ""),
-                            "content": tool_content,
+                            "content": openai_content,
                         })
                 # 如果有纯文本部分，追加一条 user 消息
                 if text_parts:
@@ -231,3 +237,70 @@ class _ToolUseBlock:
         self.id = id
         self.name = name
         self.input = input
+
+
+# ─── Anthropic content blocks -> OpenAI content parts 转换 ───────────────────
+
+
+def _anthropic_content_blocks_to_openai(blocks: list[dict]) -> str | list[dict]:
+    """
+    将 Anthropic multimodal content blocks 列表转换为 OpenAI 格式。
+
+    规则：
+      - 纯文本（仅 text block）→ 返回字符串（OpenAI role="tool" 的兼容格式）
+      - 含图像（有 image block）→ 返回 OpenAI content parts 列表：
+          [{"type": "text", "text": "..."}, {"type": "image_url", "image_url": {"url": "data:..."}}]
+
+    Args:
+        blocks: Anthropic content blocks 列表，如：
+                [{"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "..."}},
+                 {"type": "text", "text": "截图完成"}]
+
+    Returns:
+        字符串（纯文本）或 OpenAI content parts 列表（含图像）
+    """
+    has_image = any(b.get("type") == "image" for b in blocks if isinstance(b, dict))
+
+    if not has_image:
+        # 纯文本：拼接所有 text block
+        text_parts = [
+            b.get("text", "")
+            for b in blocks
+            if isinstance(b, dict) and b.get("type") == "text"
+        ]
+        return "\n".join(text_parts) if text_parts else ""
+
+    # 含图像：转换为 OpenAI content parts 列表
+    openai_parts: list[dict] = []
+    for block in blocks:
+        if not isinstance(block, dict):
+            continue
+        block_type = block.get("type")
+        if block_type == "text":
+            openai_parts.append({"type": "text", "text": block.get("text", "")})
+        elif block_type == "image":
+            source = block.get("source", {})
+            source_type = source.get("type", "")
+            if source_type == "base64":
+                media_type = source.get("media_type", "image/png")
+                data = source.get("data", "")
+                # OpenAI 使用 data URI 格式
+                openai_parts.append({
+                    "type": "image_url",
+                    "image_url": {"url": f"data:{media_type};base64,{data}"},
+                })
+            elif source_type == "url":
+                url = source.get("url", "")
+                openai_parts.append({
+                    "type": "image_url",
+                    "image_url": {"url": url},
+                })
+            else:
+                logger.warning("translator: 不支持的 image source type: {}", source_type)
+        # image_thumbnail 是内部 block，不发给 API
+        elif block_type == "image_thumbnail":
+            continue
+        else:
+            logger.debug("translator: 忽略未知 block type: {}", block_type)
+
+    return openai_parts if openai_parts else ""

@@ -2068,6 +2068,21 @@ class Agent:
             tool_duration_ms = int((datetime.now(timezone.utc) - tool_start_ts).total_seconds() * 1000)
             self.state.current_tool = None
 
+            # ── 多模态图像路由（NATIVE vs TRANSCRIBE）────────────────────────
+            # 若工具结果含图像，根据 adapter 能力决定处理路径：
+            #   NATIVE:     主模型支持图像 AND endpoint 支持 image block in tool_result
+            #               → 直接把图像放进 tool_result 发给主模型
+            #   TRANSCRIBE: 主模型不支持图像 OR endpoint 不支持 image block in tool_result
+            #               → 调用 VLM 将图像转为文字描述，再放进 tool_result
+            if result.has_image:
+                can_native = (
+                    self.adapter.supports_image
+                    and self.adapter.supports_image_in_tool_result
+                )
+                if not can_native:
+                    # TRANSCRIBE 路径：用 VLM 将图像描述为文字，替换原始 result
+                    result = await self._transcribe_image_result(result, name)
+
             # 多模态结果（含图像）走 emit_tool_result_with_image，普通结果走原路径
             if result.has_image:
                 await self.emitter.emit_tool_result_with_image(name, result)
@@ -2176,6 +2191,77 @@ class Agent:
                 results[idx] = result.to_api_dict(bid)
 
         return results, trigger_compact
+
+    async def _transcribe_image_result(self, result: "ToolResult", tool_name: str) -> "ToolResult":
+        """
+        TRANSCRIBE 路径：将图像 tool_result 中的图像转换为文字描述。
+
+        当主模型不支持图像（supports_image=False）或 endpoint 不支持图像 tool_result
+        （supports_image_in_tool_result=False）时调用。
+
+        使用 VLMRouter 选择最佳视觉模型进行描述，若 VLM 不可用则返回占位文字。
+
+        Args:
+            result:    包含图像 block 的 ToolResult（has_image=True）
+            tool_name: 工具名称（用于日志）
+
+        Returns:
+            将图像替换为文字描述的新 ToolResult（不含 image block）
+        """
+        from ccserver.model.routing.router import VLMRouter
+        from ccserver.model.media.describe import describe_image_with_model
+
+        image_base64 = result.get_image_base64()
+        if not image_base64:
+            # 无法提取图像数据，保留原始文字部分
+            logger.warning("TRANSCRIBE: 无法提取图像数据 | tool={}", tool_name)
+            return ToolResult.ok(result.content_text or "[图像无法显示]")
+
+        try:
+            # 使用 VLMRouter 选择最佳视觉模型
+            router = VLMRouter(
+                main_model=self.model,
+                main_adapter=self.adapter,
+            )
+            route = await router.route()
+
+            # VLMRouter.route() 在主模型支持图像时返回 native，但此处已知不走 native
+            # 因此强制选取 transcribe 路径的 VLM adapter
+            if route.is_native:
+                # 极端情况：VLMRouter 认为主模型可以看图，但 compat 说不支持 image in tool_result
+                # 此时用主模型的 adapter 做描述（主模型能看图，只是 tool_result 限制）
+                vlm_adapter = route.adapter
+                vlm_model = route.model
+            else:
+                vlm_adapter = route.adapter
+                vlm_model = route.model
+
+            logger.info(
+                "TRANSCRIBE 图像描述 | tool={} vlm_model={} vlm_provider={}",
+                tool_name, vlm_model, route.provider_id,
+            )
+
+            description = await describe_image_with_model(
+                image_base64=image_base64,
+                adapter=vlm_adapter,
+                model=vlm_model,
+                max_tokens=1000,
+            )
+
+            # 保留原始文字部分（如截图尺寸说明），拼接图像描述
+            existing_text = result.content_text
+            if existing_text and existing_text != "[multimodal content]":
+                combined = f"{existing_text}\n\n[图像内容描述]\n{description}"
+            else:
+                combined = f"[图像内容描述]\n{description}"
+
+            return ToolResult.ok(combined)
+
+        except Exception as e:
+            # VLM 调用失败时降级为占位文字，不阻断主流程
+            logger.warning("TRANSCRIBE 失败，使用占位文字 | tool={} error={}", tool_name, e)
+            existing_text = result.content_text
+            return ToolResult.ok(existing_text or "[图像无法显示：VLM 不可用]")
 
     async def _handle_agent(self, task_input: dict) -> ToolResult:
         """
