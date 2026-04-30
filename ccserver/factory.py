@@ -13,7 +13,8 @@ from .emitters import BaseEmitter
 from .managers.tools import ToolManager, ExtraToolLoader
 from .builtins.tools import BTAgent
 from .agent import Agent, AgentContext
-from .model import ModelAdapter, get_adapter
+from .model import ModelAdapter
+from .model.factory import AdapterFactory
 from .prompt_engine import PromptEngine
 
 
@@ -50,15 +51,14 @@ class AgentFactory:
 
         injected_system = system if system else None
 
-        # adapter 解析优先级：显式传入 > settings > 环境变量 > 默认 anthropic
+        # adapter 解析优先级：显式传入 > settings（新格式 apiType/baseUrl/apiKey）> 旧格式 provider/providerConfig > 环境变量默认
         if adapter is None:
-            provider = settings.provider if isinstance(settings.provider, str) else "anthropic"
-            provider_config = settings.provider_config or {}
             try:
-                resolved_adapter = get_adapter(provider, **provider_config)
+                endpoint = settings.to_model_endpoint(model_id=model)
+                resolved_adapter = AdapterFactory.build(endpoint)
             except Exception as e:
                 raise ValueError(
-                    f"Failed to create adapter for provider '{provider}': {e}"
+                    f"Failed to create adapter from settings: {e}"
                 ) from e
         else:
             resolved_adapter = adapter

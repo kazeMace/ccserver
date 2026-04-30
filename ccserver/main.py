@@ -9,7 +9,8 @@ from loguru import logger
 from .config import MODEL
 from .session import Session
 from .emitters import BaseEmitter
-from .model import ModelAdapter, get_adapter
+from .model import ModelAdapter
+from .model.factory import AdapterFactory
 from .factory import AgentFactory
 from .managers.hooks import HookContext
 
@@ -55,12 +56,11 @@ class AgentRunner:
         if session.mcp:
             await session.mcp.connect_all()
 
-        # adapter 解析：显式传入 > session.settings > get_adapter() 默认
+        # adapter 解析：显式传入 > session.settings（新格式 apiType/baseUrl/apiKey）
         resolved_adapter = self.adapter
         if resolved_adapter is None:
-            provider = session.settings.provider or "anthropic"
-            provider_config = session.settings.provider_config or {}
-            resolved_adapter = get_adapter(provider, **provider_config)
+            endpoint = session.settings.to_model_endpoint(model_id=self.model)
+            resolved_adapter = AdapterFactory.build(endpoint)
 
         agent = AgentFactory.create_root(
             session,

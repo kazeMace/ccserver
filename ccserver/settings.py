@@ -5,15 +5,22 @@ settings — 读取项目目录和全局目录下的配置文件。
   ~/.ccserver/settings.json         全局配置，适用于所有项目
   <project>/.ccserver/settings.local.json  项目配置，覆盖全局
 
-支持字段：
+支持字段（新格式，推荐）：
+  model                    — 模型名称，如 claude-sonnet-4-6、gpt-4o
+  apiType                  — API 协议类型：anthropic-messages、openai-completions、zhipuai、volcano
+  baseUrl                  — API 端点 URL，如 https://api.deepseek.com/anthropic
+  apiKey                   — API 密钥
+
+支持字段（旧格式，兼容保留）：
+  provider                 — LLM 提供商：anthropic、openai、openrouter、ollama、lmstudio、oneapi、volcano、generic
+  providerConfig           — 提供商专属配置字典，如 {"baseUrl": "...", "apiKey": "..."}
+
+通用字段：
   permissions.allow        — 额外授权（Bash(cmd:*) 限制命令范围；mcp__server__tool 显式允许 MCP 工具）
   permissions.deny         — 黑名单，禁用指定工具或命令（优先级高于 allow）
   permissions.ask          — 需要运行时确认的工具列表（interactive 模式下弹出提示；auto 模式下直接拒绝）
   runMode                  — 运行模式："auto"（全自动）或 "interactive"（交互式），默认 "auto"
   enabledMcpjsonServers    — 允许连接的 MCP server 名称列表
-  provider                 — LLM 提供商：anthropic、openai、openrouter、ollama、lmstudio、oneapi、volcano、generic
-  model                    — 模型名称，如 claude-sonnet-4-6、gpt-4o
-  providerConfig           — 提供商专属配置字典，如 {"baseUrl": "...", "apiKey": "..."}
   toolConfig               — 内置工具配置字典，如 {"WebFetch": {"model": "gpt-4o-mini"}}
   userAgentTeam            — 是否启用 Agent Team 功能（true/false），可被 CCSERVER_USER_AGENT_TEAM 环境变量覆盖
 
@@ -104,11 +111,15 @@ class ProjectSettings:
         run_mode: str = "auto",                          # "auto" 或 "interactive"
         main_round_limit: Optional[int] = None,          # None = 使用 config.MAIN_ROUND_LIMIT
         main_limit_strategy: str = "last_text",           # round limit 兜底策略
-        provider: Optional[str] = None,                   # LLM 提供商
+        provider: Optional[str] = None,                   # LLM 提供商（旧格式，兼容保留）
         model: Optional[str] = None,                      # 模型名称
-        provider_config: Optional[dict] = None,           # 提供商专属配置
+        provider_config: Optional[dict] = None,           # 提供商专属配置（旧格式，兼容保留）
         tool_config: Optional[dict] = None,               # 内置工具配置
         user_agent_team: bool = False,                    # 是否启用 Agent Team
+        # 新格式字段（优先级高于 provider/providerConfig）
+        api_type: Optional[str] = None,                   # API 协议类型："anthropic-messages"|"openai-completions"|"zhipuai"|"volcano"
+        base_url: Optional[str] = None,                   # API 端点 URL
+        api_key: Optional[str] = None,                    # API 密钥
         # 保存原始 settings dict，用于构建 HookLoader
         # （HookLoader 需要完整的 settings 数据来解析 hooks 字段）
         _raw_project: Optional[dict] = None,
@@ -128,6 +139,10 @@ class ProjectSettings:
         self.provider_config = provider_config or {}
         self.tool_config = tool_config or {}
         self.user_agent_team = user_agent_team
+        # 新格式字段（apiType / baseUrl / apiKey）
+        self.api_type = api_type
+        self.base_url = base_url
+        self.api_key = api_key
         # 原始 dict 仅供 build_hook_loader() 使用，不对外暴露
         self._raw_project = _raw_project
         self._raw_global = _raw_global
@@ -272,7 +287,7 @@ class ProjectSettings:
             or "last_text"
         )
 
-        # provider / model / providerConfig / toolConfig
+        # provider / model / providerConfig / toolConfig（旧格式）
         def get_dict(data: Optional[dict], key: str) -> Optional[dict]:
             if data is None:
                 return None
@@ -283,6 +298,20 @@ class ProjectSettings:
         model_name = get_str(project_data, "model") or get_str(global_data, "model")
         provider_config = get_dict(project_data, "providerConfig") or get_dict(global_data, "providerConfig")
         tool_config = get_dict(project_data, "toolConfig") or get_dict(global_data, "toolConfig")
+
+        # 新格式：apiType / baseUrl / apiKey（优先级高于旧格式 provider/providerConfig）
+        api_type = get_str(project_data, "apiType") or get_str(global_data, "apiType")
+        # baseUrl / apiKey：从新字段读取，再 fallback 到 providerConfig 中的 baseUrl/apiKey
+        base_url = (
+            get_str(project_data, "baseUrl")
+            or get_str(global_data, "baseUrl")
+            or (provider_config or {}).get("baseUrl")
+        )
+        api_key = (
+            get_str(project_data, "apiKey")
+            or get_str(global_data, "apiKey")
+            or (provider_config or {}).get("apiKey")
+        )
 
         # userAgentTeam：环境变量优先级最高，其次项目配置，再次全局配置
         def _parse_bool(data: Optional[dict], key: str) -> Optional[bool]:
@@ -304,8 +333,8 @@ class ProjectSettings:
             )
 
         logger.debug(
-            "settings merged | allowed_tools={} denied_tools={} allowed_cmds={} denied_cmds={} mcp_servers={} ask={} run_mode={} main_round_limit={} main_limit_strategy={} provider={} model={} user_agent_team={}",
-            allowed_tools, denied_tools, allowed_commands, denied_commands, enabled_mcp_servers, ask_tools, run_mode, main_round_limit, main_limit_strategy, provider, model_name, user_agent_team,
+            "settings merged | allowed_tools={} denied_tools={} allowed_cmds={} denied_cmds={} mcp_servers={} ask={} run_mode={} main_round_limit={} main_limit_strategy={} provider={} model={} api_type={} user_agent_team={}",
+            allowed_tools, denied_tools, allowed_commands, denied_commands, enabled_mcp_servers, ask_tools, run_mode, main_round_limit, main_limit_strategy, provider, model_name, api_type, user_agent_team,
         )
         return cls(
             allowed_tools=allowed_tools,
@@ -322,6 +351,9 @@ class ProjectSettings:
             provider_config=provider_config,
             tool_config=tool_config,
             user_agent_team=user_agent_team,
+            api_type=api_type,
+            base_url=base_url,
+            api_key=api_key,
             _raw_project=project_data,
             _raw_global=global_data,
         )
@@ -390,3 +422,46 @@ class ProjectSettings:
 
         # 白名单：命中任何一个前缀则允许
         return any(cmd.startswith(prefix) for prefix in tool_allowed_cmds)
+
+    # ── ModelEndpoint 构造 ────────────────────────────────────────────────────
+
+    def to_model_endpoint(self, model_id: Optional[str] = None) -> "ModelEndpoint":
+        """
+        根据当前 settings 构造 ModelEndpoint，供 AdapterFactory.build() 使用。
+
+        优先级（从高到低）：
+          1. 调用方传入的 model_id 参数
+          2. settings.model 字段
+          3. 环境变量 CCSERVER_MODEL
+          4. config.MODEL 默认值
+
+        新格式字段（apiType / baseUrl / apiKey）优先于旧格式（providerConfig）。
+        provider 字段作为辅助推断（provider → api_type），不直接决定连接方式。
+
+        Args:
+            model_id: 覆盖 settings.model 的模型 ID（可选）
+
+        Returns:
+            ModelEndpoint 实例（尚未 resolve，调用方可按需 resolve）
+        """
+        from ccserver.model.endpoint import ModelEndpoint
+        from ccserver.config import MODEL as DEFAULT_MODEL
+        import os
+
+        resolved_model_id = (
+            model_id
+            or self.model
+            or os.getenv("CCSERVER_MODEL")
+            or DEFAULT_MODEL
+        )
+        assert resolved_model_id, (
+            "未指定 model_id：settings.model 和 CCSERVER_MODEL 环境变量均未设置"
+        )
+
+        return ModelEndpoint(
+            model_id=resolved_model_id,
+            api_type=self.api_type,          # 新格式：直接用
+            provider=self.provider,           # 旧格式：辅助推断 api_type
+            base_url=self.base_url,           # 新格式（已合并 providerConfig.baseUrl）
+            api_key=self.api_key,             # 新格式（已合并 providerConfig.apiKey）
+        )
