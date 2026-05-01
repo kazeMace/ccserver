@@ -135,8 +135,8 @@ async def lifespan(app: FastAPI):
     if hasattr(_storage, "close"):
         await _storage.close()
     # 关闭 WebFetch / DuckDuckGo 共享的 HTTP 客户端，释放 TCP 连接池
-    from ccserver.builtins.tools.web_fetch import close_http_client as _close_webfetch_client
-    from ccserver.builtins.tools.duckduckgo_search import close_http_client as _close_ddg_client
+    from ccserver.builtins.tools.web.web_fetch import close_http_client as _close_webfetch_client
+    from ccserver.builtins.tools.web.duckduckgo_search import close_http_client as _close_ddg_client
     await _close_webfetch_client()
     await _close_ddg_client()
 

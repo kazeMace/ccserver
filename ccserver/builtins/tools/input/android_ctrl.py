@@ -29,7 +29,6 @@ android_ctrl — BTAndroidCtrl Android 设备控制工具。
     AndroidCtrl(action="get_focus")
 """
 
-import json
 from loguru import logger
 
 from ccserver.builtins.tools.base import BuiltinTools, ToolParam, ToolResult
@@ -240,9 +239,11 @@ class BTAndroidCtrl(BuiltinTools):
         devices = list_devices()
         if not devices:
             return ToolResult.ok("没有已连接的 Android 设备。请确认 USB 调试已开启并设备已连接。")
-        result = {"devices": devices, "count": len(devices)}
         logger.info("AndroidCtrl list_devices | count={}", len(devices))
-        return ToolResult.ok(json.dumps(result, ensure_ascii=False))
+        lines = [f"共检测到 {len(devices)} 台已连接的 Android 设备："]
+        for i, d in enumerate(devices, 1):
+            lines.append(f"[{i}] 设备 ID：{d}")
+        return ToolResult.ok("\n".join(lines))
 
     def _list_packages(self, device_id: str = None) -> ToolResult:
         """列出设备上已安装的应用包名。"""
@@ -259,9 +260,13 @@ class BTAndroidCtrl(BuiltinTools):
                 pkg = line[len("package:"):]
                 packages.append(pkg.strip())
 
-        result = {"packages": packages, "count": len(packages)}
         logger.info("AndroidCtrl list_packages | count={} device={}", len(packages), device_id or "default")
-        return ToolResult.ok(json.dumps(result, ensure_ascii=False))
+        if not packages:
+            return ToolResult.ok("设备上没有检测到已安装的应用包。")
+        lines = [f"共检测到 {len(packages)} 个已安装的应用包："]
+        for i, pkg in enumerate(packages, 1):
+            lines.append(f"[{i}] {pkg}")
+        return ToolResult.ok("\n".join(lines))
 
     def _start_app(self, package: str, device_id: str = None) -> ToolResult:
         """
@@ -435,9 +440,24 @@ class BTAndroidCtrl(BuiltinTools):
         # 第三步：解析 XML，提取节点属性
         nodes = self._parse_ui_xml(xml_str)
 
-        result = {"nodes": nodes, "count": len(nodes)}
         logger.info("AndroidCtrl ui_dump | count={} device={}", len(nodes), device_id or "default")
-        return ToolResult.ok(json.dumps(result, ensure_ascii=False))
+
+        if not nodes:
+            return ToolResult.ok("当前界面没有检测到可交互的 UI 元素。")
+
+        lines = [f"当前界面共检测到 {len(nodes)} 个有效 UI 元素：\n"]
+        for i, n in enumerate(nodes, 1):
+            label = n.get("text") or n.get("content_desc") or "（无文本）"
+            cls = n.get("class_name", "").split(".")[-1]  # 只取类名末段，如 Button
+            clickable = "可点击" if n.get("clickable") else "不可点击"
+            cx, cy = n.get("center", [0, 0])
+            b = n.get("bounds", {})
+            lines.append(
+                f"[{i}] 文本：{label}，控件类型：{cls}，{clickable}，"
+                f"中心坐标：({cx}, {cy})，"
+                f"区域：左{b.get('left','?')} 上{b.get('top','?')} 右{b.get('right','?')} 下{b.get('bottom','?')}"
+            )
+        return ToolResult.ok("\n".join(lines))
 
     def _parse_ui_xml(self, xml_str: str) -> list[dict]:
         """

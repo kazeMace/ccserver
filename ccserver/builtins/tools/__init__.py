@@ -26,6 +26,8 @@ from .input.input_scroll import BTInputScroll
 from .input.android_ctrl import BTAndroidCtrl
 from .screen.window_list import BTWindowList
 from .screen.window_info import BTWindowInfo
+from .screen.get_running_apps import BTGetRunningApps
+from .screen.window_control import BTWindowControl
 
 __all__ = [
     "BuiltinTools",
@@ -63,4 +65,6 @@ __all__ = [
     "BTAndroidCtrl",
     "BTWindowList",
     "BTWindowInfo",
+    "BTGetRunningApps",
+    "BTWindowControl",
 ]

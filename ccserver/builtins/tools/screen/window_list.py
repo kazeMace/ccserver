@@ -17,7 +17,6 @@ window_list — BTWindowList 窗口列表查询工具。
 不支持平台：Android（Android 应用无桌面窗口概念）
 """
 
-import json
 import platform as platform_module
 from loguru import logger
 
@@ -78,8 +77,7 @@ class BTWindowList(BuiltinTools):
 
         if target == "android":
             logger.info("WindowList | target=android，Android 无桌面窗口概念")
-            result = {"windows": [], "count": 0, "note": "Android 无桌面窗口概念"}
-            return ToolResult.ok(json.dumps(result, ensure_ascii=False))
+            return ToolResult.ok("Android 平台没有桌面窗口概念，无法列出窗口。")
 
         # desktop：按操作系统分发
         system = platform_module.system()
@@ -91,17 +89,34 @@ class BTWindowList(BuiltinTools):
                 from .._platform import window_windows
                 windows = window_windows.list_windows()
             else:
-                # Linux 暂不支持
-                result = {
-                    "windows": [],
-                    "count": 0,
-                    "note": f"当前系统 {system!r} 暂不支持 WindowList",
-                }
-                return ToolResult.ok(json.dumps(result, ensure_ascii=False))
+                return ToolResult.ok(f"当前系统 {system!r} 暂不支持 WindowList。")
 
-            result = {"windows": windows, "count": len(windows)}
             logger.info("WindowList | system={} count={}", system, len(windows))
-            return ToolResult.ok(json.dumps(result, ensure_ascii=False))
+
+            if not windows:
+                return ToolResult.ok("当前没有检测到可见窗口。")
+
+            # 将每个窗口格式化为自然语言，方便 agent 直接理解
+            lines = [f"共检测到 {len(windows)} 个可见窗口：\n"]
+            for i, w in enumerate(windows, 1):
+                owner = w.get("owner") or w.get("proc") or "（未知进程）"
+                title = w.get("title") or "（无标题）"
+                bounds = w.get("bounds", {})
+                x = bounds.get("x", "?")
+                y = bounds.get("y", "?")
+                width = bounds.get("width", "?")
+                height = bounds.get("height", "?")
+                center = w.get("center", {})
+                cx = center.get("x", "?")
+                cy = center.get("y", "?")
+                bundle = w.get("bundle_id", "")
+                bundle_str = f"，Bundle ID：{bundle}" if bundle else ""
+                lines.append(
+                    f"[{i}] 进程：{owner}，标题：{title}，"
+                    f"位置：({x}, {y})，大小：{width}x{height}，"
+                    f"中心点：({cx}, {cy}){bundle_str}"
+                )
+            return ToolResult.ok("\n".join(lines))
 
         except RuntimeError as e:
             return ToolResult.error(str(e))

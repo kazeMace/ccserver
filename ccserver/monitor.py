@@ -377,7 +377,7 @@ class MonitorCollector:
                     # skills=None 表示子 agent 使用 session 全局 skills，取实际列表展示
                     task_skills = task.skills
                     if task_skills is None:
-                        task_skills = [s.name for s in session.skills.list_skills()]
+                        task_skills = [s["name"] for s in session.skills.list_skills()]
                     agents_data.append({
                         "id": task.agent_id,
                         "task_id": task.id,

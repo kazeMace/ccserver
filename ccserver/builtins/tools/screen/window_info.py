@@ -21,7 +21,6 @@ window_info — BTWindowInfo 窗口几何信息查询工具（不截图）。
 匹配优先级：bundle_id（最精确）> app_name（最稳定）> window_title（可能为空）
 """
 
-import json
 import platform as platform_module
 from loguru import logger
 
@@ -128,7 +127,43 @@ class BTWindowInfo(BuiltinTools):
                 "WindowInfo 成功 | app={} title={} bundle={}",
                 app_name, window_title, bundle_id
             )
-            return ToolResult.ok(json.dumps(info, ensure_ascii=False))
+
+            # 将几何信息格式化为自然语言，方便 agent 直接理解坐标
+            bounds = info.get("bounds", {})
+            x = bounds.get("x", "?")
+            y = bounds.get("y", "?")
+            width = bounds.get("width", "?")
+            height = bounds.get("height", "?")
+            center = info.get("center", {})
+            cx = center.get("x", "?")
+            cy = center.get("y", "?")
+            is_fg = info.get("is_foreground", False)
+            monitor = info.get("monitor", "")
+            owner = info.get("owner") or info.get("proc") or "（未知）"
+            title = info.get("title") or "（无标题）"
+            bid = info.get("bundle_id", "")
+
+            parts = [
+                f"窗口信息查询成功。",
+                f"进程：{owner}，标题：{title}。",
+                f"桌面位置：左上角 ({x}, {y})，宽 {width} 像素，高 {height} 像素。",
+                f"窗口中心点：({cx}, {cy})。",
+                f"是否在前台：{'是' if is_fg else '否'}。",
+            ]
+            if monitor:
+                parts.append(f"所在显示器：{monitor}。")
+            if bid:
+                parts.append(f"Bundle ID：{bid}。")
+            # 附加四角坐标，方便 agent 计算点击偏移
+            corners = info.get("corners", {})
+            if corners:
+                tl = corners.get("top_left", {})
+                br = corners.get("bottom_right", {})
+                parts.append(
+                    f"四角坐标：左上 ({tl.get('x','?')}, {tl.get('y','?')})，"
+                    f"右下 ({br.get('x','?')}, {br.get('y','?')})。"
+                )
+            return ToolResult.ok(" ".join(parts))
 
         except RuntimeError as e:
             return ToolResult.error(str(e))
