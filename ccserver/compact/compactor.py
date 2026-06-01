@@ -59,17 +59,18 @@ class Compactor:
         self.trigger = trigger
         self.circuit_breaker = circuit_breaker
 
-    def run_micro(self, messages: list) -> list:
+    def run_micro(self, messages: list, last_assistant_time=None) -> list:
         """
         执行轻量截断（每轮 agent loop 开始时调用，无 LLM 调用）。
 
         Args:
-            messages: 当前消息列表。
+            messages:            当前消息列表。
+            last_assistant_time: 上次 assistant 消息的时间（UTC），用于时间触发判断。
 
         Returns:
             截断后的消息列表（通常是同一对象，原地修改）。
         """
-        return self.micro.compact(messages)
+        return self.micro.compact(messages, last_assistant_time)
 
     def should_compact(self, messages: list) -> tuple[bool, str]:
         """

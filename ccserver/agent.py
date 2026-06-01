@@ -187,6 +187,8 @@ class Agent:
         self.system:List[Dict[str, Any]] = self.prompt_engine.build_system(session, model, language, cch=self.short_aid, injected_system=system, append_system=append_system, is_spawn=is_spawn)
 
         self.compactor = CompactorFactory.build_default(adapter=adapter, model=model)
+        # 上次收到 assistant 消息的时间，供 micro 时间触发压缩使用
+        self._last_assistant_time: datetime | None = None
 
         # 缓存 schema 列表 — 只计算一次，每次 LLM 调用复用
         # 内置工具 + 禁用占位；MCP schema 由调用方（factory / spawn_child）追加，
@@ -1296,8 +1298,7 @@ class Agent:
                     stop_reason=response.stop_reason,
                 )
                 self._append({"role": "assistant", "content": content})
-
-                round_text = "".join(b["text"] for b in content if b.get("type") == "text")
+                self._last_assistant_time = datetime.now(timezone.utc)
                 if round_text:
                     # hook: prompt:llm:output — 每轮 LLM 完成后（observing，纯观测）
                     await self.session.hooks.emit_void(
@@ -2564,7 +2565,7 @@ class Agent:
             self.session.persist_message(message)
 
     async def _maybe_compact(self):
-        self.compactor.run_micro(self.context.messages)
+        self.compactor.run_micro(self.context.messages, self._last_assistant_time)
         should, reason = self.compactor.should_compact(self.context.messages)
         if should:
             logger.info("Compact triggered | agent={} reason={}", self.aid_label, reason)
