@@ -104,9 +104,12 @@ def estimate_tokens(messages: list[Any]) -> int:
     适用于快速判断上下文是否过长、是否需要触发压缩等场景。
     如需精确值，应使用 tiktoken 等 tokenizer 库。
 
-    注意：thinking block 的 thinking 字段被排除在外。
-    deepseek/Claude 的 thinking 内容在多轮对话中只需回传 signature，
-    不占实际发送 token，若计入会导致阈值判断虚高、频繁触发压缩。
+    注意事项：
+    - image / document block 固定计 2000 tokens，避免 base64 字符串虚高估算
+      （base64 图片达几十万字符，按 len/4 会高估 250 倍，导致频繁触发 compact）
+    - thinking block 的 thinking 字段被排除在外，只计 type + signature
+      （thinking 内容在多轮对话中只需回传 signature，不占实际发送 token）
+    - tool_result 嵌套的 image/document 同样按 2000 tokens 计
 
     Args:
         messages: 消息列表，通常为 role/content 格式的字典列表。
@@ -117,29 +120,9 @@ def estimate_tokens(messages: list[Any]) -> int:
     Raises:
         TypeError: 如果 messages 不是列表类型。
     """
-    if not isinstance(messages, list):
-        raise TypeError(f"messages 必须是列表，收到: {type(messages)}")
-
-    total_chars = 0
-    for m in messages:
-        if not isinstance(m, dict):
-            total_chars += len(str(m))
-            continue
-        content = m.get("content")
-        if isinstance(content, list):
-            # 逐 block 计算，排除 thinking block 的 thinking 字段（只计 type/signature）
-            for block in content:
-                if isinstance(block, dict) and block.get("type") == "thinking":
-                    # thinking block 只有 type + signature 才是实际发送的内容
-                    total_chars += len(block.get("type", "")) + len(block.get("signature", ""))
-                else:
-                    total_chars += len(str(block))
-        else:
-            total_chars += len(str(m))
-
-    token_count = total_chars // 4
-    logger.debug("estimate_tokens: %d messages -> ~%d tokens", len(messages), token_count)
-    return token_count
+    # 委托给 compact.tokens 的实现，保持逻辑统一
+    from ccserver.compact.tokens import estimate_tokens as _estimate
+    return _estimate(messages)
 
 
 def generate_message_id() -> str:

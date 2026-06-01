@@ -28,7 +28,8 @@ from .config import MODEL, MAIN_ROUND_LIMIT, SUB_ROUND_LIMIT, MAX_DEPTH, RECORD_
 from ccserver.managers.hooks import HookContext
 from .recorder import Recorder
 from .session import Session
-from .compactor import Compactor
+from .compact import Compactor, CompactorFactory
+from .compact.tokens import estimate_tokens as _estimate_tokens
 from .utils import get_block_attr, normalize_content_blocks, generate_message_id
 from ccserver.builtins.tools import ToolResult
 from ccserver.builtins.tools import BuiltinTools
@@ -185,7 +186,7 @@ class Agent:
         self.prompt_engine: PromptEngine = PromptEngine(prompt_version)
         self.system:List[Dict[str, Any]] = self.prompt_engine.build_system(session, model, language, cch=self.short_aid, injected_system=system, append_system=append_system, is_spawn=is_spawn)
 
-        self.compactor = Compactor(adapter=adapter, model=model)
+        self.compactor = CompactorFactory.build_default(adapter=adapter, model=model)
 
         # 缓存 schema 列表 — 只计算一次，每次 LLM 调用复用
         # 内置工具 + 禁用占位；MCP schema 由调用方（factory / spawn_child）追加，
@@ -2563,39 +2564,37 @@ class Agent:
             self.session.persist_message(message)
 
     async def _maybe_compact(self):
-        self.compactor.micro(self.context.messages)
-        msg_count = len(self.context.messages)
-        # 两种触发压缩的条件：
-        # 1. token 数超过阈值（由 compactor.needs_compact 判断）
-        # 2. 消息条数超过 300 条（防止短消息过多导致内存无限增长）
-        if msg_count > 300:
-            logger.info(
-                "Agent message count exceeds limit | agent={} msgs={} "
-                "triggering compact",
-                self.aid_label, msg_count,
-            )
-            await self._do_compact(reason="message count limit reached")
-            return
-        if self.compactor.needs_compact(self.context.messages):
-            logger.debug(f"do compact")
-            await self._do_compact(reason="token threshold reached")
+        self.compactor.run_micro(self.context.messages)
+        should, reason = self.compactor.should_compact(self.context.messages)
+        if should:
+            logger.info("Compact triggered | agent={} reason={}", self.aid_label, reason)
+            await self._do_compact(reason=reason)
 
     async def _do_compact(self, reason: str):
         message_count = len(self.context.messages)
+        tokens_before = _estimate_tokens(self.context.messages)
         # hook: agent:compact:before（observing）
         await self.session.hooks.emit_void(
             "agent:compact:before",
-            {"message_count": message_count, "token_count": 0, "reason": reason},
+            {"message_count": message_count, "token_count": tokens_before, "reason": reason},
             self._build_hook_ctx(),
         )
         await self.emitter.emit_compact(reason)
-        lib = self.prompt_engine
-        compacted = await self.compactor.compact(
-            self.session,
-            self.emitter,
-            self.context.messages,
-            lib=lib,
-        )
+        try:
+            compacted = await self.compactor.compact(
+                self.context.messages,
+                self.session,
+                self.emitter,
+                lib=self.prompt_engine,
+            )
+            if self.compactor.circuit_breaker:
+                self.compactor.circuit_breaker.record_success()
+        except Exception:
+            if self.compactor.circuit_breaker:
+                self.compactor.circuit_breaker.record_failure()
+            raise
+        tokens_after = _estimate_tokens(compacted)
+        summary_length = len(compacted[0]["content"]) if compacted else 0
         compacted_count = message_count - len(compacted)
         if self.persist:
             self.session.rewrite_messages(compacted)
@@ -2604,7 +2603,13 @@ class Agent:
         # hook: agent:compact:after（observing）
         await self.session.hooks.emit_void(
             "agent:compact:after",
-            {"compacted_count": compacted_count, "summary_length": 0, "tokens_before": 0, "tokens_after": 0, "reason": reason},
+            {
+                "compacted_count": compacted_count,
+                "summary_length": summary_length,
+                "tokens_before": tokens_before,
+                "tokens_after": tokens_after,
+                "reason": reason,
+            },
             self._build_hook_ctx(),
         )
 
