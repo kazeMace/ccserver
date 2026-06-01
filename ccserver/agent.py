@@ -2585,7 +2585,7 @@ class Agent:
         # hook: agent:compact:before（observing）
         await self.session.hooks.emit_void(
             "agent:compact:before",
-            {"message_count": message_count, "token_count": 0},  # token_count 暂不计算
+            {"message_count": message_count, "token_count": 0, "reason": reason},
             self._build_hook_ctx(),
         )
         await self.emitter.emit_compact(reason)
@@ -2604,7 +2604,7 @@ class Agent:
         # hook: agent:compact:after（observing）
         await self.session.hooks.emit_void(
             "agent:compact:after",
-            {"compacted_count": compacted_count, "summary_length": 0, "tokens_before": 0, "tokens_after": 0},
+            {"compacted_count": compacted_count, "summary_length": 0, "tokens_before": 0, "tokens_after": 0, "reason": reason},
             self._build_hook_ctx(),
         )
 
