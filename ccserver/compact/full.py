@@ -25,6 +25,35 @@ from ..model import ModelAdapter
 from .strip import strip_images_from_messages
 
 
+# ─── MemoryProvider Protocol ──────────────────────────────────────────────────
+
+
+@runtime_checkable
+class MemoryProvider(Protocol):
+    """
+    会话记忆压缩 Provider（零 API 成本路径）。
+
+    full compact 触发时，优先尝试从会话记忆中提取摘要，
+    避免调用 LLM（参考 CC sessionMemoryCompact）。
+
+    若记忆不可用或不足以覆盖当前对话，返回 None，
+    降级到 SummarizationProvider / 内置 LLM。
+
+    属性：
+        id: 唯一标识（snake_case）
+
+    方法：
+        get_summary(messages) -> str | None
+            从会话记忆中提取摘要字符串。
+            返回 None 表示记忆不可用，调用方应降级处理。
+    """
+
+    id: str
+
+    async def get_summary(self, messages: list) -> str | None:
+        ...
+
+
 # ─── SummarizationProvider Protocol ──────────────────────────────────────────
 
 
@@ -99,6 +128,10 @@ class FullCompactor(Protocol):
 # 通过 DefaultFullCompactor.set_global_provider() 设置
 _global_provider: SummarizationProvider | None = None
 
+# 全局 memory provider（None = 不使用 memory compact）
+# 通过 DefaultFullCompactor.set_global_memory_provider() 设置
+_global_memory_provider: MemoryProvider | None = None
+
 
 class DefaultFullCompactor:
     """
@@ -120,8 +153,10 @@ class DefaultFullCompactor:
     def __init__(self, adapter: ModelAdapter, model: str = MODEL):
         self.adapter = adapter
         self.model = model
-        # 实例级 provider（优先于全局）
+        # 实例级 summarization provider（优先于全局）
         self._instance_provider: SummarizationProvider | None = None
+        # 实例级 memory provider（优先于全局，zero-cost 路径）
+        self._memory_provider: MemoryProvider | None = None
 
     # ── 实例级 provider 管理 ──────────────────────────────────────────────────
 
@@ -145,6 +180,27 @@ class DefaultFullCompactor:
         """清除实例级 provider，降级到全局或内置 LLM。"""
         self._instance_provider = None
         logger.info("FullCompactor instance provider reset")
+
+    # ── 实例级 memory provider 管理 ──────────────────────────────────────────
+
+    def set_memory_provider(self, provider: MemoryProvider) -> None:
+        """
+        注册实例级 memory provider，只影响当前 compactor 实例。
+        memory provider 是零 API 成本路径，优先级高于 SummarizationProvider。
+
+        Args:
+            provider: 实现 MemoryProvider Protocol 的对象。
+        """
+        assert isinstance(provider, MemoryProvider), (
+            f"provider 必须实现 MemoryProvider Protocol，got {type(provider)}"
+        )
+        self._memory_provider = provider
+        logger.info("FullCompactor instance memory provider set | id={}", provider.id)
+
+    def reset_memory_provider(self) -> None:
+        """清除实例级 memory provider，降级到全局或 LLM 摘要。"""
+        self._memory_provider = None
+        logger.info("FullCompactor instance memory provider reset")
 
     # ── 全局 provider 管理 ────────────────────────────────────────────────────
 
@@ -172,6 +228,31 @@ class DefaultFullCompactor:
         global _global_provider
         _global_provider = None
         logger.info("FullCompactor global provider reset to default (Anthropic LLM)")
+
+    # ── 全局 memory provider 管理 ─────────────────────────────────────────────
+
+    @classmethod
+    def set_global_memory_provider(cls, provider: MemoryProvider) -> None:
+        """
+        注册全局 memory provider，影响所有未设置实例 memory provider 的实例。
+        memory provider 是零 API 成本路径，优先级高于 SummarizationProvider。
+
+        Args:
+            provider: 实现 MemoryProvider Protocol 的对象。
+        """
+        global _global_memory_provider
+        assert isinstance(provider, MemoryProvider), (
+            f"provider 必须实现 MemoryProvider Protocol，got {type(provider)}"
+        )
+        _global_memory_provider = provider
+        logger.info("FullCompactor global memory provider set | id={}", provider.id)
+
+    @classmethod
+    def reset_global_memory_provider(cls) -> None:
+        """清除全局 memory provider，所有实例降级到 LLM 摘要。"""
+        global _global_memory_provider
+        _global_memory_provider = None
+        logger.info("FullCompactor global memory provider reset")
 
     # ── compact 主流程 ────────────────────────────────────────────────────────
 
@@ -208,12 +289,24 @@ class DefaultFullCompactor:
         # Step 2: 剥离图片/文档（防止摘要请求本身 prompt-too-long）
         stripped_messages = strip_images_from_messages(messages)
 
-        # Step 3: 选择摘要算法（实例 > 全局 > 内置 LLM）
-        provider = self._instance_provider or _global_provider
-        if provider is not None:
-            summary = await self._summarize_with_provider(provider, stripped_messages)
+        # Step 3: 选择摘要算法（优先级：memory > instance_summarizer > global_summarizer > LLM）
+        memory = self._memory_provider or _global_memory_provider
+        if memory is not None:
+            summary = await memory.get_summary(stripped_messages)
+            if summary is None:
+                # memory 不可用（记忆不足或过期），降级到 LLM 摘要
+                logger.info(
+                    "FullCompactor: MemoryProvider returned None | id={}, falling back",
+                    memory.id,
+                )
+                summary = await self._resolve_summarizer(stripped_messages)
+            else:
+                logger.info(
+                    "FullCompactor: using memory summary | id={} len={}",
+                    memory.id, len(summary),
+                )
         else:
-            summary = await self._summarize_with_llm(stripped_messages)
+            summary = await self._resolve_summarizer(stripped_messages)
 
         logger.info(
             "FullCompactor.compact done | session={} summary_len={}",
@@ -231,6 +324,21 @@ class DefaultFullCompactor:
         ]
 
     # ── 摘要实现 ─────────────────────────────────────────────────────────────
+
+    async def _resolve_summarizer(self, messages: list) -> str:
+        """
+        按优先级选择摘要算法：实例 provider > 全局 provider > 内置 LLM。
+
+        Args:
+            messages: 已剥离图片的消息列表。
+
+        Returns:
+            摘要字符串。
+        """
+        provider = self._instance_provider or _global_provider
+        if provider is not None:
+            return await self._summarize_with_provider(provider, messages)
+        return await self._summarize_with_llm(messages)
 
     async def _summarize_with_provider(
         self,

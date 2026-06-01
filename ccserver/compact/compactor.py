@@ -140,12 +140,13 @@ class CompactorFactory:
         full: FullCompactor | None = None,
         trigger: TriggerPolicy | None = None,
         circuit_breaker: CircuitBreaker | None = None,
+        memory_provider=None,
     ) -> Compactor:
         """
         构建使用默认组件的 Compactor。
 
         所有层都可以通过关键字参数替换为自定义实现：
-          micro / full / trigger / circuit_breaker
+          micro / full / trigger / circuit_breaker / memory_provider
 
         Args:
             adapter:         LLM 适配器，传给 DefaultFullCompactor。
@@ -154,6 +155,8 @@ class CompactorFactory:
             full:            自定义 FullCompactor，默认 DefaultFullCompactor。
             trigger:         自定义 TriggerPolicy，默认 DefaultTriggerPolicy。
             circuit_breaker: 自定义 CircuitBreaker，默认 CircuitBreaker()。
+            memory_provider: 实现 MemoryProvider Protocol 的对象（可选）。
+                             注入后 full compact 优先走 memory 零成本路径。
 
         Returns:
             配置好的 Compactor 实例。
@@ -163,11 +166,16 @@ class CompactorFactory:
         resolved_trigger = trigger or DefaultTriggerPolicy(threshold=THRESHOLD)
         resolved_breaker = circuit_breaker if circuit_breaker is not None else CircuitBreaker()
 
+        # 注入 memory provider（零成本摘要路径）
+        if memory_provider is not None:
+            resolved_full.set_memory_provider(memory_provider)
+
         logger.debug(
-            "CompactorFactory.build_default | micro={} full={} trigger={}",
+            "CompactorFactory.build_default | micro={} full={} trigger={} memory={}",
             type(resolved_micro).__name__,
             type(resolved_full).__name__,
             type(resolved_trigger).__name__,
+            type(memory_provider).__name__ if memory_provider else None,
         )
 
         return Compactor(

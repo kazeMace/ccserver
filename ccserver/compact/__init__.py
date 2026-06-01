@@ -23,7 +23,7 @@ Default 实现（可直接使用或作为参考）：
 """
 
 from .compactor import Compactor, CompactorFactory
-from .full import DefaultFullCompactor, FullCompactor, SummarizationProvider
+from .full import DefaultFullCompactor, FullCompactor, MemoryProvider, SummarizationProvider
 from .micro import DefaultMicroCompactor, MicroCompactor
 from .strip import strip_images_from_messages
 from .tokens import IMAGE_TOKEN_SIZE, estimate_tokens
@@ -38,6 +38,7 @@ __all__ = [
     "FullCompactor",
     "TriggerPolicy",
     "SummarizationProvider",
+    "MemoryProvider",
     # Default 实现
     "DefaultMicroCompactor",
     "DefaultFullCompactor",
