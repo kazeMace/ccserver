@@ -11,7 +11,6 @@ tests/test_agent_tasks_api.py — Agent Task HTTP API 端点测试。
 import pytest
 import uuid
 from pathlib import Path
-from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 

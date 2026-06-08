@@ -58,15 +58,76 @@ from typing import Optional, Callable
 from loguru import logger
 
 from .base import (
-    BaseChannelAdapter,
     ChannelAccountSnapshot,
     InboundMessage,
-    OutboundMessage,
 )
+from .output_target import OutputTarget
 from .registry import ChannelRegistry
 from .config import ChannelConfig
-from ccserver.event_bus import AgentEvent, EventType
-from ccserver.outbound_bus import OutboundBus, OutboundEvent
+from ccserver.event_bus import AgentEvent, EventType, _VISIBILITY_HIDDEN, _VISIBILITY_DONE_ONLY
+
+
+async def _dispatch_event_to_processor(target: OutputTarget, event: AgentEvent) -> None:
+    """
+    将单个 AgentEvent 按 visibility 规则分发到 OutputTarget 的 Processor。
+
+    visibility 过滤规则：
+      HIDDEN    → 丢弃所有事件
+      DONE_ONLY → 只处理 DONE / ERROR 事件，忽略 TOKEN 等中间事件
+      FULL      → 处理所有事件
+
+    ask_user / permission_req 特殊处理：
+      - 事件 payload 中携带 asyncio.Future，Processor 负责在用户响应后 set_result()。
+      - 多个 OutputTarget 收到同一个 future 时，只有第一个 set_result() 有效（Future 幂等）。
+
+    Args:
+        target: 目标 OutputTarget（含 Processor）。
+        event:  AgentEvent 实例。
+    """
+    vis = event.visibility
+
+    # HIDDEN：完全不可见，丢弃
+    if vis == _VISIBILITY_HIDDEN:
+        return
+
+    t = event.type
+
+    if t == EventType.TOKEN:
+        # DONE_ONLY 模式下忽略 token 事件
+        if vis != _VISIBILITY_DONE_ONLY:
+            await target.processor.on_token(event.payload.get("token", ""), event)
+
+    elif t == EventType.DONE:
+        content = event.payload.get("content", "")
+        if content:
+            await target.processor.on_done(content, event)
+
+    elif t == EventType.ERROR:
+        await target.processor.on_error(event.payload.get("error", "unknown error"), event)
+
+    elif t == EventType.ASK_USER:
+        future = event.payload.get("future")
+        questions = event.payload.get("questions", [])
+        if future is not None and not future.done():
+            # 闭包捕获 future，防止 set_result 被多次调用
+            def make_answer_cb(f):
+                def answer_cb(text: str):
+                    if not f.done():
+                        f.set_result(text)
+                return answer_cb
+            await target.processor.on_ask_user(questions, make_answer_cb(future))
+
+    elif t == EventType.PERMISSION_REQ:
+        future = event.payload.get("future")
+        tool_name = event.payload.get("tool_name", "")
+        tool_input = event.payload.get("tool_input", {})
+        if future is not None and not future.done():
+            def make_grant_cb(f):
+                def grant_cb(approved: bool):
+                    if not f.done():
+                        f.set_result(approved)
+                return grant_cb
+            await target.processor.on_permission_request(tool_name, tool_input, make_grant_cb(future))
 
 
 class ChannelGateway:
@@ -74,16 +135,25 @@ class ChannelGateway:
     统一消息网关。
 
     是 channel 系统的"控制平面"，协调所有 channel 适配器与 ccserver 核心之间的消息流。
+    新出站架构：所有 channel（飞书/Discord/WebUI/TUI）走同一套 OutputTarget + Processor 骨架，
+    没有特判，没有 OutboundBus 桥接层。
+
+    消息流（新架构）：
+      InboundMessage
+        → dispatch_inbound()
+          → 找/创建 Session
+          → 组装 OutputTarget（含 Processor）
+          → 更新 session.output_targets / default_output_targets
+          → 启动 EventBus 订阅循环（驱动 Processor）
+          → 启动 Agent.run()（使用 BusEmitter）
 
     Attributes:
         registry:        ChannelRegistry 实例
         session_manager: SessionManager 实例，用于创建/查找 Session
         runner:          AgentRunner 实例，用于启动 Agent
         config:          ChannelConfig 实例，管理 channels.json
-        outbound_bus:    OutboundBus 实例，用于解耦出站回复
-        _routes:         session_id -> route info 的映射
         _running:        channel_id -> account_id -> info 的映射
-        _event_tasks:    session_id -> asyncio.Task 的映射（EventBus 监听任务）
+        _processor_tasks: session_id -> asyncio.Task（EventBus → Processor 驱动任务）
     """
 
     def __init__(
@@ -91,30 +161,25 @@ class ChannelGateway:
         registry: ChannelRegistry,
         session_manager,
         runner,
-        outbound_bus=None,
+        outbound_bus=None,  # 保留参数以兼容现有调用方，新架构不再使用
         config: ChannelConfig | None = None,
     ):
         self.registry = registry
         self.session_manager = session_manager
         self.runner = runner
+        # outbound_bus 保留以兼容调用方，不再实际使用
         self.outbound_bus = outbound_bus
         self.config = config or ChannelConfig()
-
-        # session_id -> 路由信息（与 OpenClaw 的 updateLastRoute 对应）
-        self._routes: dict[str, dict] = {}
 
         # channel_id -> account_id -> {adapter, config, snapshot}
         self._running: dict[str, dict[str, dict]] = {}
 
-        # session_id -> asyncio.Task（EventBus 监听任务）
-        self._event_tasks: dict[str, asyncio.Task] = {}
-
-        # session_id -> outbound handler（用于清理时 unsubscribe）
-        self._outbound_handlers: dict[str, Callable] = {}
+        # session_id -> asyncio.Task（EventBus → Processor 驱动循环）
+        self._processor_tasks: dict[str, asyncio.Task] = {}
 
         logger.info(
-            "ChannelGateway initialized | registry_size={} outbound_bus={} config={}",
-            len(registry), outbound_bus is not None, self.config.config_path,
+            "ChannelGateway initialized | registry_size={} config={}",
+            len(registry), self.config.config_path,
         )
 
     # ═════════════════════════════════════════════════════════════════════════════
@@ -273,7 +338,7 @@ class ChannelGateway:
         reply_to_id: str | None = None,
     ) -> None:
         """
-        预注册推送路由。
+        预注册推送路由（用于 Cron / Background Agent 的 default_output_targets）。
 
         当 channel adapter 启动时，可调用本方法预先绑定"定时任务触发时
         把消息发给谁"的路由信息。不需要等待用户发消息触发 dispatch_inbound。
@@ -291,7 +356,6 @@ class ChannelGateway:
             thread_id:    群组 ID（chat_type="group" 时使用）。
             reply_to_id:  回复引用的消息 ID（可选）。
         """
-        # 确保 session 存在
         session = self.session_manager.get(session_id)
         if session is None:
             logger.warning(
@@ -300,36 +364,29 @@ class ChannelGateway:
             )
             return
 
-        # 写入路由表（与 _set_route 相同格式，dispatch_inbound 会覆盖更新）
-        self._routes[session_id] = {
-            "channel_id": channel_id,
-            "account_id": account_id,
-            "to": to,
-            "chat_type": chat_type,
-            "thread_id": thread_id,
-            "sender_id": to,
-            "sender_name": "",
-            "reply_to_id": reply_to_id,
-            "timestamp": None,
-        }
-
-        # 订阅 OutboundBus（外部 channel adapter 接收 DONE 事件后发送回复）
-        if self.outbound_bus and channel_id != "webchat":
-            # 构造一个最小化的 InboundMessage 用于 _subscribe_outbound
-            from ccserver.channels.base import InboundMessage
-            dummy_msg = InboundMessage(
-                channel_id=channel_id,
-                account_id=account_id,
-                sender_id=to,
-                text="",
-                chat_type=chat_type,
-                thread_id=thread_id,
-                message_id=reply_to_id or "",
+        # 构建 OutputTarget + Processor 并写入 default_output_targets
+        adapter = self.registry.get_adapter(channel_id)
+        if adapter is None:
+            logger.warning(
+                "register_push_route: adapter not found | channel={}",
+                channel_id,
             )
-            await self._subscribe_outbound(session_id, dummy_msg)
+            return
 
-        # 启动 EventBus 订阅（监听 DONE 事件，触发 OutboundBus 推送）
-        await self._ensure_event_subscription(session_id)
+        target = OutputTarget(
+            channel_id=channel_id,
+            account_id=account_id,
+            to=to,
+            reply_to_id=reply_to_id,
+            processor=None,
+        )
+        target.processor = adapter.build_processor(target)
+
+        # default_output_targets：持久化路由，供 Cron 触发使用
+        session.default_output_targets = [target]
+
+        # 同时确保 EventBus 驱动循环已启动
+        await self._ensure_processor_loop(session_id)
 
         logger.info(
             "Push route registered | session={} channel={} to={}",
@@ -348,9 +405,12 @@ class ChannelGateway:
 
         处理流程：
           1. 查找或创建 Session
-          2. 记录路由信息（_routes）
-          3. 启动 EventBus 订阅（监听 DONE 事件，用于自动回复）
-          4. 启动 Agent 处理消息
+          2. 将用户消息追加到 session
+          3. 构建 OutputTarget + Processor（所有 channel 统一走此路径）
+          4. 更新 session.output_targets 和 default_output_targets
+          5. 启动 EventBus → Processor 驱动循环（每个 session 唯一）
+          6. 创建 BusEmitter（Agent 的唯一 emitter，无 _ComboEmitter）
+          7. 异步启动 Agent.run()
 
         Args:
             msg: 统一入站消息格式
@@ -391,29 +451,21 @@ class ChannelGateway:
             }
         })
 
-        # 4. 保存路由信息（用于出站回复）
-        self._set_route(session.id, msg)
+        # 4. 构建 OutputTarget + Processor（所有 channel 统一走此路径）
+        target = self._build_output_target(msg, session)
 
-        # 5. 订阅 OutboundBus（外部 channel adapter 接收回复事件）
-        #    WebChat 不走 OutboundBus（SSE/WS 已通过 EventBus 接收流式事件）
-        if self.outbound_bus and msg.channel_id != "webchat":
-            await self._subscribe_outbound(session.id, msg)
+        # 5. 更新 session.output_targets（当前轮次）和 default_output_targets（持久化路由）
+        session.output_targets = [target]
+        session.default_output_targets = [target]
 
-        # 6. 启动 EventBus 订阅（监听 DONE 事件，触发 OutboundBus 发布）
-        await self._ensure_event_subscription(session.id)
+        # 6. 通知 Processor 新一轮开始
+        await target.processor.on_turn_start()
 
-        # 6. 启动 Agent
-        logger.info(
-            "Starting agent for inbound | session={} channel={} sender={}",
-            session.id[:8], msg.channel_id, msg.sender_id,
-        )
+        # 7. 确保 EventBus → Processor 驱动循环已启动（每个 session 唯一一个循环）
+        await self._ensure_processor_loop(session.id)
 
-        # 创建 emitter：使用 CollectEmitter 收集输出，同时通过 BusEmitter 广播到 EventBus
-        # 注意：对于外部 channel（非 webchat），我们需要一个 emitter 来收集最终回复
-        from ccserver.emitters.collect import CollectEmitter
+        # 8. 创建 BusEmitter（Agent 的唯一 emitter，不再使用 _ComboEmitter）
         from ccserver.emitters.bus_emitter import BusEmitter
-
-        collect_emitter = CollectEmitter()
         bus_emitter = BusEmitter(
             bus=session.event_bus,
             agent_id=f"gateway_{session.id[:8]}",
@@ -421,35 +473,141 @@ class ChannelGateway:
             sender_type="gateway",
         )
 
-        # 使用一个组合 emitter：同时写入 CollectEmitter 和 BusEmitter
-        # 这样 WebChat 客户端（订阅 EventBus）也能收到事件
-        from ccserver.emitters import BaseEmitter
+        logger.info(
+            "Starting agent for inbound | session={} channel={} sender={}",
+            session.id[:8], msg.channel_id, msg.sender_id,
+        )
 
-        class _ComboEmitter(BaseEmitter):
-            """同时向 CollectEmitter 和 BusEmitter 发送事件的组合 emitter。"""
-
-            def __init__(self, *emitters):
-                self._emitters = emitters
-
-            async def emit(self, event: dict) -> None:
-                for e in self._emitters:
-                    await e.emit(event)
-
-        combo = _ComboEmitter(collect_emitter, bus_emitter)
-
-        # 启动 Agent（不阻塞，让 HTTP handler 立即返回）
+        # 9. 异步启动 Agent（不阻塞，让 HTTP handler 立即返回）
         async def _run_agent():
             try:
-                await self.runner.run(session, msg.text, combo)
+                await self.runner.run(session, msg.text, bus_emitter)
             except Exception as e:
                 logger.error(
                     "Agent run failed | session={} err={}",
                     session.id[:8], e,
                 )
-                # 发送错误回复到用户
                 await self._send_error_reply(session.id, str(e))
 
         asyncio.create_task(_run_agent())
+
+    def _build_output_target(self, msg: InboundMessage, session) -> OutputTarget:
+        """
+        根据入站消息构建 OutputTarget + Processor。
+
+        所有 channel（飞书/Discord/WebUI/TUI）均走此路径，没有特判。
+        Processor 由各 adapter 的 build_processor() 工厂方法创建。
+
+        Args:
+            msg:     入站消息。
+            session: Session 实例（仅用于日志）。
+
+        Returns:
+            带 processor 的 OutputTarget 实例。
+        """
+        # 目标 ID：私聊用 sender_id，群聊用 thread_id 或 sender_id
+        to = msg.sender_id if msg.chat_type == "direct" else (msg.thread_id or msg.sender_id)
+
+        # 创建 OutputTarget（processor 先占位，下一步由 adapter 填充）
+        target = OutputTarget(
+            channel_id=msg.channel_id,
+            account_id=msg.account_id,
+            to=to,
+            reply_to_id=msg.message_id,
+            processor=None,
+        )
+
+        adapter = self.registry.get_adapter(msg.channel_id)
+        if adapter is not None:
+            # 委托给 adapter 创建对应的 Processor
+            target.processor = adapter.build_processor(target)
+        else:
+            # 未知 channel，使用无操作 Processor（只记录警告）
+            from ccserver.channels.processor import Processor as NoOpProcessor
+            target.processor = NoOpProcessor()
+            logger.warning(
+                "_build_output_target: adapter not found, using no-op Processor | channel={}",
+                msg.channel_id,
+            )
+
+        return target
+
+    async def _ensure_processor_loop(self, session_id: str) -> None:
+        """
+        确保指定 session 的 EventBus → Processor 驱动循环已启动。
+
+        每个 session 只创建一个驱动循环任务，任务持续运行直到 session 被清理。
+        循环收到 EventBus 事件后，遍历 session.output_targets，
+        按 visibility 过滤后分发到各 Processor 的对应 on_* 方法。
+
+        Args:
+            session_id: Session ID
+        """
+        existing = self._processor_tasks.get(session_id)
+        if existing is not None and not existing.done():
+            # 已有运行中的循环，无需重复创建
+            return
+
+        session = self.session_manager.get(session_id)
+        if session is None:
+            logger.warning(
+                "_ensure_processor_loop: session not found | id={}",
+                session_id[:8],
+            )
+            return
+
+        async def _loop():
+            """
+            EventBus 监听协程。
+
+            持续从 EventBus 获取事件，分发到所有 output_targets 的 Processor。
+            当收到 DONE / ERROR / CANCELLED 事件后，通知 Processor on_turn_end()。
+            """
+            subscriber_id = f"gateway_proc_{session_id[:8]}"
+            try:
+                async with session.event_bus.subscribe(subscriber_id) as sub:
+                    while True:
+                        try:
+                            event = await sub.get(timeout=5.0)
+                        except asyncio.CancelledError:
+                            break
+                        if event is None:
+                            continue
+
+                        # 取当前 output_targets（每次取最新，支持动态更新）
+                        targets = list(session.output_targets)
+                        for target in targets:
+                            try:
+                                await _dispatch_event_to_processor(target, event)
+                            except Exception as e:
+                                logger.error(
+                                    "Processor dispatch error | session={} channel={} err={}",
+                                    session_id[:8], target.channel_id, e,
+                                )
+
+                        # 轮次结束信号：通知所有 Processor
+                        if event.type in (EventType.DONE, EventType.ERROR, EventType.CANCELLED):
+                            for target in targets:
+                                try:
+                                    await target.processor.on_turn_end()
+                                except Exception as e:
+                                    logger.error(
+                                        "on_turn_end error | session={} channel={} err={}",
+                                        session_id[:8], target.channel_id, e,
+                                    )
+
+            except Exception as e:
+                logger.error(
+                    "Processor loop error | session={} err={}",
+                    session_id[:8], e,
+                )
+
+        task = asyncio.create_task(_loop())
+        self._processor_tasks[session_id] = task
+        logger.debug(
+            "Processor loop started | session={}",
+            session_id[:8],
+        )
 
     def _resolve_session_key(self, msg: InboundMessage) -> str:
         """
@@ -474,298 +632,46 @@ class ChannelGateway:
             thread_part = msg.thread_id or msg.sender_id
             return f"{msg.channel_id}:{msg.account_id}:group:{thread_part}"
 
-    async def _subscribe_outbound(self, session_id: str, msg: InboundMessage) -> None:
-        """
-        为外部 channel adapter 订阅 OutboundBus。
-
-        WebChat 不走 OutboundBus（SSE/WS 已通过 EventBus 接收流式事件），
-        因此只有外部平台（飞书/钉钉/QQ/Discord 等）才需要订阅。
-
-        Args:
-            session_id: Session ID
-            msg: 入站消息（用于获取 channel_id 和 route 信息）
-        """
-        if self.outbound_bus is None:
-            return
-
-        # 如果该 session 已经订阅过 OutboundBus，跳过（避免重复订阅导致消息重复发送）
-        if session_id in self._outbound_handlers:
-            return
-
-        adapter = self.registry.get_adapter(msg.channel_id)
-        if adapter is None:
-            return
-
-        # 构建 handler：闭包捕获 route 信息
-        route = self._routes.get(session_id, {})
-
-        async def _handler(event: OutboundEvent) -> None:
-            """OutboundBus handler：调用 adapter 发送回复。"""
-            if not event.is_final:
-                return  # 默认只处理最终回复
-
-            if not event.text and not event.media_urls:
-                return
-
-            out_msg = OutboundMessage(
-                text=event.text,
-                media_urls=event.media_urls,
-                reply_to_id=event.reply_to_id or route.get("reply_to_id"),
-                thread_id=route.get("thread_id"),
-            )
-
-            try:
-                result = await adapter.send_message(
-                    route.get("account_id", msg.account_id),
-                    route.get("to", msg.sender_id),
-                    out_msg,
-                )
-                logger.info(
-                    "OutboundBus reply sent | channel={} session={} success={}",
-                    msg.channel_id, session_id[:8], result.get("success"),
-                )
-            except Exception as e:
-                logger.error(
-                    "OutboundBus reply failed | channel={} session={} err={}",
-                    msg.channel_id, session_id[:8], e,
-                )
-
-        self.outbound_bus.subscribe(session_id, _handler)
-        self._outbound_handlers[session_id] = _handler
-
-        logger.debug(
-            "OutboundBus subscribed | session={} channel={}",
-            session_id[:8], msg.channel_id,
-        )
-
-    def _set_route(self, session_id: str, msg: InboundMessage) -> None:
-        """
-        记录 session 的最后路由信息，用于出站回复。
-
-        与 OpenClaw 的 updateLastRoute 对应。
-
-        Args:
-            session_id: Session ID
-            msg: 入站消息
-        """
-        self._routes[session_id] = {
-            "channel_id": msg.channel_id,
-            "account_id": msg.account_id,
-            "to": msg.sender_id if msg.chat_type == "direct" else (msg.thread_id or msg.sender_id),
-            "chat_type": msg.chat_type,
-            "thread_id": msg.thread_id,
-            "sender_id": msg.sender_id,
-            "sender_name": msg.sender_name,
-            "reply_to_id": msg.message_id,  # 回复时引用原消息
-            "timestamp": msg.timestamp,
-        }
-        logger.debug(
-            "Route saved | session={} channel={} to={}",
-            session_id[:8], msg.channel_id, self._routes[session_id]["to"],
-        )
+    # _subscribe_outbound 和 _set_route 已在新出站架构中移除。
+    # 路由信息改为通过 session.default_output_targets 持久化，
+    # 无需再维护 _routes dict 和 OutboundBus 订阅。
 
     # ═════════════════════════════════════════════════════════════════════════════
     #  出站消息处理
     # ═════════════════════════════════════════════════════════════════════════════
-
-    async def _ensure_event_subscription(self, session_id: str) -> None:
-        """
-        确保指定 session 的 EventBus 有订阅者监听 DONE 事件。
-
-        每个 session 只创建一个监听任务。任务持续运行直到 session 被清理。
-
-        Args:
-            session_id: Session ID
-        """
-        if session_id in self._event_tasks:
-            # 已有订阅，无需重复创建
-            return
-
-        session = self.session_manager.get(session_id)
-        if session is None:
-            logger.warning(
-                "Cannot subscribe: session not found | id={}",
-                session_id[:8],
-            )
-            return
-
-        async def _event_loop():
-            """
-            EventBus 监听协程。
-
-            持续监听 session 的 EventBus，收到 DONE 事件后
-            调用 _on_agent_done() 发送回复到对应的 channel。
-            """
-            subscriber_id = f"gateway_{session_id[:8]}"
-
-            try:
-                async with session.event_bus.subscribe(
-                    subscriber_id,
-                    filter_fn=lambda e: e.type == EventType.DONE,
-                ) as sub:
-                    while True:
-                        try:
-                            event = await sub.get(timeout=5.0)
-                        except asyncio.CancelledError:
-                            break
-                        if event is None:
-                            # 超时，继续循环
-                            continue
-
-                        # 处理 DONE 事件
-                        await self._on_agent_done(session_id, event)
-            except Exception as e:
-                logger.error(
-                    "Event subscription error | session={} err={}",
-                    session_id[:8], e,
-                )
-
-        task = asyncio.create_task(_event_loop())
-        self._event_tasks[session_id] = task
-        logger.debug(
-            "EventBus subscription created | session={}",
-            session_id[:8],
-        )
-
-    async def _on_agent_done(self, session_id: str, event: AgentEvent) -> None:
-        """
-        Agent 完成时的事件处理。
-
-        将回复发布到 OutboundBus，由订阅了该 session 的 adapter 发送。
-        如果 OutboundBus 不可用（或未配置），则回退到直接发送。
-
-        Args:
-            session_id: Session ID
-            event: DONE 事件
-        """
-        route = self._routes.get(session_id)
-        if not route:
-            logger.warning(
-                "No route found for session, skipping reply | session={}",
-                session_id[:8],
-            )
-            return
-
-        content = event.payload.get("content", "")
-        if not content:
-            logger.debug(
-                "Empty reply content, skipping | session={}",
-                session_id[:8],
-            )
-            return
-
-        logger.info(
-            "Agent done | session={} channel={} to={} text_len={}",
-            session_id[:8], route["channel_id"], route["to"], len(content),
-        )
-
-        # 方案 A：通过 OutboundBus 发布（推荐，解耦）
-        if self.outbound_bus and self.outbound_bus.has_subscribers(session_id):
-            await self.outbound_bus.publish(OutboundEvent(
-                session_id=session_id,
-                text=content,
-                is_final=True,
-                reply_to_id=route.get("reply_to_id"),
-            ))
-            return
-
-        # 方案 B：回退到直接发送（兼容模式，OutboundBus 未配置时）
-        logger.debug(
-            "OutboundBus not available, falling back to direct send | session={}",
-            session_id[:8],
-        )
-        try:
-            await self._send_reply(
-                session_id=session_id,
-                channel_id=route["channel_id"],
-                account_id=route["account_id"],
-                to=route["to"],
-                text=content,
-                reply_to_id=route.get("reply_to_id"),
-                thread_id=route.get("thread_id"),
-            )
-        except Exception as e:
-            logger.error(
-                "Reply send failed | session={} channel={} err={}",
-                session_id[:8], route["channel_id"], e,
-            )
-
-    async def _send_reply(
-        self,
-        session_id: str,
-        channel_id: str,
-        account_id: str,
-        to: str,
-        text: str,
-        reply_to_id: Optional[str] = None,
-        thread_id: Optional[str] = None,
-    ) -> None:
-        """
-        发送回复到指定 channel。
-
-        Args:
-            session_id: Session ID（用于日志）
-            channel_id: channel ID
-            account_id: 账户标识
-            to: 目标用户/群组 ID
-            text: 回复文本
-            reply_to_id: 回复哪条消息
-            thread_id: 线程 ID
-        """
-        adapter = self.registry.get_adapter(channel_id)
-        if adapter is None:
-            logger.error(
-                "Adapter not found for reply | channel={}",
-                channel_id,
-            )
-            return
-
-        msg = OutboundMessage(
-            text=text,
-            reply_to_id=reply_to_id,
-            thread_id=thread_id,
-        )
-
-        result = await adapter.send_message(account_id, to, msg)
-
-        if result.get("success"):
-            logger.info(
-                "Reply sent | session={} channel={} to={} chunks={}",
-                session_id[:8], channel_id, to, result.get("total_count", 1),
-            )
-        else:
-            logger.error(
-                "Reply failed | session={} channel={} to={} errors={}",
-                session_id[:8], channel_id, to,
-                [r.get("error") for r in result.get("results", []) if not r.get("success")],
-            )
+    # 注：_ensure_event_subscription / _on_agent_done / OutboundBus 桥接已在新架构中移除。
+    # 出站回复通过 _ensure_processor_loop + _dispatch_event_to_processor 驱动 Processor 完成。
 
     async def _send_error_reply(self, session_id: str, error_msg: str) -> None:
         """
-        Agent 运行失败时，向用户发送错误提示。
+        Agent 运行失败时，通过 default_output_targets 向用户发送错误提示。
 
         Args:
             session_id: Session ID
             error_msg: 错误信息
         """
-        route = self._routes.get(session_id)
-        if not route:
+        session = self.session_manager.get(session_id)
+        if session is None:
             return
 
+        targets = session.default_output_targets or session.output_targets
         text = f"抱歉，处理消息时出错了：{error_msg}"
-        try:
-            await self._send_reply(
-                session_id=session_id,
-                channel_id=route["channel_id"],
-                account_id=route["account_id"],
-                to=route["to"],
-                text=text,
-            )
-        except Exception as e:
-            logger.error(
-                "Failed to send error reply | session={} err={}",
-                session_id[:8], e,
-            )
+
+        for target in targets:
+            try:
+                adapter = self.registry.get_adapter(target.channel_id)
+                if adapter is not None:
+                    await adapter.send_text(
+                        target.account_id,
+                        target.to,
+                        text,
+                        reply_to_id=target.reply_to_id,
+                    )
+            except Exception as e:
+                logger.error(
+                    "Failed to send error reply | session={} channel={} err={}",
+                    session_id[:8], target.channel_id, e,
+                )
 
     # ═════════════════════════════════════════════════════════════════════════════
     #  配置联动：自动扫描与自动启动
@@ -845,40 +751,40 @@ class ChannelGateway:
         media_urls: Optional[list[str]] = None,
     ) -> dict:
         """
-        手动发送出站消息。
+        手动发送出站消息（API 调用 / 后台推送）。
 
-        用于 API 调用或后台任务主动向用户推送消息。
+        优先使用 session.default_output_targets 中的第一个目标。
 
         Args:
             session_id: Session ID
             text: 消息文本
-            media_urls: 媒体 URL 列表
+            media_urls: 媒体 URL 列表（暂未使用）
 
         Returns:
             发送结果字典
         """
-        route = self._routes.get(session_id)
-        if not route:
+        session = self.session_manager.get(session_id)
+        if session is None:
+            return {"success": False, "error": "Session not found"}
+
+        targets = session.default_output_targets or session.output_targets
+        if not targets:
             logger.warning(
-                "No route for manual outbound | session={}",
+                "No output targets for manual outbound | session={}",
                 session_id[:8],
             )
-            return {"success": False, "error": "No route found"}
+            return {"success": False, "error": "No output targets found"}
 
-        msg = OutboundMessage(
-            text=text,
-            media_urls=media_urls or [],
-            thread_id=route.get("thread_id"),
-        )
-
-        adapter = self.registry.get_adapter(route["channel_id"])
+        target = targets[0]
+        adapter = self.registry.get_adapter(target.channel_id)
         if adapter is None:
-            return {"success": False, "error": f"Adapter not found: {route['channel_id']}"}
+            return {"success": False, "error": f"Adapter not found: {target.channel_id}"}
 
-        return await adapter.send_message(
-            route["account_id"],
-            route["to"],
-            msg,
+        return await adapter.send_text(
+            target.account_id,
+            target.to,
+            text,
+            reply_to_id=target.reply_to_id,
         )
 
     # ═════════════════════════════════════════════════════════════════════════════
@@ -889,27 +795,18 @@ class ChannelGateway:
         """
         清理指定 session 的资源。
 
-        取消 EventBus 订阅任务，取消 OutboundBus 订阅，删除路由信息。
+        取消 EventBus → Processor 驱动循环任务。
 
         Args:
             session_id: Session ID
         """
-        # 取消 EventBus 监听任务
-        task = self._event_tasks.pop(session_id, None)
+        task = self._processor_tasks.pop(session_id, None)
         if task is not None and not task.done():
             task.cancel()
             try:
                 await task
             except asyncio.CancelledError:
                 pass
-
-        # 取消 OutboundBus 订阅
-        handler = self._outbound_handlers.pop(session_id, None)
-        if handler is not None and self.outbound_bus is not None:
-            self.outbound_bus.unsubscribe(session_id, handler)
-
-        # 删除路由信息
-        self._routes.pop(session_id, None)
 
         logger.debug("Session cleaned up | id={}", session_id[:8])
 
@@ -921,21 +818,15 @@ class ChannelGateway:
         """
         logger.info("ChannelGateway shutting down...")
 
-        # 取消所有 EventBus 监听任务
-        for session_id, task in list(self._event_tasks.items()):
+        # 取消所有 Processor 驱动循环任务
+        for session_id, task in list(self._processor_tasks.items()):
             if not task.done():
                 task.cancel()
                 try:
                     await task
                 except asyncio.CancelledError:
                     pass
-        self._event_tasks.clear()
-
-        # 取消所有 OutboundBus 订阅
-        if self.outbound_bus is not None:
-            for session_id, handler in list(self._outbound_handlers.items()):
-                self.outbound_bus.unsubscribe(session_id, handler)
-        self._outbound_handlers.clear()
+        self._processor_tasks.clear()
 
         # 停止所有 channel
         for channel_id, accounts in list(self._running.items()):
@@ -948,5 +839,4 @@ class ChannelGateway:
                         channel_id, account_id, e,
                     )
 
-        self._routes.clear()
         logger.info("ChannelGateway shutdown complete")

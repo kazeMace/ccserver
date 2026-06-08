@@ -24,11 +24,9 @@ monitor.py — CCServer 监控 Dashboard（阶段1：纯 HTML + JS）。
 """
 
 import asyncio
-import json
 import os
 import uuid
 from pathlib import Path
-from typing import Optional
 
 from fastapi import WebSocket
 from loguru import logger

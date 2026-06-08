@@ -381,8 +381,7 @@ async def test_run_command_cwd_is_project_root(tmp_path, monkeypatch):
 async def test_slash_command_triggers_user_prompt_submit():
     """slash command 也应触发 message:inbound:received (UserPromptSubmit) hook。"""
     # 只测 agent.py 中 run() 方法的调用顺序，不构造完整 Agent
-    from unittest.mock import MagicMock, AsyncMock
-    import ccserver.agent as agent_mod
+    from unittest.mock import MagicMock
 
     calls = []
 

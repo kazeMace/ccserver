@@ -31,9 +31,12 @@ builtins/agents/base -- BaseAgentSpec 抽象基类。
 
 from abc import ABC
 from pathlib import Path
-from typing import ClassVar
+from typing import ClassVar, TYPE_CHECKING
 
 from loguru import logger
+
+if TYPE_CHECKING:
+    from ccserver.managers.agents.manager import AgentDef
 
 
 class BaseAgentSpec(ABC):

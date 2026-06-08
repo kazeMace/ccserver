@@ -9,7 +9,6 @@ tests/test_settings.py — ProjectSettings 权限解析与决策逻辑测试
 """
 
 import json
-import pytest
 from pathlib import Path
 
 from ccserver.settings import ProjectSettings, _parse_entries
@@ -167,7 +166,8 @@ def test_merge_deny_union(tmp_path, monkeypatch):
 
     monkeypatch.setenv("HOME", str(home_tmp))
     # 重新加载以使 Path.home() 生效
-    import importlib, ccserver.settings as sm
+    import importlib
+    import ccserver.settings as sm
     importlib.reload(sm)
 
     s = sm.ProjectSettings.from_dirs(project_tmp)
@@ -188,7 +188,8 @@ def test_merge_project_allow_overrides_global(tmp_path, monkeypatch):
     _write_settings(project_tmp, {"permissions": {"allow": ["ReadFile"]}})
 
     monkeypatch.setenv("HOME", str(home_tmp))
-    import importlib, ccserver.settings as sm
+    import importlib
+    import ccserver.settings as sm
     importlib.reload(sm)
 
     s = sm.ProjectSettings.from_dirs(project_tmp)
@@ -212,7 +213,8 @@ def test_merge_global_allow_used_when_no_project_allow(tmp_path, monkeypatch):
     _write_settings(project_tmp, {"permissions": {"deny": ["EditFile"]}})
 
     monkeypatch.setenv("HOME", str(home_tmp))
-    import importlib, ccserver.settings as sm
+    import importlib
+    import ccserver.settings as sm
     importlib.reload(sm)
 
     s = sm.ProjectSettings.from_dirs(project_tmp)
@@ -234,7 +236,8 @@ def test_merge_command_deny_union(tmp_path, monkeypatch):
     _write_settings(project_tmp, {"permissions": {"deny": ["Bash(sudo:*)"]}})
 
     monkeypatch.setenv("HOME", str(home_tmp))
-    import importlib, ccserver.settings as sm
+    import importlib
+    import ccserver.settings as sm
     importlib.reload(sm)
 
     s = sm.ProjectSettings.from_dirs(project_tmp)

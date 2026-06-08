@@ -105,7 +105,7 @@ class OpenAIPlugin(ProviderPlugin):
     def register_models(self, registry: ModelInfoRegistry) -> None:
         """根据 provider_id 注册对应模型。"""
         from ccserver.model.info.catalog import (
-            BUILTIN_OPENAI_MODELS, BUILTIN_DEEPSEEK_MODELS,
+            BUILTIN_OPENAI_MODELS,
         )
 
         # OpenAI 系列注册 GPT 模型
@@ -139,7 +139,6 @@ def _build_openai_media_provider():
     使用 describe_image_with_model() 通用实现。
     """
     import os
-    from ccserver.model.media.base import MediaUnderstandingProvider
     from ccserver.model.media.describe import describe_image_with_model
     from ccserver.model.openai_adapter import OpenAIAdapter
     from openai import AsyncOpenAI

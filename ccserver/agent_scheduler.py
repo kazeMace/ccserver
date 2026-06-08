@@ -5,11 +5,15 @@ agent_scheduler — Session 级别的后台 Agent 调度器。
 """
 
 import asyncio
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from loguru import logger
 
 from .agent_handle import BackgroundAgentHandle
+
+if TYPE_CHECKING:
+    from ccserver.session import Session
+    from ccserver.agent import Agent
 
 
 class AgentScheduler:

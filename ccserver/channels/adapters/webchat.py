@@ -33,6 +33,8 @@ from ..base import (
     InboundMessage,
     OutboundMessage,
 )
+from ..processor import Processor
+from ..output_target import OutputTarget
 
 
 class WebChatAdapter(BaseChannelAdapter):
@@ -78,6 +80,18 @@ class WebChatAdapter(BaseChannelAdapter):
         self._pending_replies: dict[str, asyncio.Future] = {}
 
         logger.debug("WebChatAdapter initialized")
+
+    def build_processor(self, target: "OutputTarget") -> "Processor":
+        """
+        创建 WebChat 专用 Processor。
+
+        WebChatProcessor 只处理 ask_user 和 permission_request 的交互回路。
+        token / done 事件仍由 SSEEmitter 的 EventBus 订阅独立推送（不重复处理）。
+
+        Args:
+            target: OutputTarget 实例，target.to 即为 session_id（WebChat 的路由 key）。
+        """
+        return WebChatProcessor(adapter=self, session_id=target.to)
 
     # ── 注册/注销 emitter ────────────────────────────────────────────────────
 
@@ -346,7 +360,6 @@ class WebChatAdapter(BaseChannelAdapter):
             # 构造 SSE/WS 事件
             # 注意：这里复用 BaseEmitter 的 fmt_* 方法生成标准格式
             from ccserver.emitters.base import BaseEmitter
-            import asyncio
 
             class _FmtEmitter(BaseEmitter):
                 async def emit(self, event: dict) -> None:
@@ -436,6 +449,85 @@ class WebChatAdapter(BaseChannelAdapter):
             1 for c in self._clients.values()
             if c["account_id"] == account_id
         )
+
+
+# ── WebChatProcessor ─────────────────────────────────────────────────────────
+
+
+class WebChatProcessor(Processor):
+    """
+    WebChat 专用 Processor。
+
+    职责：处理 Gateway 驱动流中的 ask_user 和 permission_request 交互回路。
+    token / done 事件由 SSEEmitter 的 EventBus 订阅独立处理，本 Processor 不重复推送。
+
+    ask_user 实现方式：
+      1. 从 WebChatAdapter._emitters[session_id] 获取 SSEEmitter。
+      2. 向 SSEEmitter 推送 ask_user SSE 事件（放入 SSE 队列）。
+      3. 在 SSEEmitter 上设置 _answer_cb，等待 HTTP POST /answer 到来时触发。
+      4. answer_cb(text) 将答案注入 BusEmitter 的 future，Agent 继续执行。
+
+    permission_request 实现方式与 ask_user 相同，使用 _grant_cb。
+
+    Args:
+        adapter:    WebChatAdapter 实例（持有 SSEEmitter 引用）。
+        session_id: 当前 WebChat 会话的 session_id（= OutputTarget.to）。
+    """
+
+    def __init__(self, adapter: "WebChatAdapter", session_id: str):
+        self._adapter = adapter
+        self._session_id = session_id
+
+    async def on_ask_user(self, questions: list, answer_cb) -> None:
+        """
+        向 WebChat 客户端推送 ask_user 事件，注册 answer_cb 等待 HTTP /answer 回调。
+
+        Args:
+            questions:  问题列表。
+            answer_cb:  answer_cb(text) → 将用户回答注入 BusEmitter future。
+        """
+        emitter = self._adapter._emitters.get(self._session_id)
+        if emitter is None:
+            # 无 SSE 连接，直接返回空答案
+            logger.warning(
+                "WebChatProcessor.on_ask_user: no SSE emitter | session={}",
+                self._session_id[:8],
+            )
+            answer_cb("")
+            return
+
+        # 向 SSE 队列推送 ask_user 事件
+        from ccserver.emitters.base import BaseEmitter
+        fmt = BaseEmitter.__new__(BaseEmitter)
+        await emitter.emit(fmt.fmt_ask_user(questions))
+
+        # 在 SSEEmitter 上设置回调，HTTP /answer 到来时触发
+        emitter._answer_cb = answer_cb
+
+    async def on_permission_request(self, tool_name: str, tool_input: dict, grant_cb) -> None:
+        """
+        向 WebChat 客户端推送 permission_request 事件，注册 grant_cb 等待 HTTP /permission 回调。
+
+        Args:
+            tool_name:  工具名称。
+            tool_input: 工具输入参数。
+            grant_cb:   grant_cb(True/False) → 将审批结果注入 BusEmitter future。
+        """
+        emitter = self._adapter._emitters.get(self._session_id)
+        if emitter is None:
+            logger.warning(
+                "WebChatProcessor.on_permission_request: no SSE emitter | session={}",
+                self._session_id[:8],
+            )
+            grant_cb(False)
+            return
+
+        from ccserver.emitters.base import BaseEmitter
+        fmt = BaseEmitter.__new__(BaseEmitter)
+        await emitter.emit(fmt.fmt_permission_request(tool_name, tool_input))
+
+        # 在 SSEEmitter 上设置回调
+        emitter._grant_cb = grant_cb
 
 
 # ── 辅助函数 ─────────────────────────────────────────────────────────────────

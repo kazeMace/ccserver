@@ -44,7 +44,6 @@ outbound_bus — Session 级出站事件总线。
   outbound_bus.unsubscribe(session_id, my_handler)
 """
 
-import asyncio
 from dataclasses import dataclass, field
 from typing import Callable, Awaitable
 

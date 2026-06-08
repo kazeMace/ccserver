@@ -21,11 +21,14 @@ builtins/agents/registry -- 内置 Agent 的自动发现注册表。
 
 import importlib
 import pkgutil
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
 from .base import BaseAgentSpec
+
+if TYPE_CHECKING:
+    from ccserver.managers.agents.manager import AgentDef
 
 
 # ---------------------------------------------------------------------------

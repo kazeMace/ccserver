@@ -72,11 +72,9 @@ def capture_window(title: str) -> bytes:
         PNG 格式图像的 bytes。
     """
     try:
-        import Quartz
+        import Quartz  # noqa: F401
         import Quartz.CoreGraphics as CG
-        from PIL import Image
-
-        # 获取所有窗口信息
+        from PIL import Image  # noqa: F401
         window_list = CG.CGWindowListCopyWindowInfo(
             CG.kCGWindowListOptionOnScreenOnly | CG.kCGWindowListExcludeDesktopElements,
             CG.kCGNullWindowID,
@@ -142,7 +140,7 @@ def capture_by_app(app_name: str) -> bytes:
     """
     try:
         import Quartz.CoreGraphics as CG
-        from PIL import Image
+        from PIL import Image  # noqa: F401
     except ImportError:
         logger.warning("pyobjc-framework-Quartz 未安装，降级为全屏截图")
         return capture()

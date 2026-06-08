@@ -1,6 +1,5 @@
 """Test import chain: session → tasks → bash → session"""
-import pytest
-from ccserver.tasks import ShellTaskRegistry, ShellTaskState
+from ccserver.tasks import ShellTaskRegistry
 from ccserver.session import Session
 from ccserver.builtins.tools.bash import BTBash
 

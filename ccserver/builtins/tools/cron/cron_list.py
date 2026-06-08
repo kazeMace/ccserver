@@ -6,7 +6,7 @@ builtins/tools/cron_list.py — BTCronList 内置工具。
 
 from loguru import logger
 
-from ..base import BuiltinTools, ToolParam, ToolResult
+from ..base import BuiltinTools, ToolResult
 from ccserver.managers.cron import TaskScheduler, cron_to_human
 
 

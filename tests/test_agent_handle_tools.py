@@ -12,10 +12,8 @@ tests/test_agent_handle_tools.py — _handle_agent 工具路由测试。
 对被测方法使用 patch.object(target, name)。
 """
 
-import asyncio
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
-from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 
 # ─── 构造最小 Agent 实例 ─────────────────────────────────────────────────────
@@ -252,7 +250,7 @@ class TestHandleAgentBackgroundPath:
 
         with patch.object(agent, "spawn_child", return_value=mock_child):
             with patch.object(agent, "spawn_background") as mock_sb:
-                result = await agent._handle_agent({"prompt": "default behavior"})
+                await agent._handle_agent({"prompt": "default behavior"})
 
         mock_sb.assert_not_called()
         mock_child._loop.assert_awaited_once()

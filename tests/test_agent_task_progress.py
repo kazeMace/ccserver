@@ -69,7 +69,8 @@ class TestEventBusProgressPush:
         agent_id = "agent-prog-01"
 
         # 订阅指定 agent 的事件
-        filter_fn = lambda e: e.agent_id == agent_id
+        def filter_fn(e):
+            return e.agent_id == agent_id
         async with bus.subscribe("test_sub", filter_fn=filter_fn) as sub:
             await bus.publish(AgentEvent(
                 type=EventType.PROGRESS,
@@ -101,9 +102,8 @@ class TestEventBusProgressPush:
         my_agent_id = "agent-me"
         other_agent_id = "agent-other"
 
-        filter_fn = lambda e: e.agent_id == my_agent_id
+        filter_fn = lambda e: e.agent_id == my_agent_id  # noqa: E731
         async with bus.subscribe("test_sub", filter_fn=filter_fn) as sub:
-            # 发布来自其他 agent 的事件
             await bus.publish(AgentEvent(
                 type=EventType.PROGRESS,
                 agent_id=other_agent_id,
@@ -145,7 +145,8 @@ class TestForwardBusEventsLogic:
             agent_task_state: 可选的 AgentTaskState，用于状态更新。
         """
         sub_id = f"forward_{agent_task_id}"
-        filter_fn = lambda e: e.agent_id == child_agent_id
+        def filter_fn(e):
+            return e.agent_id == child_agent_id
 
         async with bus.subscribe(sub_id, filter_fn=filter_fn) as sub:
             while True:

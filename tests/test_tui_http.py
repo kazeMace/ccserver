@@ -15,14 +15,10 @@ tests/test_tui_http.py — tui_http 客户端组件单元测试。
 测试模式：纯同步/异步函数测试，不依赖网络。
 """
 
-import asyncio
-import pytest
 
 from entry.tui.tui_http import (
     BackgroundTaskManager,
-    BGRunningTask,
     BG_RUNNING,
-    BG_COMPLETED,
 )
 
 
@@ -104,7 +100,7 @@ class TestIncrementalOutputRendering:
         """
         mgr = BackgroundTaskManager()
         mgr.on_task_started({"task_id": "b0000010", "task_type": "bash", "description": "build"})
-        task = mgr._tasks["b0000010"]
+        _ = mgr._tasks["b0000010"]
 
         # 第一次渲染（0 输出行）
         mgr.on_task_progress({"task_id": "b0000010", "output": "Compiling...\n"})
@@ -149,7 +145,7 @@ class TestIncrementalOutputRendering:
         task.output = "hello\nhello\n"
         task.output_lines = 0  # 初始
         all_lines = task.output.splitlines()
-        new_lines_1 = all_lines[task.output_lines:]
+        _ = all_lines[task.output_lines:]  # 第一段新行（不做断言，仅验证偏移逻辑）
         task.output_lines = len(all_lines)
 
         new_lines_2 = all_lines[task.output_lines:]

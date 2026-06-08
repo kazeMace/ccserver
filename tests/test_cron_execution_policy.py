@@ -231,7 +231,7 @@ class TestConcurrentTrigger:
         # 等待足够时间让所有任务触发完（并发应 < 1s，串行需要 1.5s+）
         await asyncio.sleep(1.5)
         scheduler.stop()
-        elapsed = asyncio.get_event_loop().time() - start
+        _ = asyncio.get_event_loop().time() - start  # 仅用于调试，不做断言
 
         # inbox 应收到 3 条消息
         inbox_count = root.context.inbox.qsize()

@@ -13,9 +13,12 @@ P4 目标：将 TeamMailbox 与具体的 StorageAdapter 解耦，
 """
 
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from loguru import logger
+
+if TYPE_CHECKING:
+    from ccserver.storage.base import StorageAdapter
 
 
 class MailboxBackend(ABC):

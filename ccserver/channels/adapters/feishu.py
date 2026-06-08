@@ -66,7 +66,6 @@ from ..base import (
     ChannelCapabilities,
     ChannelAccountSnapshot,
     InboundMessage,
-    OutboundMessage,
 )
 
 # aiohttp 用于异步 HTTP 请求（已通过 discord.py 安装）
@@ -370,7 +369,7 @@ class FeishuAdapter(BaseChannelAdapter):
 
         # 如果有文字说明，先发文字，再发媒体
         if caption:
-            text_result = await self.send_text(account_id, to, caption)
+            await self.send_text(account_id, to, caption)
 
         result = await self._send_message(
             account_id=account_id,
@@ -508,8 +507,7 @@ class FeishuAdapter(BaseChannelAdapter):
         # 1. 处理 Challenge 验证
         if body.get("type") == "url_verification":
             challenge = body.get("challenge", "")
-            token = body.get("token", "")
-            # 可选：验证 token
+            _ = body.get("token", "")  # 保留以备 token 验证扩展
             logger.info("Feishu url_verification received")
             return {"challenge": challenge}
 

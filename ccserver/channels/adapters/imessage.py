@@ -65,7 +65,6 @@ from ..base import (
     ChannelCapabilities,
     ChannelAccountSnapshot,
     InboundMessage,
-    OutboundMessage,
 )
 
 

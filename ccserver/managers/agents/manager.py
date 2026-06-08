@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from loguru import logger
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Tuple
 
 from ...emitters.filter import VALID_VERBOSITY as _OUTPUT_MODES
 from ...utils import parse_frontmatter

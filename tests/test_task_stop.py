@@ -10,7 +10,6 @@ tests/test_task_stop.py — TaskStop 工具单元测试。
 """
 
 import pytest
-import anyio
 from pathlib import Path
 
 from ccserver.session import Session

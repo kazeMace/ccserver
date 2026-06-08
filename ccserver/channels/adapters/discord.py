@@ -56,7 +56,6 @@ from ..base import (
     ChannelCapabilities,
     ChannelAccountSnapshot,
     InboundMessage,
-    OutboundMessage,
 )
 
 # discord.py 是可选依赖，未安装时给出友好提示

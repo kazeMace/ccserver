@@ -13,9 +13,12 @@ Agent 和 Compactor 只依赖此抽象，不直接引用具体 SDK。
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from ccserver.model.compat import ModelCompat
+
+if TYPE_CHECKING:
+    from ccserver.model.info.model_info import ModelInfo
 
 
 class ModelAdapter(ABC):

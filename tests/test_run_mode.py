@@ -12,12 +12,10 @@ tests/test_run_mode.py — RunMode 运行时权限确认测试
 
 import asyncio
 import json
-import pytest
 from pathlib import Path
 from unittest.mock import MagicMock, AsyncMock
 
 from ccserver.agent import Agent, AgentContext
-from ccserver.managers.agents import AgentDef
 from ccserver.settings import ProjectSettings
 from ccserver.emitters import BaseEmitter
 from ccserver.emitters.filter import FilterEmitter
@@ -126,7 +124,8 @@ def test_run_mode_project_overrides_global(tmp_path, monkeypatch):
     _write_settings_file(project_tmp, {"runMode": "auto"})
 
     monkeypatch.setenv("HOME", str(home_tmp))
-    import importlib, ccserver.settings as sm
+    import importlib
+    import ccserver.settings as sm
     importlib.reload(sm)
 
     s = sm.ProjectSettings.from_dirs(project_tmp)
@@ -161,7 +160,8 @@ def test_ask_tools_global_and_project_union(tmp_path, monkeypatch):
     _write_settings_file(project_tmp, {"permissions": {"ask": ["WriteFile"]}})
 
     monkeypatch.setenv("HOME", str(home_tmp))
-    import importlib, ccserver.settings as sm
+    import importlib
+    import ccserver.settings as sm
     importlib.reload(sm)
 
     s = sm.ProjectSettings.from_dirs(project_tmp)

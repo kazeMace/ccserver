@@ -24,7 +24,6 @@ tests/test_loaders.py — SkillLoader 和 CommandLoader 单元测试
 """
 
 from pathlib import Path
-import pytest
 
 from ccserver.managers.skills import SkillLoader
 from ccserver.managers.commands import CommandLoader
@@ -47,7 +46,7 @@ def _make_skill_dir(base: Path, name: str, description: str = "A skill", body: s
 
 def _make_command_file(commands_dir: Path, stem: str, name: str = "", description: str = "A command", builtin: bool = False, body: str = "Command body.") -> Path:
     commands_dir.mkdir(parents=True, exist_ok=True)
-    frontmatter = f"---\n"
+    frontmatter = "---\n"
     if name:
         frontmatter += f"name: {name}\n"
     frontmatter += f"description: {description}\n"

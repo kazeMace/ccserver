@@ -8,7 +8,7 @@ test_provider_plugin — 测试 ProviderPlugin 和 ProviderRegistry。
 - 不存在的 provider 报错
 """
 import pytest
-from ccserver.model.plugins.registry import ProviderRegistry, get_provider_registry
+from ccserver.model.plugins.registry import get_provider_registry
 from ccserver.model.factory import get_adapter
 
 

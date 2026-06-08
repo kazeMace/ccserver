@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING
 
-from ..base import BuiltinTools, ToolParam, ToolResult
+from ..base import BuiltinTools, ToolResult
 
 if TYPE_CHECKING:
     from ccserver.managers.tasks import TaskManager

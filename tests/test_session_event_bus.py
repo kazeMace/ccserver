@@ -10,7 +10,6 @@ tests/test_session_event_bus.py — Session 与 EventBus 集成测试。
 import asyncio
 import pytest
 from pathlib import Path
-from unittest.mock import MagicMock
 
 from ccserver.session import Session, SessionManager
 from ccserver.event_bus import EventBus, AgentEvent, EventType

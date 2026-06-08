@@ -11,7 +11,6 @@ test_event_bus — EventBus、AgentEvent、BusEmitter 的单元测试。
   - BusEmitter 各个 emit_* 方法产出正确的 AgentEvent
 """
 
-import asyncio
 import pytest
 
 from ccserver.event_bus import AgentEvent, EventBus, EventType
@@ -127,7 +126,8 @@ class TestEventBus:
     async def test_filter_fn_passes_matching_event(self):
         """filter_fn 匹配时，订阅者能收到事件。"""
         bus = EventBus()
-        filter_fn = lambda e: e.type == EventType.DONE
+        def filter_fn(e):
+            return e.type == EventType.DONE
         async with bus.subscribe("sub1", filter_fn=filter_fn) as sub:
             await bus.publish(make_event(EventType.DONE))
             received = await sub.get(timeout=1.0)
@@ -138,7 +138,8 @@ class TestEventBus:
     async def test_filter_fn_blocks_non_matching_event(self):
         """filter_fn 不匹配时，订阅者收不到事件。"""
         bus = EventBus()
-        filter_fn = lambda e: e.type == EventType.DONE
+        def filter_fn(e):
+            return e.type == EventType.DONE
         async with bus.subscribe("sub1", filter_fn=filter_fn) as sub:
             # publish 一个 TOKEN 事件，filter 应该过滤掉
             await bus.publish(make_event(EventType.TOKEN))
@@ -150,8 +151,10 @@ class TestEventBus:
     async def test_to_agent_filter(self):
         """用 to_agent 实现点对点投递：只有目标订阅者收到。"""
         bus = EventBus()
-        filter_a = lambda e: e.to_agent == "agent-a" or e.to_agent is None
-        filter_b = lambda e: e.to_agent == "agent-b" or e.to_agent is None
+        def filter_a(e):
+            return e.to_agent == "agent-a" or e.to_agent is None
+        def filter_b(e):
+            return e.to_agent == "agent-b" or e.to_agent is None
 
         async with bus.subscribe("sub_a", filter_fn=filter_a) as sub_a:
             async with bus.subscribe("sub_b", filter_fn=filter_b) as sub_b:
@@ -167,7 +170,7 @@ class TestEventBus:
     async def test_subscription_context_manager_unsubscribes_on_exit(self):
         """退出 async with 后，订阅者自动注销，不再出现在订阅者列表中。"""
         bus = EventBus()
-        async with bus.subscribe("sub1") as sub:
+        async with bus.subscribe("sub1") as _:
             assert bus.subscriber_count() == 1
         # 退出后应该自动注销
         assert bus.subscriber_count() == 0
@@ -201,7 +204,6 @@ class TestEventBus:
     @pytest.mark.asyncio
     async def test_backpressure_overflow_persists_events(self, tmp_path):
         """配置了 overflow_dir 时，Queue 满的事件会被持久化到磁盘，不被丢弃。"""
-        import os
         overflow_dir = tmp_path / "overflow"
         bus = EventBus(overflow_dir=overflow_dir)
 
@@ -375,17 +377,65 @@ class TestBusEmitter:
         assert event.payload["reason"] == "context full"
 
     @pytest.mark.asyncio
-    async def test_emit_ask_user_returns_empty_string(self):
-        """BusEmitter 不支持交互，emit_ask_user 应立即返回空字符串。"""
+    async def test_emit_ask_user_publishes_event_with_future(self):
+        """
+        BusEmitter.emit_ask_user() 发布 ASK_USER 事件，挂起等待 future.set_result()。
+        订阅者收到事件后设置 future，emit_ask_user 应返回答案。
+        """
+        from ccserver.event_bus import EventType
+        import asyncio
+
         bus = EventBus()
         emitter = BusEmitter(bus, agent_id="a1", session_id="s1")
+
+        received_future = None
+        # 用 Event 确保 subscriber 先完成订阅，再发布 ask_user 事件
+        subscribed = asyncio.Event()
+
+        async def subscriber():
+            nonlocal received_future
+            async with bus.subscribe("test_sub") as sub:
+                subscribed.set()  # 已订阅，通知主协程可以发布事件了
+                event = await sub.get(timeout=5.0)
+                assert event is not None
+                assert event.type == EventType.ASK_USER
+                received_future = event.payload["future"]
+                received_future.set_result("my answer")
+
+        sub_task = asyncio.create_task(subscriber())
+        await subscribed.wait()  # 等待 subscriber 订阅完成
+
         result = await emitter.emit_ask_user([{"question": "Continue?"}])
-        assert result == ""
+        await sub_task
+
+        assert result == "my answer"
 
     @pytest.mark.asyncio
-    async def test_emit_permission_request_returns_false(self):
-        """BusEmitter 不支持交互，emit_permission_request 应立即返回 False。"""
+    async def test_emit_permission_request_publishes_event_with_future(self):
+        """
+        BusEmitter.emit_permission_request() 发布 PERMISSION_REQ 事件，
+        订阅者通过 future.set_result(True) 批准工具执行。
+        """
+        from ccserver.event_bus import EventType
+        import asyncio
+
         bus = EventBus()
         emitter = BusEmitter(bus, agent_id="a1", session_id="s1")
-        result = await emitter.emit_permission_request("Bash", {"command": "rm -rf /"})
-        assert result is False
+
+        subscribed = asyncio.Event()
+
+        async def subscriber():
+            async with bus.subscribe("test_sub") as sub:
+                subscribed.set()
+                event = await sub.get(timeout=5.0)
+                assert event is not None
+                assert event.type == EventType.PERMISSION_REQ
+                event.payload["future"].set_result(True)
+
+        sub_task = asyncio.create_task(subscriber())
+        await subscribed.wait()
+
+        result = await emitter.emit_permission_request("Bash", {"command": "ls"})
+        await sub_task
+
+        assert result is True

@@ -13,7 +13,6 @@ from fastapi.testclient import TestClient
 
 from ccserver.session import Session
 from ccserver.tasks import TaskStatus
-from ccserver.builtins.tools.bash import BTBash
 
 
 # ─── Test fixtures ─────────────────────────────────────────────────────────────
@@ -56,7 +55,6 @@ def test_list_tasks_empty(session, client, monkeypatch):
 
 def test_list_tasks_with_running_task(session, client, monkeypatch):
     """有 running 任务时应正确返回计数。"""
-    from pathlib import Path
     from ccserver.tasks import ShellTaskState, generate_shell_id
 
     task = ShellTaskState(id=generate_shell_id(), command="sleep 60")

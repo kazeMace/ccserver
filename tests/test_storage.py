@@ -270,7 +270,7 @@ def test_sqlite_set_conversation_switches_active(sqlite_adapter):
 
 def test_sqlite_db_file_created(tmp_path):
     db_path = tmp_path / "subdir" / "test.db"
-    adapter = SQLiteStorageAdapter(db_path=db_path)
+    SQLiteStorageAdapter(db_path=db_path)
     assert db_path.exists()
 
 

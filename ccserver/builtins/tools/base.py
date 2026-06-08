@@ -12,7 +12,7 @@ Key conventions (from Claude Code):
 """
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Literal
 
 

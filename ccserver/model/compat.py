@@ -12,7 +12,7 @@ ModelCompat 描述的是"这个模型在这个 endpoint 上对协议的支持程
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)

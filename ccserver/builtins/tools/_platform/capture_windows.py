@@ -136,7 +136,7 @@ def capture_by_app(app_name: str) -> bytes:
     try:
         import win32gui
         import win32process
-        import win32api
+        import win32api  # noqa: F401
         import psutil
     except ImportError:
         logger.warning("pywin32 或 psutil 未安装，降级为全屏截图")

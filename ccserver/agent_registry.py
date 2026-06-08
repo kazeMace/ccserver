@@ -16,6 +16,10 @@ spawn_background() → register_handle(handle)
 """
 
 from loguru import logger
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ccserver.agent_handle import BackgroundAgentHandle
 
 
 # 全局 handle 注册表：agent_id → BackgroundAgentHandle

@@ -21,6 +21,8 @@ from loguru import logger
 
 if TYPE_CHECKING:
     from ccserver.outbound_bus import OutboundEvent
+    from ccserver.channels.output_target import OutputTarget
+    from ccserver.channels.processor import Processor
 
 
 # ── ChatType 枚举 ─────────────────────────────────────────────────────────────
@@ -505,6 +507,24 @@ class BaseChannelAdapter(ABC):
             账户状态快照
         """
         return ChannelAccountSnapshot(account_id=account_id)
+
+    # ── 新出站架构：Processor 工厂方法 ──────────────────────────────────────────
+
+    def build_processor(self, target: "OutputTarget") -> "Processor":
+        """
+        为本 channel 创建出站 Processor 实例。
+
+        默认实现：返回 PassthroughProcessor，收到 done 事件直接调用 send_text()。
+        子类（如 WebChatAdapter）可覆盖以返回自定义 Processor。
+
+        Args:
+            target: 已创建好的 OutputTarget 实例（processor 字段尚未设置）。
+
+        Returns:
+            Processor 实例。
+        """
+        from ccserver.channels.processor import PassthroughProcessor
+        return PassthroughProcessor(adapter=self, target=target)
 
     # ── OutboundBus 集成 ────────────────────────────────────────────────────
 

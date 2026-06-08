@@ -18,8 +18,9 @@ managers/cron/cron_parser.py — 标准 5 字段 cron 表达式解析器。
 """
 
 from datetime import datetime, timezone, timedelta
+from dataclasses import dataclass
+from typing import Literal
 import calendar
-from typing import Optional
 
 
 
@@ -311,9 +312,6 @@ def cron_to_human(cron_expr: str) -> str:
 
 # ─── 自然语言解析 ───────────────────────────────────────────────────────────────
 
-from dataclasses import dataclass
-from typing import Literal
-
 
 @dataclass
 class ScheduleSpec:
@@ -419,6 +417,7 @@ def _resolve_absolute_time(text: str, base: datetime) -> datetime | None:
     Returns:
         解析成功返回 UTC datetime，失败返回 None。
     """
+    import re
     text = text.strip().lower()
 
     # 排除重复调度词（否则"每天早上10点"会被误识别为 once）

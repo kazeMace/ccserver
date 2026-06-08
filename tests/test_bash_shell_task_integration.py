@@ -11,16 +11,12 @@ tests/test_bash_shell_task_integration.py — BTBash 后台任务与 Session 集
 """
 
 import pytest
-import anyio
 import asyncio
 from pathlib import Path
-from datetime import datetime
 
 from ccserver.session import Session
 from ccserver.tasks import (
-    ShellTaskState,
     ShellTaskRegistry,
-    generate_shell_id,
     TaskStatus,
 )
 from ccserver.builtins.tools.bash import BTBash

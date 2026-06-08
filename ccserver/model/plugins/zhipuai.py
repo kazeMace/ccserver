@@ -80,7 +80,6 @@ def _build_glm_media_provider(plugin: ZhipuAIPlugin):
     使用 describe_image_with_model() 通用实现，
     GLM-5V 支持 image + video + file 多模态。
     """
-    from ccserver.model.media.base import MediaUnderstandingProvider
     from ccserver.model.media.describe import describe_image_with_model
 
     class GLMMediaUnderstandingProvider:

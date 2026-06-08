@@ -78,8 +78,6 @@ def _build_anthropic_media_provider():
     auto_priority=20，Claude 全系列支持 text+image，
     使用 describe_image_with_model() 通用实现。
     """
-    import os
-    from ccserver.model.media.base import MediaUnderstandingProvider
     from ccserver.model.media.describe import describe_image_with_model
     from ccserver.model.anthropic_adapter import AnthropicAdapter
     from anthropic import AsyncAnthropic

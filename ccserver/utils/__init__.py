@@ -9,6 +9,15 @@ from .sdk import (
 
 from .yaml_parser import parse as parse_frontmatter
 
+__all__ = [
+    "estimate_tokens",
+    "generate_message_id",
+    "get_block_attr",
+    "normalize_content_blocks",
+    "parse_frontmatter",
+    "safe_path",
+]
+
 
 def safe_path(workdir: Path, p: str) -> Path:
     """

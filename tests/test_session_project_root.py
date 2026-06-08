@@ -1,6 +1,5 @@
 # tests/test_session_project_root.py
 import importlib
-from pathlib import Path
 
 
 def test_session_manager_uses_project_dir(tmp_path, monkeypatch):

@@ -14,7 +14,7 @@ tests/test_anthropic_adapter.py — AnthropicAdapter 单元测试
 """
 
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import MagicMock, AsyncMock
 
 from ccserver.model.anthropic_adapter import AnthropicAdapter
 
@@ -156,7 +156,7 @@ def test_stream_returns_context_manager():
 
 
 def test_get_default_adapter_returns_anthropic_adapter():
-    from ccserver.model.anthropic_adapter import get_default_adapter, _default_adapter
+    from ccserver.model.anthropic_adapter import get_default_adapter
     import ccserver.model.anthropic_adapter as mod
 
     # 清除单例以确保测试独立

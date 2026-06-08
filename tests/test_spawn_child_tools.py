@@ -12,14 +12,13 @@ tests/test_spawn_child_tools.py — spawn_child() 分层工具过滤测试
   - 决策优先级：hardcode > settings.deny > agent_def.disallowed > agent_def.tools/default > settings.allow
 """
 
-import pytest
 from pathlib import Path
 from unittest.mock import MagicMock
 
 from ccserver.agent import Agent, AgentContext
 from ccserver.managers.agents import AgentDef
 from ccserver.settings import ProjectSettings
-from ccserver.builtins.tools.constants import CHILD_DISALLOWED_TOOLS, CHILD_DEFAULT_TOOLS, TEAMMATE_EXTRA_TOOLS
+from ccserver.builtins.tools.constants import CHILD_DEFAULT_TOOLS, TEAMMATE_EXTRA_TOOLS
 
 
 # ─── 辅助函数 ─────────────────────────────────────────────────────────────────

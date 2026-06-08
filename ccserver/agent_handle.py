@@ -32,6 +32,7 @@ from loguru import logger
 
 if TYPE_CHECKING:
     from ccserver.tasks import AgentTaskState
+    from ccserver.agent import AgentState
 
 
 def generate_agent_task_id() -> str:

@@ -10,7 +10,10 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ccserver.pipeline.data import NodeData
 
 # 裸模式节点的临时目录统一放在这里，按实例 uuid 隔离
 _BARE_ROOT_BASE = Path(__file__).parent / "_bare_roots"

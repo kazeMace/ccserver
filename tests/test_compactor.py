@@ -10,7 +10,6 @@ tests/test_compactor.py — Compactor 单元测试
   - micro() 只截断长内容（>100 字符），短内容保留
 """
 
-import pytest
 from unittest.mock import MagicMock
 
 from ccserver.compactor import Compactor

@@ -25,6 +25,7 @@ from .mcp import MCPManager
 from .settings import ProjectSettings
 from .storage import StorageAdapter, SessionRecord, FileStorageAdapter
 from .team import TeamRegistry
+from .channels.output_target import OutputTarget
 
 
 # ─── Session ──────────────────────────────────────────────────────────────────
@@ -54,6 +55,14 @@ class Session:
     _agent_tasks: Any = field(default=None, repr=False)  # AgentTaskRegistry，后台 Agent 任务注册表
     _team_registry: Any = field(default=None, repr=False)  # TeamRegistry，Agent Team 注册表（可选）
     _root_agent: Any = field(default=None, repr=False)      # 根 Agent 引用，由 AgentFactory.create_root() 设置
+
+    # ── 出站目标列表（新出站架构核心）────────────────────────────────────────────
+    # output_targets：当前轮次的出站目标。由 Gateway.dispatch_inbound() 在每次
+    #   收到入站消息时组装，轮次结束后清空。
+    # default_output_targets：持久化的出站目标，由最后一次 InboundMessage 路由更新。
+    #   供 Cron 触发/Background Agent 使用：没有 InboundMessage 时，仍能找到"发给谁"。
+    output_targets: list[OutputTarget] = field(default_factory=list)
+    default_output_targets: list[OutputTarget] = field(default_factory=list)
 
     def __post_init__(self):
         if self._settings is None:

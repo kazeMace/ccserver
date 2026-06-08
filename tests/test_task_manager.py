@@ -443,8 +443,8 @@ def test_render_list_contains_tasks():
 def test_render_list_shows_completion_count():
     tm = _make_tm()
     t1 = tm.create("任务1", "")
-    t2 = tm.create("任务2", "")
-    t3 = tm.create("任务3", "")
+    tm.create("任务2", "")
+    tm.create("任务3", "")
     tm.update(t1.id, status="completed")
     output = tm.render_list()
     assert "(1/3 completed)" in output
@@ -452,7 +452,7 @@ def test_render_list_shows_completion_count():
 
 def test_render_list_excludes_deleted():
     tm = _make_tm()
-    t1 = tm.create("保留", "")
+    tm.create("保留", "")
     t2 = tm.create("删除", "")
     tm.update(t2.id, status="deleted")
     output = tm.render_list()

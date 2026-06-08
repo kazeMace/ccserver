@@ -99,7 +99,8 @@ class TeamTaskDispatcher:
         """订阅 EventBus idle 事件，收到后立即触发调度。"""
         from ccserver.event_bus import EventType
 
-        filter_fn = lambda e: e.type == EventType.IDLE
+        def filter_fn(e):
+            return e.type == EventType.IDLE
         sub_id = f"dispatcher_{self.team.name}"
         async with self._event_bus.subscribe(sub_id, filter_fn=filter_fn) as sub:
             while True:

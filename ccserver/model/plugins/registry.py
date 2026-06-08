@@ -11,7 +11,7 @@ from loguru import logger
 
 from .base import ProviderPlugin
 from ccserver.model.adapter import ModelAdapter
-from ccserver.model.info.registry import ModelInfoRegistry, get_registry
+from ccserver.model.info.registry import get_registry
 
 
 class ProviderRegistry:

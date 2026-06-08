@@ -12,17 +12,14 @@ tests/test_cron_scheduler.py — CronScheduler 单元测试。
   - cron_parser 核心路径
 """
 
-import asyncio
 import pytest
 from datetime import datetime, timezone, timedelta
-from unittest.mock import MagicMock, AsyncMock
 
 from ccserver.managers.cron.models import ScheduledTask, TASK_PREFIX
 from ccserver.managers.cron.cron_parser import (
     parse_cron_next_run,
     cron_to_human,
     compute_jitter_delay,
-    _expand_field,
 )
 from ccserver.managers.cron import TaskScheduler
 

@@ -6,7 +6,6 @@ team.registry — TeamRegistry 实现。
 通过 _maybe_await 自动桥接。
 """
 
-from typing import Any
 
 from loguru import logger
 

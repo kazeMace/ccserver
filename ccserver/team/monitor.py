@@ -11,7 +11,6 @@ from loguru import logger
 from ccserver import agent_registry
 from ccserver.team.mailbox import TeamMailbox
 from ccserver.team.dispatcher import TeamTaskDispatcher
-from ccserver.team.poller import TeamMailboxPoller
 
 
 class TeamHealthMonitor:

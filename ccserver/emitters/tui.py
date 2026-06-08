@@ -2,7 +2,7 @@ import asyncio
 import itertools
 import sys
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from .base import BaseEmitter
@@ -80,7 +80,6 @@ def rainbow_text(text: str) -> str:
     Returns:
         带 ANSI 彩虹色的字符串，末尾自动加上 RESET。
     """
-    import math
 
     result = []
     length = len(text)
@@ -95,11 +94,11 @@ def rainbow_text(text: str) -> str:
     return "".join(result)
 
 
-def _hsl_to_rgb(h: float, s: float, l: float) -> tuple[int, int, int]:
+def _hsl_to_rgb(h: float, s: float, lightness: float) -> tuple[int, int, int]:
     """将 HSL 颜色转换为 RGB（h 为角度 0-360）。"""
     h = h / 360.0
     if s == 0:
-        v = int(l * 255)
+        v = int(lightness * 255)
         return v, v, v
 
     def _hue2rgb(p: float, q: float, t: float) -> float:
@@ -115,8 +114,8 @@ def _hsl_to_rgb(h: float, s: float, l: float) -> tuple[int, int, int]:
             return p + (q - p) * (2 / 3 - t) * 6
         return p
 
-    q = l * (1 + s) if l < 0.5 else l + s - l * s
-    p = 2 * l - q
+    q = lightness * (1 + s) if lightness < 0.5 else lightness + s - lightness * s
+    p = 2 * lightness - q
     r = _hue2rgb(p, q, h + 1 / 3)
     g = _hue2rgb(p, q, h)
     b = _hue2rgb(p, q, h - 1 / 3)
@@ -274,7 +273,6 @@ class TUIEmitter(BaseEmitter):
         - Kitty：使用 Kitty Graphics Protocol
         - 其他终端：降级为文字描述 + ASCII 图像信息
         """
-        from typing import TYPE_CHECKING
         import base64
         import os
 

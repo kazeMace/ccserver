@@ -51,8 +51,7 @@ from __future__ import annotations
 import asyncio
 import json
 import subprocess
-import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import httpx
 from pathlib import Path
@@ -242,8 +241,7 @@ _OTHER_NAMES_TO_STANDARD: dict[str, str] = {
     "tool_call_before":      "tool:call:before",
     "tool_call_after":       "tool:call:after",
     "tool_call_failure":     "tool:call:failure",
-    "session_end":           "session:end",
-    "subagent_ended":        "subagent:ended",
+    # session_end 和 subagent_ended 已在上方定义，此处不重复
     "agent_compact_before":  "agent:compact:before",
     "agent_compact_after":   "agent:compact:after",
     "agent_limit":           "agent:limit",
@@ -1633,7 +1631,6 @@ def _match_bash_command(pattern: str, command: str) -> bool:
             break
 
     head = cmd.split()[0] if cmd else ""
-    rest = cmd[len(head):].lstrip() if head else ""
 
     # "git *" 可以匹配 "git" 本身（尾部参数可选）
     if pattern.endswith(" *"):

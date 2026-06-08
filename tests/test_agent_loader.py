@@ -8,10 +8,9 @@ tests/test_agent_loader.py — AgentDef 新字段解析测试
   - tools + mcp 字段正确拆分
 """
 
-import pytest
 from pathlib import Path
 
-from ccserver.managers.agents import AgentLoader, AgentDef
+from ccserver.managers.agents import AgentLoader
 
 
 def _write_agent(tmp_path: Path, filename: str, content: str) -> Path:

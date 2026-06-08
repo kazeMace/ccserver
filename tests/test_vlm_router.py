@@ -12,7 +12,6 @@ from ccserver.model.routing.router import VLMRouter, RouteResult, resolve_vlm_ro
 from ccserver.model.routing.fallback import FallbackChain
 from ccserver.model.anthropic_adapter import get_default_adapter
 from ccserver.model.plugins.registry import get_provider_registry
-from ccserver.model.media.registry import get_media_registry
 
 
 class TestRouteResult:

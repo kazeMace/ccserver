@@ -14,7 +14,6 @@ tests/test_bt_base.py — ToolResult、ToolParam、BaseTool 单元测试
 
 import asyncio
 import pytest
-from pathlib import Path
 
 from ccserver.builtins.tools import BuiltinTools, ToolParam, ToolResult
 

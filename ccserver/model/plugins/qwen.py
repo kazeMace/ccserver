@@ -83,7 +83,6 @@ def _build_qwen_media_provider():
     默认使用 qwen-vl-max-latest 模型（阿里云 DashScope）。
     """
     import os
-    from ccserver.model.media.base import MediaUnderstandingProvider
     from ccserver.model.media.describe import describe_image_with_model
     from ccserver.model.openai_adapter import OpenAIAdapter
     from openai import AsyncOpenAI

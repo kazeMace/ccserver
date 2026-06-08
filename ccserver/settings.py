@@ -46,11 +46,15 @@ runMode 说明：
 
 import json
 from pathlib import Path
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from loguru import logger
 
 from .config import CCSERVER_USER_AGENT_TEAM
+
+if TYPE_CHECKING:
+    from ccserver.managers.hooks import HookLoader
+    from ccserver.model.endpoint import ModelEndpoint
 
 # 延迟 import HookLoader，避免循环依赖（settings → hooks → settings）
 # HookLoader 在需要时才导入（see build_hook_loader 方法）

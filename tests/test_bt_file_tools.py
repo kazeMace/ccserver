@@ -35,8 +35,6 @@ tests/test_bt_file_tools.py — BTRead / BTWrite / BTEdit / BTGlob / BTGrep 单�
 """
 
 import asyncio
-import pytest
-from pathlib import Path
 
 from ccserver.builtins.tools import BTRead
 from ccserver.builtins.tools import BTWrite
@@ -284,7 +282,7 @@ def test_grep_caps_at_50_results(tmp_path):
     (tmp_path / "big.txt").write_text(lines)
     tool = BTGrep(tmp_path)
     result = _run(tool(pattern="match line"))
-    output_lines = [l for l in result.content.split("\n") if l]
+    output_lines = [line for line in result.content.split("\n") if line]
     assert len(output_lines) <= 50
 
 
@@ -295,7 +293,7 @@ def test_grep_case_sensitive_by_default(tmp_path):
     assert "Hello World" in result.content
     # 大小写敏感：小写 hello 不应匹配
     lines = result.content.split("\n")
-    matched_contents = [l.split(":", 2)[-1] if ":" in l else "" for l in lines if l]
+    matched_contents = [line.split(":", 2)[-1] if ":" in line else "" for line in lines if line]
     assert not any("hello world" == c for c in matched_contents)
 
 

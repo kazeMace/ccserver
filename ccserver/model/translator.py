@@ -11,7 +11,6 @@ translator — Anthropic <-> OpenAI 消息/Schema 转换器。
 from __future__ import annotations
 
 import json
-from typing import Any
 
 from loguru import logger
 

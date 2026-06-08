@@ -9,7 +9,7 @@ auto_priority 决定在多个提供者可用时优先使用哪个，数值越低
 
 from __future__ import annotations
 
-from typing import Any, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 
 @runtime_checkable

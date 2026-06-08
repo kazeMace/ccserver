@@ -39,6 +39,12 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
+# 避免循环导入：Visibility 定义在 channels/output_target.py，
+# 这里直接定义字符串常量，与 Visibility 枚举值保持一致。
+_VISIBILITY_FULL      = "full"
+_VISIBILITY_DONE_ONLY = "done_only"
+_VISIBILITY_HIDDEN    = "hidden"
+
 from loguru import logger
 
 
@@ -58,7 +64,8 @@ class EventType:
       - cancelled        Agent 被取消
       - idle             Teammate 进入空闲，等待新任务
       - new_task         向 Teammate 投递新任务
-      - permission_req   Teammate 向 Lead 请求工具权限审批
+      - ask_user         Agent 向用户提问，等待回答（含 questions 列表和 future）
+      - permission_req   Teammate 向 Lead 请求工具权限审批（含 future）
       - permission_resp  Lead 回复权限审批结果
       - shutdown         请求 Teammate 优雅退出
       - phase_changed    Agent 状态变化（idle/running/llm_calling/tool_executing/done/error）
@@ -81,7 +88,9 @@ class EventType:
     CANCELLED       = "cancelled"
     IDLE            = "idle"
     NEW_TASK        = "new_task"
-    PERMISSION_REQ  = "permission_req"
+    # ── 交互回路事件（含 asyncio.Future，不可 JSON 序列化，仅内存传递）──────────
+    ASK_USER        = "ask_user"         # payload: {"questions": list, "future": asyncio.Future}
+    PERMISSION_REQ  = "permission_req"   # payload: {"tool_name": str, "tool_input": dict, "future": asyncio.Future}
     PERMISSION_RESP = "permission_resp"
     SHUTDOWN        = "shutdown"
     PHASE_CHANGED   = "phase_changed"
@@ -165,6 +174,9 @@ class AgentEvent:
                           "feedback": str | None}
         image:          {"tool_name": str, "image_base64": str,
                           "description": str}
+        ask_user:       {"questions": list, "future": asyncio.Future}
+                          （future 不可 JSON 序列化，仅内存传递）
+        permission_req: {"tool_name": str, "tool_input": dict, "future": asyncio.Future}
     """
     type:        str
     agent_id:    str
@@ -174,6 +186,10 @@ class AgentEvent:
     to_agent:    Optional[str] = None
     event_id:    str = field(default_factory=lambda: uuid.uuid4().hex[:12])
     ts:          float = field(default_factory=time.monotonic)
+    # visibility 控制 OutputTarget.Processor 是否处理该事件。
+    # 取值见 _VISIBILITY_* 常量（与 channels.output_target.Visibility 枚举值保持一致）。
+    # 根 Agent 发出的事件默认 FULL，子 Agent 由父 Agent spawn 时注入。
+    visibility:  str = field(default=_VISIBILITY_FULL)
 
     def to_dict(self) -> dict:
         """
@@ -204,6 +220,7 @@ class AgentEvent:
             to_agent=data.get("to_agent"),
             event_id=data.get("event_id", uuid.uuid4().hex[:12]),
             ts=data.get("ts", time.monotonic()),
+            visibility=data.get("visibility", _VISIBILITY_FULL),
         )
 
 

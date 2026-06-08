@@ -9,7 +9,6 @@ tests/test_bt_task_tools.py — BTTaskCreate / BTTaskUpdate / BTTaskGet / BTTask
   - 所有工具都通过 await tool(**kwargs) 调用（走 validate + run 链）
 """
 
-import asyncio
 import pytest
 
 from ccserver.builtins.tools import BTTaskCreate

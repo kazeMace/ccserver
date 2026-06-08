@@ -15,7 +15,6 @@ tests/test_utils.py — 工具函数单元测试
 """
 
 import pytest
-from pathlib import Path
 from unittest.mock import MagicMock
 
 from ccserver.utils import safe_path

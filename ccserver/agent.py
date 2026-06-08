@@ -17,8 +17,6 @@ Agent — 统一的代理抽象，适用于根代理和子代理。
 """
 
 import asyncio
-import json
-import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
@@ -28,7 +26,7 @@ from .config import MODEL, MAIN_ROUND_LIMIT, SUB_ROUND_LIMIT, MAX_DEPTH, RECORD_
 from ccserver.managers.hooks import HookContext
 from .recorder import Recorder
 from .session import Session
-from .compact import Compactor, CompactorFactory
+from .compact import CompactorFactory
 from .compact.tokens import estimate_tokens as _estimate_tokens
 from .utils import get_block_attr, normalize_content_blocks, generate_message_id
 from ccserver.builtins.tools import ToolResult
@@ -39,7 +37,7 @@ from ccserver.emitters.bus_emitter import BusEmitter
 from .agent_handle import BackgroundAgentHandle
 from .agent_registry import register_handle, unregister_handle
 from .event_bus import AgentEvent, EventType, SenderType
-from .model import ModelAdapter, get_adapter
+from .model import ModelAdapter
 
 from typing import List, Dict, Any, Optional, Callable
 
@@ -47,13 +45,7 @@ from typing import List, Dict, Any, Optional, Callable
 from ccserver.team.mailbox import TeamMailbox
 from ccserver.team.protocol import (
     MsgType,
-    TeamMessage,
-    NewTaskMessage,
-    ShutdownRequestMessage,
-    PermissionRequestMessage,
-    PermissionResponseMessage,
     ChatMessage,
-    IdleNotificationMessage,
 )
 from ccserver.team.helpers import format_agent_id
 
@@ -312,20 +304,9 @@ class Agent:
         else:
             self._append({"role": "user", "content": message})
 
-        # 保存原始 emitter
-        original_emitter = self.emitter
-
-        # 临时替换为 BusEmitter，事件会自动 publish 到 EventBus
-        bus_emitter = BusEmitter(
-            bus=self.session.event_bus,
-            agent_id=self.context.agent_id,
-            session_id=self.session.id,
-        )
-        self.emitter = bus_emitter
-
-        # 订阅自己的事件
+        # 直接订阅 self 的事件（self.emitter 已是 BusEmitter，无需再临时替换）
         sub_id = f"stream_{self.context.agent_id[:8]}_{id(self)}"
-        filter_fn = lambda e: e.agent_id == self.context.agent_id
+        filter_fn = lambda e: e.agent_id == self.context.agent_id  # noqa: E731
 
         # 启动 _loop() 后台任务
         loop_task = asyncio.create_task(self._loop())
@@ -352,19 +333,10 @@ class Agent:
                     yield event
 
         finally:
-            # 恢复原始 emitter
-            self.emitter = original_emitter
+            pass  # 无临时状态需要恢复
 
-        # 等待 _loop() 任务完成，获取最终结果
-        result = await loop_task
-
-        # 兜底：如果 _loop() 正常返回但没有发布 DONE 事件（如 report 策略），
-        # 在这里补发一个 DONE 事件，确保调用方收到终止信号
-        # 注：正常情况下 _finish_with_last_text / emit_done 会发布 DONE 事件
-        if result and not loop_task.cancelled():
-            # 检查是否已发过 DONE——由于上面的订阅已经关闭，无法直接检查
-            # 简单处理：如果 result 有内容，说明任务已完成，无需重复 yield
-            pass
+        # 等待 _loop() 任务完成
+        await loop_task
 
     async def _handle_command(self, raw: str):
         """
@@ -544,11 +516,15 @@ class Agent:
 
         # emitter：子 agent 默认屏蔽 token 流（stream=False），避免子 agent 的思考过程
         # 直接透传到客户端与父 agent 输出混在一起。
-        # agent_def.output_mode 映射到 verbosity 参数：
-        #   None / "verbose"    → verbosity="verbose"（透传工具事件，但不流 token）
-        #   "final_only"        → verbosity="final_only"（只透传 done/error）
-        verbosity = (agent_def.output_mode if agent_def and agent_def.output_mode else "verbose")
-        child_emitter = FilterEmitter(self.emitter, verbosity=verbosity, stream=False, interactive=False)
+        # 子 Agent 使用 BusEmitter，visibility=DONE_ONLY（只有 done/error 对外可见）
+        # 父 Agent 的 FilterEmitter 转发逻辑已由 AgentEvent.visibility 字段替代
+        from ccserver.event_bus import _VISIBILITY_DONE_ONLY
+        child_emitter = BusEmitter(
+            bus=self.session.event_bus,
+            agent_id=child_context.agent_id,
+            session_id=self.session.id,
+            visibility=_VISIBILITY_DONE_ONLY,
+        )
 
         child = Agent(
             session=self.session,
@@ -770,10 +746,11 @@ class Agent:
             持续运行直到 handle._task 结束（teammate 场景下可能有多次任务完成）。
             """
             sub_id = f"terminal_{agent_task_id}"
-            filter_fn = lambda e: (
-                e.agent_id == child_agent_id
-                and e.type in {EventType.DONE, EventType.ERROR, EventType.CANCELLED}
-            )
+            def filter_fn(e):
+                return (
+                    e.agent_id == child_agent_id
+                    and e.type in {EventType.DONE, EventType.ERROR, EventType.CANCELLED}
+                )
 
             # 辅助函数：向父 Agent messages 注入完成通知（替代 _notify_parent_done）
             async def _inject_done_notice(
@@ -876,11 +853,9 @@ class Agent:
         # 8. 启动后台 Agent 协程（不阻塞）
         async def _run_background():
             try:
-                # P2: 使用 run_stream() 替代 run()，事件通过 BusEmitter 自动发布到 EventBus。
-                # run_stream() 内部临时替换 emitter 为 BusEmitter，调用方通过 async for 消费事件。
-                # 此处不需要手动消费事件（已由 EventBus 订阅者处理），直接遍历即可。
-                async for _ in child.run_stream(prompt):
-                    pass
+                # child.emitter 已是 BusEmitter（visibility=DONE_ONLY），
+                # 事件自动 publish 到 EventBus，此处直接 run()。
+                await child.run(prompt)
 
                 # ── Teammate 空闲循环：任务完成后进入 idle，等待新任务 ───────
                 if is_teammate:
@@ -938,9 +913,8 @@ class Agent:
                                     "Teammate new task | agent_id={} task_id={}",
                                     child.context.agent_id, msg.get("task_id")
                                 )
-                                # P2: 使用 run_stream() 替代 run()，事件通过 BusEmitter 自动发布到 EventBus
-                                async for _ in child.run_stream(task_prompt):
-                                    pass
+                                # child.emitter 已是 BusEmitter（visibility=DONE_ONLY）
+                                await child.run(task_prompt)
                                 # 任务完成后重新进入 idle 状态（持久 agent 在等待）
                                 await child._set_phase("idle")
                                 if registry is not None:
@@ -1113,9 +1087,10 @@ class Agent:
         # 启动 EventBus SHUTDOWN 事件订阅者，将 shutdown 事件注入 handle.inbox
         # （作为 Mailbox/Poller 的实时通道补充，容灾时 Poller 仍可从 Mailbox 补投）
         async def _watch_shutdown_events():
-            filter_fn = lambda e: e.type == EventType.SHUTDOWN and (
-                e.to_agent == agent_id or e.to_agent is None
-            )
+            def filter_fn(e):
+                return e.type == EventType.SHUTDOWN and (
+                    e.to_agent == agent_id or e.to_agent is None
+                )
             sub_id = f"shutdown_{agent_id}"
             async with self.session.event_bus.subscribe(sub_id, filter_fn=filter_fn) as sub:
                 while True:

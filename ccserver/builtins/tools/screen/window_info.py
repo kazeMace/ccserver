@@ -144,7 +144,7 @@ class BTWindowInfo(BuiltinTools):
             bid = info.get("bundle_id", "")
 
             parts = [
-                f"窗口信息查询成功。",
+                "窗口信息查询成功。",
                 f"进程：{owner}，标题：{title}。",
                 f"桌面位置：左上角 ({x}, {y})，宽 {width} 像素，高 {height} 像素。",
                 f"窗口中心点：({cx}, {cy})。",

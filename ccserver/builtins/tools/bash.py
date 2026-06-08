@@ -20,8 +20,8 @@ from .base import BuiltinTools, ToolParam, ToolResult
 
 if TYPE_CHECKING:
     from ccserver.session import Session
-    from ccserver.tasks import ShellTaskRegistry
     from ccserver.emitters.base import BaseEmitter
+    from ccserver.tasks import ShellTaskState
 else:
     # 运行时导入，避免循环：session.py → tasks → bash → session
     # session.py 在末尾才导入 bash.py，所以这里安全
@@ -316,7 +316,7 @@ class BTBash(BuiltinTools):
             )
             # 判断是被 deny 命中，还是 allow 白名单未命中
             hit_deny = any(cmd.startswith(p) for p in denied_prefixes)
-            reason = f"matched deny prefix" if hit_deny else f"not in allow whitelist {allowed_prefixes}"
+            reason = "matched deny prefix" if hit_deny else f"not in allow whitelist {allowed_prefixes}"
             logger.warning(
                 "Bash blocked | reason={} cmd={!r} denied={} allowed={}",
                 reason, cmd[:120], denied_prefixes, allowed_prefixes,

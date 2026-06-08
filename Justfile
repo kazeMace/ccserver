@@ -60,13 +60,15 @@ test-k keyword:
 
 # ─── 代码质量 ──────────────────────────────────────────────────────────────────
 
-# 检查代码风格
+# 检查代码风格（需先激活 ccserver 环境：conda activate ccserver）
 lint:
-    ruff check src/ tests/
+    @command -v ruff >/dev/null 2>&1 || { echo "❌ 未找到 ruff，请先运行：conda activate ccserver"; exit 1; }
+    ruff check ccserver/ tests/
 
-# 自动修复风格问题
+# 自动修复风格问题（需先激活 ccserver 环境：conda activate ccserver）
 fmt:
-    ruff format src/ tests/
+    @command -v ruff >/dev/null 2>&1 || { echo "❌ 未找到 ruff，请先运行：conda activate ccserver"; exit 1; }
+    ruff format ccserver/ tests/
 
 # ─── Playground ────────────────────────────────────────────────────────────────
 
@@ -92,6 +94,7 @@ clean:
     find . -name "*.pyo" -delete 2>/dev/null || true
     find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
     find . -name ".DS_Store" -delete 2>/dev/null || true
+    dot_clean .
 
 # 清理调试录制数据（records/）
 clean-records:

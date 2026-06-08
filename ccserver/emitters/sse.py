@@ -26,7 +26,7 @@ class SSEEmitter(BaseEmitter):
 
     def __init__(self, session=None, event_bus=None, client_id=None):
         self._queue: asyncio.Queue[Optional[dict]] = asyncio.Queue()
-        # 用于 AskUserQuestion 的等待机制
+        # 用于 AskUserQuestion 的等待机制（老 SSE 直连流）
         self._answer_event: asyncio.Event = asyncio.Event()
         self._answer: str = ""
         # 用于 permission_request 的等待机制（复用同一套 Event，串行执行）
@@ -34,6 +34,12 @@ class SSEEmitter(BaseEmitter):
         self._permission_granted: bool = False
         # session 引用，用于触发 message:outbound:sending hook
         self._session = session
+
+        # ── 新出站架构：Processor callback 机制 ──────────────────────────────
+        # Gateway 流中由 WebChatProcessor.on_ask_user() 设置，
+        # inject_answer() 时优先调用 callback 而非 asyncio.Event 机制
+        self._answer_cb = None       # Optional[Callable[[str], None]]
+        self._grant_cb = None        # Optional[Callable[[bool], None]]
 
         # ── EventBus 订阅相关（P1）───────────────────────────────────────────
         self._event_bus = event_bus          # EventBus 实例，可为 None
@@ -269,8 +275,18 @@ class SSEEmitter(BaseEmitter):
 
     def inject_answer(self, answer: str) -> None:
         """
-        由 API 层调用，将客户端的回答注入进来，唤醒挂起的 emit_ask_user()。
+        由 API 层调用，将客户端的回答注入进来。
+
+        支持两种模式：
+          1. 新出站架构（Gateway 流）：若 _answer_cb 已设置，调用 callback 注入答案。
+          2. 旧直连流（server.py 直接调用 agent.run）：通过 asyncio.Event 唤醒 emit_ask_user()。
         """
+        # 优先：新 callback 机制（WebChatProcessor 设置）
+        if self._answer_cb is not None:
+            cb = self._answer_cb
+            self._answer_cb = None
+            cb(answer)
+        # 兼容：旧 asyncio.Event 机制
         self._answer = answer
         self._answer_event.set()
 
@@ -293,7 +309,15 @@ class SSEEmitter(BaseEmitter):
 
     def inject_permission(self, granted: bool) -> None:
         """
-        由 API 层调用，将客户端的批准/拒绝决定注入，唤醒挂起的 emit_permission_request()。
+        由 API 层调用，将客户端的批准/拒绝决定注入。
+
+        支持两种模式（与 inject_answer 相同）：
+          1. 新出站架构：若 _grant_cb 已设置，调用 callback 注入决定。
+          2. 旧直连流：通过 asyncio.Event 唤醒 emit_permission_request()。
         """
+        if self._grant_cb is not None:
+            cb = self._grant_cb
+            self._grant_cb = None
+            cb(granted)
         self._permission_granted = granted
         self._permission_event.set()

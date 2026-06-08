@@ -6,23 +6,26 @@ bus_emitter — 将 BaseEmitter 的 emit_*() 调用翻译为 AgentEvent 并 publ
 BusEmitter 是 Agent 和 EventBus 之间的翻译层：
   - Agent 内部只调用 self.emitter.emit_token() / emit_done() 等，不感知总线
   - BusEmitter 把这些调用翻译成统一的 AgentEvent 格式，publish 到 Session 级 EventBus
-  - 所有订阅了 EventBus 的观察者（SSE、父 Agent、Recorder 等）独立收到事件副本
+  - 所有订阅了 EventBus 的观察者（OutputTarget.Processor 等）独立收到事件副本
 
-替换关系
-────────
-  旧：child.emitter = QueueEmitter(outbox)  # 写入一个固定队列，只有一个消费者
-  新：child.emitter = BusEmitter(bus, agent_id, session_id)  # 广播给所有订阅者
+ask_user / permission_request 的 future 机制
+────────────────────────────────────────────
+  旧：BusEmitter.emit_ask_user() 直接返回 ""（不等待用户）。
+  新：创建 asyncio.Future，把 future 放进事件 payload 一起 publish，
+      OutputTarget.Processor 收到事件后调用 answer_cb(text)，
+      answer_cb 把 future.set_result(text)，BusEmitter 返回答案，Agent 继续。
 
-Agent 内部代码零改动，只替换注入的 emitter 实例。
+visibility 字段
+──────────────
+  BusEmitter 构造时接受 visibility 参数，所有 publish 的 AgentEvent 都带此字段。
+  父 Agent spawn 子 Agent 时，根据可见性需求传入不同的 visibility。
 """
 
 import asyncio
 from typing import TYPE_CHECKING
 
-from loguru import logger
-
 from ccserver.emitters.base import BaseEmitter
-from ccserver.event_bus import AgentEvent, EventBus, EventType, SenderType
+from ccserver.event_bus import AgentEvent, EventBus, EventType, SenderType, _VISIBILITY_FULL
 
 if TYPE_CHECKING:
     from ccserver.builtins.tools.base import ToolResult
@@ -44,11 +47,29 @@ class BusEmitter(BaseEmitter):
         child = Agent(..., emitter=emitter, ...)
     """
 
-    def __init__(self, bus: EventBus, agent_id: str, session_id: str, sender_type: str = SenderType.AGENT):
+    def __init__(
+        self,
+        bus: EventBus,
+        agent_id: str,
+        session_id: str,
+        sender_type: str = SenderType.AGENT,
+        visibility: str = _VISIBILITY_FULL,
+    ):
+        """
+        Args:
+            bus:         Session 级 EventBus 实例。
+            agent_id:    发送方唯一 ID，作为事件的 agent_id 字段。
+            session_id:  所属 Session 的 ID，作为事件的 session_id 字段。
+            sender_type: 发送方类型，取值见 SenderType。默认 "agent"。
+            visibility:  事件可见性，控制 OutputTarget.Processor 是否处理。
+                         取值见 event_bus._VISIBILITY_* 常量。
+                         父 Agent spawn 子 Agent 时，根据需要传入不同值。
+        """
         self._bus = bus
         self._agent_id = agent_id
         self._session_id = session_id
         self._sender_type = sender_type
+        self._visibility = visibility
 
     def _make_event(
         self,
@@ -71,6 +92,7 @@ class BusEmitter(BaseEmitter):
             payload=payload,
             sender_type=self._sender_type,
             to_agent=to_agent,
+            visibility=self._visibility,
         )
 
     async def emit(self, event: dict) -> None:
@@ -215,30 +237,45 @@ class BusEmitter(BaseEmitter):
 
     async def emit_ask_user(self, questions: list) -> str:
         """
-        向用户提问。
+        向用户提问，挂起等待 OutputTarget.Processor 注入答案。
 
-        BusEmitter 用于子 Agent（非交互模式），不支持等待用户回答。
-        只 publish 事件，立即返回空字符串。
+        实现方式：
+          1. 创建 asyncio.Future，把 future 放入事件 payload 一起 publish。
+          2. 所有 OutputTarget.Processor 收到 ASK_USER 事件后，以各自方式向用户提问，
+             用户回答后调 answer_cb(text)，answer_cb 调用 future.set_result(text)。
+          3. 本方法 await future，返回用户答案，Agent 继续执行。
+
+        超时 300 秒（5 分钟），超时后抛 asyncio.TimeoutError。
 
         Args:
-            questions: 问题列表。
+            questions: 问题列表，每项含 question/options 等字段。
 
         Returns:
-            空字符串（不支持交互）。
+            用户回答的文本。
         """
+        future: asyncio.Future = asyncio.get_event_loop().create_future()
         await self._bus.publish(
-            self._make_event("ask_user", {"questions": questions})
+            self._make_event(
+                EventType.ASK_USER,
+                {"questions": questions, "future": future},
+            )
         )
-        return ""
+        # 等待 Processor 通过 future.set_result() 注入答案
+        return await asyncio.wait_for(asyncio.shield(future), timeout=300)
 
     async def emit_permission_request(
         self, tool_name: str, tool_input: dict, to_agent: str | None = None
     ) -> bool:
         """
-        工具权限确认请求。
+        工具权限确认请求，挂起等待 OutputTarget.Processor 注入审批结果。
 
-        BusEmitter 用于子 Agent（非交互模式），直接返回 False（拒绝）。
-        只 publish 事件，不等待用户响应。
+        实现方式与 emit_ask_user 相同：
+          1. 创建 asyncio.Future，把 future 放入事件 payload 一起 publish。
+          2. OutputTarget.Processor 收到事件后向用户展示审批请求，
+             用户决定后调 grant_cb(True/False)，grant_cb 调用 future.set_result(bool)。
+          3. 本方法 await future，返回审批结果。
+
+        超时 300 秒，超时后默认返回 False（拒绝）。
 
         Args:
             tool_name:  工具名称。
@@ -246,16 +283,21 @@ class BusEmitter(BaseEmitter):
             to_agent:   目标 Agent ID（team 场景中指向 Lead），None 表示广播。
 
         Returns:
-            False（不支持交互）。
+            True 表示批准，False 表示拒绝。
         """
+        future: asyncio.Future = asyncio.get_event_loop().create_future()
         await self._bus.publish(
             self._make_event(
                 EventType.PERMISSION_REQ,
-                {"tool_name": tool_name, "tool_input": tool_input},
+                {"tool_name": tool_name, "tool_input": tool_input, "future": future},
                 to_agent=to_agent,
             )
         )
-        return False
+        try:
+            return await asyncio.wait_for(asyncio.shield(future), timeout=300)
+        except asyncio.TimeoutError:
+            # 超时默认拒绝，避免 Agent 永久挂起
+            return False
 
     async def emit_task_started(
         self,

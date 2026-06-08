@@ -51,7 +51,7 @@ def maybe_await(coro_or_result: Any) -> Any:
         return coro_or_result
 
     try:
-        loop = asyncio.get_running_loop()
+        asyncio.get_running_loop()
     except RuntimeError:
         # 无运行中事件循环，可直接 asyncio.run
         return asyncio.run(coro_or_result)

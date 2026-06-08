@@ -11,7 +11,6 @@ tests/test_bt_bash.py — BTBash 命令权限 validate() 测试
 
 import asyncio
 from pathlib import Path
-from unittest.mock import MagicMock
 
 from ccserver.builtins.tools import BTBash
 from ccserver.settings import ProjectSettings

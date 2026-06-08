@@ -12,15 +12,12 @@ zhipuai_adapter — 基于智谱 zai-sdk 的 ModelAdapter 实现。
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
-import httpx
 from loguru import logger
 
 from .adapter import ModelAdapter
-from .translator import _Message, _TextBlock, _ToolUseBlock
-from .openai_adapter import OpenAIStreamWrapper
+from .translator import _Message
 
 
 class ZhipuAIAdapter(ModelAdapter):

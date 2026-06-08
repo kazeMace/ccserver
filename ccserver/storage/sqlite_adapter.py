@@ -11,7 +11,6 @@ SQLite 存储后端。
 
 import json
 import sqlite3
-import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path

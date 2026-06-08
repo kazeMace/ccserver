@@ -8,7 +8,6 @@ storage.mongo_adapter — MongoDB 存储后端。
   transcripts   — 压缩前的完整快照（仅归档，不参与主流程）
 """
 
-import json
 from datetime import datetime, timezone
 from pathlib import Path
 

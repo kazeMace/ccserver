@@ -1,5 +1,4 @@
 # tests/prompts_lib/test_cc_reverse.py
-import pytest
 from unittest.mock import MagicMock
 from prompt_library.cc_reverse.v2_1_81.lib import CcReverseV2181
 
