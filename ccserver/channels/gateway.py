@@ -5,22 +5,21 @@ channels/gateway — 统一消息网关。
 ────
   1. Channel 生命周期管理：启动、停止、状态查询
   2. 入站消息路由：接收所有 channel 的入站消息，路由到 Session + Agent
-  3. 出站消息路由：监听 Agent 的 DONE 事件，自动发送回复到对应的 channel
-  4. Session 路由记录：保存"最后使用的 channel"，用于自动回复路由
+  3. 出站消息路由：通过 OutputTarget + Processor 驱动，所有 channel 走同一套骨架
+  4. Session 路由持久化：default_output_targets 记录最后路由，供 Cron / Background Agent 使用
 
 与 OpenClaw 的对应关系
 ──────────────────────
-ChannelGateway.dispatch_inbound()  → OpenClaw dispatchInboundMessage()
+ChannelGateway.dispatch_inbound()   → OpenClaw dispatchInboundMessage()
 ChannelGateway.dispatch_outbound()  → OpenClaw createChannelReplyPipeline() + deliverOutboundPayloads()
-ChannelGateway._routes              → OpenClaw updateLastRoute
 ChannelGateway.start_channel()      → OpenClaw channels.start
 ChannelGateway.stop_channel()       → OpenClaw channels.logout
 ChannelGateway.get_status()         → OpenClaw channels.status
 
-消息流
-──────
+消息流（新出站架构）
+──────────────────
 入站（Inbound）：
-  Discord/Telegram/飞书/钉钉/WebChat
+  Discord / 飞书 / WebChat / TUI
          │
          ▼
   ChannelAdapter._dispatch_inbound()
@@ -29,27 +28,22 @@ ChannelGateway.get_status()         → OpenClaw channels.status
   ChannelGateway.dispatch_inbound()
          │
          ├── 查找/创建 Session
-         ├── 记录路由信息（_routes）
-         ├── 订阅 EventBus（监听 DONE 事件）
-         └── 启动 AgentRunner.run()
+         ├── _build_output_target() → OutputTarget + Processor
+         ├── session.output_targets / default_output_targets 更新
+         ├── _ensure_processor_loop()（每 session 唯一 EventBus 驱动循环）
+         └── AgentRunner.run(session, msg, BusEmitter)
                    │
                    ▼
-              Agent 循环 → EventBus.publish(DONE)
+              Agent 循环 → BusEmitter → EventBus.publish(event)
                    │
                    ▼
-              EventBus 订阅者收到 DONE
+              processor_loop 收到事件 → _dispatch_event_to_processor()
                    │
                    ▼
-              ChannelGateway._on_agent_done()
+              OutputTarget.processor.on_done() / on_token() / on_ask_user() ...
                    │
                    ▼
-              ChannelAdapter.send_message()
-                   │
-                   ▼
-              Discord/Telegram/飞书/钉钉/WebChat
-
-出站（Outbound）：
-  与入站相同，DONE 事件触发回复发送。
+              adapter.send_text() / SSE 推流 / TUI 打印
 """
 
 import asyncio
@@ -632,15 +626,10 @@ class ChannelGateway:
             thread_part = msg.thread_id or msg.sender_id
             return f"{msg.channel_id}:{msg.account_id}:group:{thread_part}"
 
-    # _subscribe_outbound 和 _set_route 已在新出站架构中移除。
-    # 路由信息改为通过 session.default_output_targets 持久化，
-    # 无需再维护 _routes dict 和 OutboundBus 订阅。
 
     # ═════════════════════════════════════════════════════════════════════════════
-    #  出站消息处理
+    #  出站消息处理（新架构：通过 _ensure_processor_loop + _dispatch_event_to_processor 驱动）
     # ═════════════════════════════════════════════════════════════════════════════
-    # 注：_ensure_event_subscription / _on_agent_done / OutboundBus 桥接已在新架构中移除。
-    # 出站回复通过 _ensure_processor_loop + _dispatch_event_to_processor 驱动 Processor 完成。
 
     async def _send_error_reply(self, session_id: str, error_msg: str) -> None:
         """

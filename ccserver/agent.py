@@ -32,7 +32,7 @@ from .utils import get_block_attr, normalize_content_blocks, generate_message_id
 from ccserver.builtins.tools import ToolResult
 from ccserver.builtins.tools import BuiltinTools
 from ccserver.emitters import BaseEmitter
-from ccserver.emitters import FilterEmitter
+# FilterEmitter 已被 BusEmitter + visibility 机制替代，保留以备 tui_http 等旧调用方向后兼容
 from ccserver.emitters.bus_emitter import BusEmitter
 from .agent_handle import BackgroundAgentHandle
 from .agent_registry import register_handle, unregister_handle

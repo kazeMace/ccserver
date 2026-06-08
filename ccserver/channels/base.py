@@ -20,7 +20,6 @@ from typing import Optional, Callable, Awaitable, TYPE_CHECKING
 from loguru import logger
 
 if TYPE_CHECKING:
-    from ccserver.outbound_bus import OutboundEvent
     from ccserver.channels.output_target import OutputTarget
     from ccserver.channels.processor import Processor
 
@@ -526,84 +525,8 @@ class BaseChannelAdapter(ABC):
         from ccserver.channels.processor import PassthroughProcessor
         return PassthroughProcessor(adapter=self, target=target)
 
-    # ── OutboundBus 集成 ────────────────────────────────────────────────────
-
-    async def handle_outbound_event(self, event: "OutboundEvent") -> None:
-        """
-        处理出站回复事件（由 OutboundBus 触发）。
-
-        默认实现：直接调用 send_message() 发送最终回复。
-        子类可覆盖以实现更复杂的逻辑（如流式编辑、卡片更新等）。
-
-        Args:
-            event: OutboundEvent，包含 session_id、text、media_urls、is_final 等
-
-        使用方式
-        ────────
-        外部 adapter 在收到入站消息后，应 subscribe 该 session：
-            outbound_bus.subscribe(session_id, adapter.handle_outbound_event)
-
-        当 Agent 完成时，ChannelGateway 发布 OutboundEvent，
-        此 handler 被调用，adapter 将回复发送给用户。
-        """
-        if not event.is_final:
-            # 默认：忽略非最终事件（流式中间片段）
-            # 子类可覆盖以支持流式编辑
-            return
-
-        if not event.text and not event.media_urls:
-            return
-
-        # 查找该 session 的最后路由信息
-        # 注意：路由信息由 ChannelGateway._set_route() 保存
-        route = self._get_session_route(event.session_id)
-        if not route:
-            logger.warning(
-                "No route for outbound event | channel={} session={}",
-                self.channel_id, event.session_id[:8],
-            )
-            return
-
-        msg = OutboundMessage(
-            text=event.text,
-            media_urls=event.media_urls,
-            reply_to_id=event.reply_to_id or route.get("reply_to_id"),
-            thread_id=route.get("thread_id"),
-        )
-
-        try:
-            result = await self.send_message(
-                route["account_id"],
-                route["to"],
-                msg,
-            )
-            logger.info(
-                "Outbound handled | channel={} session={} success={}",
-                self.channel_id, event.session_id[:8], result.get("success"),
-            )
-        except Exception as e:
-            logger.error(
-                "Outbound handle failed | channel={} session={} err={}",
-                self.channel_id, event.session_id[:8], e,
-            )
-
-    def _get_session_route(self, session_id: str) -> Optional[dict]:
-        """
-        获取指定 session 的路由信息。
-
-        路由信息由 ChannelGateway._set_route() 保存，
-        包含 account_id、to（目标 ID）、reply_to_id、thread_id 等。
-
-        默认实现返回 None。子类应覆盖此方法以维护路由表。
-        更常见的做法：由 ChannelGateway 维护路由表，adapter 通过回调参数获取。
-
-        Args:
-            session_id: Session ID
-
-        Returns:
-            路由信息字典，或 None
-        """
-        return None
+    # handle_outbound_event / _get_session_route 已在新出站架构中移除。
+    # 出站回复通过 OutputTarget + Processor 机制驱动，无需 OutboundBus 集成层。
 
     # ── 内部工具方法 ──────────────────────────────────────────────────────────
 
