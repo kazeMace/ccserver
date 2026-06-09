@@ -22,21 +22,22 @@ from datetime import datetime, timezone
 
 from loguru import logger
 
-from .config import MODEL, MAIN_ROUND_LIMIT, SUB_ROUND_LIMIT, MAX_DEPTH, RECORD_DIR
+from ..config import MODEL, MAIN_ROUND_LIMIT, SUB_ROUND_LIMIT, MAX_DEPTH, RECORD_DIR
 from ccserver.managers.hooks import HookContext
-from .recorder import Recorder
-from .session import Session
-from .compact import CompactorFactory
-from .compact.tokens import estimate_tokens as _estimate_tokens
-from .utils import get_block_attr, normalize_content_blocks, generate_message_id
+from ..recorder import Recorder
+from ..session import Session
+from ..compact import CompactorFactory
+from ..compact.tokens import estimate_tokens as _estimate_tokens
+from ..utils import get_block_attr, normalize_content_blocks, generate_message_id
 from ccserver.builtins.tools import ToolResult
 from ccserver.builtins.tools import BuiltinTools
 from ccserver.emitters import BaseEmitter
 from ccserver.emitters.bus_emitter import BusEmitter
-from .agent_handle import BackgroundAgentHandle
-from .agent_registry import register_handle, unregister_handle
-from .event_bus import AgentEvent, EventType, SenderType
-from .model import ModelAdapter
+from ..agent_handle import BackgroundAgentHandle
+from ..agent_registry import register_handle, unregister_handle
+from ..event_bus import AgentEvent, EventType, SenderType
+from ..model import ModelAdapter
+from .runtime import AgentRuntime  # noqa: F401  Agent 拆分后协作者依赖的运行时契约(Protocol)
 
 from typing import List, Dict, Any, Optional, Callable
 
@@ -119,6 +120,13 @@ class Agent:
         system      str                  — 代理的身份 / 指令
 
     使用 create_root() 构建根代理，使用 spawn_child() 派生子代理。
+
+    架构说明（重构中）：
+        Agent 正逐步退化为「协调者」，把具体职责委托给协作者
+        (LimitPolicy / LLMCaller / ToolDispatcher / SpawnManager /
+         CompactCoordinator)。Agent 满足 runtime.AgentRuntime 契约
+        (structural typing，无需显式继承)，协作者只依赖该最小契约而非整个
+        Agent，以降低耦合(LOD)。
     """
 
     def __init__(
@@ -604,7 +612,7 @@ class Agent:
         Returns:
             具体模型名，或 None
         """
-        from .config import MODEL
+        from ..config import MODEL
         _HINT_MAP = {
             "haiku": "claude-haiku-4-5-20251001",
             "sonnet": MODEL,          # 跟随全局默认模型
