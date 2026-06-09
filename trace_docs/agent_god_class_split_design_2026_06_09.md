@@ -202,9 +202,24 @@ ccserver/agent/tool_dispatcher.py 629
 2. **派生/工具委托回 rt.spawn_***:SpawnManager/ToolDispatcher 内部经 `rt.spawn_*`
    调用(而非自身),保持"spawn_background 使用父 Agent 的 spawn_child"契约,
    使外部 monkeypatch agent.spawn_child 仍生效(test_spawn_background_inherits_env_vars)。
-3. **团队 inbox 未拆**:`_drain_inbox_and_respond` 与 _loop 轮次节奏强绑定,本轮保留
-   在 Agent(设计第三节已说明)。
+3. **团队 inbox 已补拆(后续追加)**:`_drain_inbox_and_respond` 经评估其与 _loop
+   的耦合实为"返回值驱动"而非状态共享(方法无副作用),已抽出为 `TeamCoordinator`
+   (`team_coordinator.py`),Agent 保留薄委托。设计第三节的"本轮先不动"已落地完成。
 4. `_resolve_model_hint` 随 SpawnManager 迁出为 `resolve_model_hint` 静态方法。
+
+### 最终包结构(含后续追加的 TeamCoordinator)
+```
+ccserver/agent/__init__.py        641  (Agent 协调者)
+ccserver/agent/runtime.py          82
+ccserver/agent/limit_policy.py    264
+ccserver/agent/llm_caller.py      323
+ccserver/agent/compact_coordinator.py  96
+ccserver/agent/spawn_manager.py   719
+ccserver/agent/tool_dispatcher.py 629
+ccserver/agent/team_coordinator.py     ~130
+```
+`Agent` 最终 **2612 → 641 行(降幅 75.5%)**,6 个子系统(限流/压缩/LLM/派生/
+工具/团队 inbox)全部拆分为协作者。
 
 ### 验收结果
 - 全量测试 735 passed / 5 failed(5 个均为预先存在,与本任务无关)。
