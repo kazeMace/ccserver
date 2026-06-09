@@ -15,13 +15,60 @@ from __future__ import annotations
 
 import os
 import httpx
-from typing import Any
+from typing import Any, Callable
 
 from loguru import logger
 
 from .adapter import ModelAdapter
 from .endpoint import ModelEndpoint, API_TYPE_ANTHROPIC, API_TYPE_OPENAI, API_TYPE_ZHIPUAI, API_TYPE_VOLCANO
 from .plugins.registry import get_provider_registry
+
+
+# ── api_type → builder 注册表（OCP）────────────────────────────────────────────────
+#
+# 设计意图：满足开闭原则。新增一种 api_type（新模型供应商协议）时，
+# 只需新增一个 builder 函数并用 @register_api_builder("xxx") 装饰，
+# 无需修改 _build_adapter_for_api_type 的分派逻辑。
+#
+# Builder 签名：(ModelEndpoint) -> ModelAdapter
+#   入参：已 resolve() 的 ModelEndpoint（api_type 一定非 None）
+#   返回：未注入 model_info/compat 的 ModelAdapter 实例
+ApiTypeBuilder = Callable[[ModelEndpoint], ModelAdapter]
+
+# 全局注册表：api_type 字符串 → builder 函数
+_API_TYPE_BUILDERS: dict[str, ApiTypeBuilder] = {}
+
+
+def register_api_builder(api_type: str) -> Callable[[ApiTypeBuilder], ApiTypeBuilder]:
+    """
+    装饰器：将一个 builder 函数注册到 _API_TYPE_BUILDERS。
+
+    Args:
+        api_type: 该 builder 负责的 api_type 字符串，如 API_TYPE_ANTHROPIC。
+
+    Returns:
+        装饰器本身。被装饰函数原样返回（仅产生注册副作用）。
+
+    Raises:
+        AssertionError: api_type 为空，或已被其他 builder 占用（防止重复注册）。
+
+    Usage:
+        @register_api_builder(API_TYPE_ANTHROPIC)
+        def _build_anthropic(ep: ModelEndpoint) -> ModelAdapter:
+            ...
+    """
+    assert api_type, "api_type must not be empty"
+    assert api_type not in _API_TYPE_BUILDERS, (
+        f"api_type {api_type!r} already registered by "
+        f"{_API_TYPE_BUILDERS[api_type].__name__}"
+    )
+
+    def _decorator(builder: ApiTypeBuilder) -> ApiTypeBuilder:
+        _API_TYPE_BUILDERS[api_type] = builder
+        logger.debug("register_api_builder | api_type={} builder={}", api_type, builder.__name__)
+        return builder
+
+    return _decorator
 
 
 class AdapterFactory:
@@ -97,6 +144,9 @@ def _build_adapter_for_api_type(ep: ModelEndpoint) -> ModelAdapter:
     """
     根据 api_type 创建底层 adapter 实例（不含 model_info/compat 注入）。
 
+    通过 _API_TYPE_BUILDERS 注册表查表分派，满足开闭原则：
+    新增 api_type 只需注册新 builder，本函数无需改动。
+
     Args:
         ep: 已 resolve() 的 ModelEndpoint（api_type 一定非 None）
 
@@ -104,25 +154,21 @@ def _build_adapter_for_api_type(ep: ModelEndpoint) -> ModelAdapter:
         未注入能力信息的 ModelAdapter 实例
 
     Raises:
-        ValueError: api_type 未知
+        ValueError: api_type 未在注册表中找到对应 builder
     """
     api_type = ep.api_type or API_TYPE_OPENAI
 
-    if api_type == API_TYPE_ANTHROPIC:
-        return _build_anthropic(ep)
-    elif api_type == API_TYPE_OPENAI:
-        return _build_openai(ep)
-    elif api_type == API_TYPE_ZHIPUAI:
-        return _build_zhipuai(ep)
-    elif api_type == API_TYPE_VOLCANO:
-        return _build_volcano(ep)
-    else:
+    builder = _API_TYPE_BUILDERS.get(api_type)
+    if builder is None:
+        supported = ", ".join(sorted(_API_TYPE_BUILDERS.keys()))
         raise ValueError(
-            f"Unknown api_type: {api_type!r}. "
-            f"Supported: {API_TYPE_ANTHROPIC}, {API_TYPE_OPENAI}, {API_TYPE_ZHIPUAI}, {API_TYPE_VOLCANO}"
+            f"Unknown api_type: {api_type!r}. Supported: {supported}"
         )
 
+    return builder(ep)
 
+
+@register_api_builder(API_TYPE_ANTHROPIC)
 def _build_anthropic(ep: ModelEndpoint) -> ModelAdapter:
     """构造 AnthropicAdapter，使用 ep.base_url / ep.api_key。"""
     from anthropic import AsyncAnthropic
@@ -144,6 +190,7 @@ def _build_anthropic(ep: ModelEndpoint) -> ModelAdapter:
     return AnthropicAdapter(client)
 
 
+@register_api_builder(API_TYPE_OPENAI)
 def _build_openai(ep: ModelEndpoint) -> ModelAdapter:
     """构造 OpenAIAdapter，使用 ep.base_url / ep.api_key。"""
     from .openai_adapter import OpenAIAdapter
@@ -153,6 +200,7 @@ def _build_openai(ep: ModelEndpoint) -> ModelAdapter:
     return adapter
 
 
+@register_api_builder(API_TYPE_ZHIPUAI)
 def _build_zhipuai(ep: ModelEndpoint) -> ModelAdapter:
     """构造 ZhipuAIAdapter，使用 ep.api_key。"""
     from .zhipuai_adapter import ZhipuAIAdapter
@@ -164,6 +212,7 @@ def _build_zhipuai(ep: ModelEndpoint) -> ModelAdapter:
     return ZhipuAIAdapter(api_key=api_key, base_url=ep.base_url)
 
 
+@register_api_builder(API_TYPE_VOLCANO)
 def _build_volcano(ep: ModelEndpoint) -> ModelAdapter:
     """构造 VolcanoAdapter，使用 ep.api_key。"""
     try:
