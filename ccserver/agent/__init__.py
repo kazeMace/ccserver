@@ -39,9 +39,6 @@ from .llm_caller import LLMCaller  # Step 3 拆出:LLM 调用器 + 消息净化
 
 from typing import List, Dict, Any, Optional, Callable
 
-# Agent Team 相关导入（_drain_inbox_and_respond 使用 MsgType 分派 inbox 消息）
-from ccserver.team.protocol import MsgType
-
 
 # ─── AgentContext（代理上下文）────────────────────────────────────────────────
 
@@ -193,6 +190,9 @@ class Agent:
         # 协作者:工具分发器(Step 5 拆出,负责 _handle_tools 及各工具处理)
         from .tool_dispatcher import ToolDispatcher
         self._tool_dispatcher = ToolDispatcher(self)
+        # 协作者:Team inbox 协调器(拆出 _drain_inbox_and_respond)
+        from .team_coordinator import TeamCoordinator
+        self._team_coordinator = TeamCoordinator(self)
 
         # 缓存 schema 列表 — 只计算一次，每次 LLM 调用复用
         # 内置工具 + 禁用占位；MCP schema 由调用方（factory / spawn_child）追加，
@@ -433,85 +433,8 @@ class Agent:
     # ── 核心循环 ──────────────────────────────────────────────────────────────
 
     async def _drain_inbox_and_respond(self) -> tuple[list[dict], bool]:
-        """
-        非阻塞读取 inbox，处理 Agent Team 相关的 mailbox 消息（new_task, shutdown_request, chat 等）。
-
-        进度事件改由 _loop() 每轮主动 publish 到 EventBus（推送模型），
-        不再需要外部轮询注入 status_request。
-
-        Returns:
-            (需要追加到 messages 的新消息列表, 是否收到 shutdown_request)
-        """
-        new_messages: list[dict] = []
-        shutdown_requested = False
-
-        # 消费 inbox 中的 Team Mailbox 消息
-        while True:
-            try:
-                msg = self.context.inbox.get_nowait()
-            except asyncio.QueueEmpty:
-                break
-
-            # msg_type 字段标识来自 TeamMailboxPoller 或 EventBus 订阅者的消息
-            match msg.get("type") or msg.get("msg_type"):
-                case MsgType.NEW_TASK:
-                    # 新任务：Team Lead 分配过来的任务，转为 user 消息追加到对话历史
-                    new_messages.append({
-                        "role": "user",
-                        "content": msg.get("task_prompt", msg.get("text", "")),
-                        "_ccserver_team_new_task": True,
-                        "task_id": msg.get("task_id"),
-                    })
-
-                case MsgType.SHUTDOWN_REQUEST:
-                    # 关闭请求：Team Lead 要求优雅退出，注入 system 消息让 LLM 总结后结束
-                    new_messages.append({
-                        "role": "system",
-                        "content": "[Team Lead 请求你优雅退出，总结当前进度后结束。]",
-                    })
-                    shutdown_requested = True
-
-                case MsgType.CHAT:
-                    # 聊天消息：来自其他 Agent 的即时通信，附上发送方标识
-                    new_messages.append({
-                        "role": "user",
-                        "content": f"[{msg.get('from_agent')}] {msg.get('text', '')}",
-                    })
-
-                case MsgType.PERMISSION_RESPONSE:
-                    # 权限响应：由 _wait_permission_response 轮询处理，这里只消费掉避免堆积
-                    logger.debug(
-                        "Inbox permission_response consumed | agent={} request_id={}",
-                        self.aid_label,
-                        msg.get("request_id"),
-                    )
-
-                case MsgType.CRON_TRIGGER | MsgType.SCHEDULED_TASK_TRIGGER:
-                    # 定时任务触发（兼容旧 cron_trigger 和新的 scheduled_task_trigger）
-                    cron_prompt = msg.get("prompt", "")
-                    new_messages.append({
-                        "role": "user",
-                        "content": cron_prompt,
-                        "_ccserver_scheduled_task": True,
-                        "task_id": msg.get("task_id"),
-                        "trigger_type": msg.get("trigger_type", "cron"),
-                    })
-                    logger.debug(
-                        "Inbox scheduled_task_trigger consumed | agent={} task_id={} type={}",
-                        self.aid_label,
-                        msg.get("task_id"),
-                        msg.get("trigger_type", "cron"),
-                    )
-
-                case _:
-                    # 未知消息类型，记录警告但不中断循环
-                    logger.warning(
-                        "Inbox unknown msg type ignored | agent={} msg={}",
-                        self.aid_label,
-                        msg,
-                    )
-
-        return new_messages, shutdown_requested
+        """消费 Team inbox 消息。实现见 TeamCoordinator.drain_inbox_and_respond;此处委托。"""
+        return await self._team_coordinator.drain_inbox_and_respond()
 
     async def _loop(self) -> str:
         self.state.start_time = datetime.now(timezone.utc)
