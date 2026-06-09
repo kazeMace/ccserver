@@ -36,7 +36,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import AsyncIterator, Optional
 
-from fastapi import FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -356,21 +356,36 @@ class UpdateScheduledTaskRequest(BaseModel):
     interval_seconds: int = 0
 
 
+# ─── 领域路由器（SRP：按业务领域分组，避免单一巨型路由表）─────────────────────────
+#
+# 每个 APIRouter 聚焦一个业务领域，处理器函数体保持不变，仅将装饰器从
+# @app.x 改为对应 @<domain>_router.x。文件末尾统一 app.include_router 挂载。
+# 这样 server.py 的路由按领域清晰分区，后续可平滑拆分为独立路由模块。
+sessions_router = APIRouter(tags=["sessions"])          # 会话生命周期
+scheduled_tasks_router = APIRouter(tags=["scheduled-tasks"])  # cron 定时任务
+agent_tasks_router = APIRouter(tags=["agent-tasks"])    # 后台 agent 任务
+teams_router = APIRouter(tags=["teams"])                # 团队与成员
+mailbox_router = APIRouter(tags=["mailbox"])            # 团队 mailbox
+channels_router = APIRouter(tags=["channels"])          # 渠道接入
+chat_router = APIRouter(tags=["chat"])                  # 对话（HTTP/SSE/WS/push）+ 注入
+pages_router = APIRouter(tags=["pages"])                # 静态页面与 monitor
+
+
 # ─── Session routes ───────────────────────────────────────────────────────────
 
 
-@app.post("/sessions", summary="Create a new session with an isolated workdir")
+@sessions_router.post("/sessions", summary="Create a new session with an isolated workdir")
 def create_session(req: CreateSessionRequest) -> dict:
     session = session_manager.create(req.session_id)
     return session.to_meta()
 
 
-@app.get("/sessions", summary="List all sessions")
+@sessions_router.get("/sessions", summary="List all sessions")
 def list_sessions() -> list[dict]:
     return session_manager.list_all()
 
 
-@app.get("/sessions/{session_id}", summary="Get session metadata")
+@sessions_router.get("/sessions/{session_id}", summary="Get session metadata")
 def get_session(session_id: str) -> dict:
     session = _get_or_404(session_id)
     return {**session.to_meta(), "message_count": len(session.messages)}
@@ -379,7 +394,7 @@ def get_session(session_id: str) -> dict:
 # ─── Shell 后台任务查询 ─────────────────────────────────────────────────────────
 
 
-@app.get(
+@sessions_router.get(
     "/sessions/{session_id}/tasks",
     summary="List all shell background tasks for a session",
 )
@@ -411,7 +426,7 @@ def list_shell_tasks(session_id: str) -> dict:
     }
 
 
-@app.post(
+@sessions_router.post(
     "/sessions/{session_id}/tasks/{task_id}/kill",
     summary="Kill a running shell background task",
 )
@@ -452,7 +467,7 @@ def kill_shell_task(session_id: str, task_id: str) -> dict:
     return {"status": "ok", "message": "Task killed."}
 
 
-@app.get(
+@sessions_router.get(
     "/sessions/{session_id}/tasks/{task_id}",
     summary="Get a single shell background task by ID",
 )
@@ -497,7 +512,7 @@ def _get_cron_scheduler(session_id: str):
     return scheduler
 
 
-@app.post(
+@scheduled_tasks_router.post(
     "/sessions/{session_id}/scheduled-tasks",
     summary="Create a scheduled task",
 )
@@ -584,7 +599,7 @@ def create_scheduled_task(session_id: str, req: CreateScheduledTaskRequest) -> d
     }
 
 
-@app.get(
+@scheduled_tasks_router.get(
     "/sessions/{session_id}/scheduled-tasks",
     summary="List all scheduled tasks for a session",
 )
@@ -612,7 +627,7 @@ def list_scheduled_tasks(session_id: str) -> dict:
     }
 
 
-@app.get(
+@scheduled_tasks_router.get(
     "/sessions/{session_id}/scheduled-tasks/{task_id}",
     summary="Get a scheduled task by ID",
 )
@@ -645,7 +660,7 @@ def get_scheduled_task(session_id: str, task_id: str) -> dict:
     }
 
 
-@app.put(
+@scheduled_tasks_router.put(
     "/sessions/{session_id}/scheduled-tasks/{task_id}",
     summary="Update a scheduled task",
 )
@@ -696,7 +711,7 @@ def update_scheduled_task(
     }
 
 
-@app.delete(
+@scheduled_tasks_router.delete(
     "/sessions/{session_id}/scheduled-tasks/{task_id}",
     summary="Delete a scheduled task",
 )
@@ -712,7 +727,7 @@ def delete_scheduled_task(session_id: str, task_id: str) -> dict:
     return {"status": "ok", "message": f"Task '{task_id}' deleted."}
 
 
-@app.post(
+@scheduled_tasks_router.post(
     "/sessions/{session_id}/scheduled-tasks/{task_id}/toggle",
     summary="Toggle a scheduled task enabled/disabled",
 )
@@ -735,7 +750,7 @@ def toggle_scheduled_task(session_id: str, task_id: str) -> dict:
 # ─── Agent 后台任务查询 ────────────────────────────────────────────────────────
 
 
-@app.get(
+@agent_tasks_router.get(
     "/sessions/{session_id}/agent-tasks",
     summary="List all agent background tasks for a session",
 )
@@ -765,7 +780,7 @@ def list_agent_tasks(session_id: str) -> dict:
     }
 
 
-@app.get(
+@agent_tasks_router.get(
     "/sessions/{session_id}/agent-tasks/{task_id}",
     summary="Get a single agent background task by ID",
 )
@@ -795,7 +810,7 @@ def get_agent_task(session_id: str, task_id: str) -> dict:
     return task.to_dict()
 
 
-@app.post(
+@agent_tasks_router.post(
     "/sessions/{session_id}/agent-tasks/{task_id}/cancel",
     summary="Cancel a running agent background task",
 )
@@ -877,7 +892,7 @@ def _role_from_str(role: str) -> TeamMemberRole:
     return r
 
 
-@app.get(
+@teams_router.get(
     "/sessions/{session_id}/teams",
     summary="List all teams in a session",
 )
@@ -900,7 +915,7 @@ def list_teams(session_id: str) -> list[dict]:
     }
 
 
-@app.post(
+@teams_router.post(
     "/sessions/{session_id}/teams",
     summary="Create a new team",
 )
@@ -921,7 +936,7 @@ def create_team(session_id: str, req: CreateTeamRequest) -> dict:
     }
 
 
-@app.get(
+@teams_router.get(
     "/sessions/{session_id}/teams/{team_name}",
     summary="Get team details",
 )
@@ -937,7 +952,7 @@ def get_team(session_id: str, team_name: str) -> dict:
     }
 
 
-@app.delete(
+@teams_router.delete(
     "/sessions/{session_id}/teams/{team_name}",
     summary="Delete a team",
 )
@@ -954,7 +969,7 @@ def delete_team(session_id: str, team_name: str) -> dict:
     return {"status": "ok", "message": f"Team '{team_name}' deleted."}
 
 
-@app.get(
+@teams_router.get(
     "/sessions/{session_id}/teams/{team_name}/members",
     summary="List team members",
 )
@@ -967,7 +982,7 @@ def list_members(session_id: str, team_name: str) -> list[dict]:
     }
 
 
-@app.post(
+@teams_router.post(
     "/sessions/{session_id}/teams/{team_name}/members",
     summary="Add a member to a team",
 )
@@ -985,7 +1000,7 @@ def add_member(session_id: str, team_name: str, req: AddMemberRequest) -> dict:
     return {"member": member.to_dict()}
 
 
-@app.delete(
+@teams_router.delete(
     "/sessions/{session_id}/teams/{team_name}/members/{agent_id}",
     summary="Remove a member from a team",
 )
@@ -1002,7 +1017,7 @@ def remove_member(session_id: str, team_name: str, agent_id: str) -> dict:
     return {"status": "ok", "message": f"Member '{agent_id}' removed."}
 
 
-@app.get(
+@teams_router.get(
     "/sessions/{session_id}/teams/{team_name}/health",
     summary="Team health check",
 )
@@ -1037,7 +1052,7 @@ def team_health(session_id: str, team_name: str) -> dict:
 # ─── Mailbox routes ───────────────────────────────────────────────────────────
 
 
-@app.post(
+@mailbox_router.post(
     "/sessions/{session_id}/teams/{team_name}/mailbox/send",
     summary="Send a mailbox message to a teammate",
 )
@@ -1084,7 +1099,7 @@ async def send_mailbox_message(
         return {"status": "ok", "to": to_agent}
 
 
-@app.get(
+@mailbox_router.get(
     "/sessions/{session_id}/teams/{team_name}/mailbox/{agent_id}",
     summary="Fetch mailbox messages for a teammate",
 )
@@ -1106,7 +1121,7 @@ async def fetch_mailbox_messages(
     }
 
 
-@app.post(
+@mailbox_router.post(
     "/sessions/{session_id}/teams/{team_name}/mailbox/{agent_id}/read",
     summary="Mark mailbox messages as read",
 )
@@ -1133,7 +1148,7 @@ class StartChannelRequest(BaseModel):
     config: dict = {}
 
 
-@app.get("/channels", summary="List all registered channel adapters")
+@channels_router.get("/channels", summary="List all registered channel adapters")
 def list_channels() -> list[dict]:
     """
     返回所有已注册的 channel 适配器列表及其能力声明。
@@ -1148,7 +1163,7 @@ def list_channels() -> list[dict]:
     return {"channels": _channel_registry.list_channels()}
 
 
-@app.get("/channels/status", summary="List running channel accounts")
+@channels_router.get("/channels/status", summary="List running channel accounts")
 def list_channel_status() -> list[dict]:
     """
     返回所有正在运行的 channel 账户状态。
@@ -1164,7 +1179,7 @@ def list_channel_status() -> list[dict]:
     return {"channels": gateway.list_running()}
 
 
-@app.post("/channels/start", summary="Start a channel account")
+@channels_router.post("/channels/start", summary="Start a channel account")
 async def start_channel(req: StartChannelRequest) -> dict:
     """
     启动一个 channel 账户。
@@ -1195,7 +1210,7 @@ async def start_channel(req: StartChannelRequest) -> dict:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/channels/{channel_id}/stop", summary="Stop a channel account")
+@channels_router.post("/channels/{channel_id}/stop", summary="Stop a channel account")
 async def stop_channel(channel_id: str, account_id: str = "default") -> dict:
     """
     停止一个 channel 账户。
@@ -1214,7 +1229,7 @@ async def stop_channel(channel_id: str, account_id: str = "default") -> dict:
     return {"status": "stopped"}
 
 
-@app.get("/channels/{channel_id}/status", summary="Get channel account status")
+@channels_router.get("/channels/{channel_id}/status", summary="Get channel account status")
 async def get_channel_status(channel_id: str, account_id: str = "default") -> dict:
     """
     查询 channel 账户的实时状态。
@@ -1240,7 +1255,7 @@ async def get_channel_status(channel_id: str, account_id: str = "default") -> di
 from starlette.requests import Request as StarletteRequest
 
 
-@app.post(
+@channels_router.post(
     "/webhook/{channel_id}",
     summary="Channel Webhook 统一回调",
     include_in_schema=False,
@@ -1316,7 +1331,7 @@ class AnswerRequest(BaseModel):
     answer: str
 
 
-@app.post(
+@chat_router.post(
     "/chat/stream/answer",
     summary="Inject user answer for a pending AskUserQuestion (SSE mode)",
 )
@@ -1345,7 +1360,7 @@ class PermissionRequest(BaseModel):
     granted: bool   # True = 批准工具执行，False = 拒绝
 
 
-@app.post(
+@chat_router.post(
     "/chat/stream/permission",
     summary="Respond to a pending tool permission request (SSE mode)",
 )
@@ -1378,7 +1393,7 @@ async def inject_permission(
 # ─── Chat: plain HTTP (non-streaming) ─────────────────────────────────────────
 
 
-@app.post(
+@chat_router.post(
     "/chat",
     summary="Send a message and wait for the complete response",
 )
@@ -1420,7 +1435,7 @@ async def chat(req: ChatRequest, x_session_id: Optional[str] = Header(None, alia
 # ─── Chat: SSE (streaming) ────────────────────────────────────────────────────
 
 
-@app.post(
+@chat_router.post(
     "/chat/stream",
     summary="Send a message and receive a stream of Server-Sent Events",
 )
@@ -1530,7 +1545,7 @@ async def chat_sse(req: ChatRequest, x_session_id: Optional[str] = Header(None, 
 # ─── Chat: WebSocket ──────────────────────────────────────────────────────────
 
 
-@app.websocket("/chat/ws")
+@chat_router.websocket("/chat/ws")
 async def chat_ws(websocket: WebSocket) -> None:
     """
     WebSocket endpoint.
@@ -1625,7 +1640,7 @@ async def chat_ws(websocket: WebSocket) -> None:
 # ─── Chat: push events (定时任务 / 后台 Agent 推送) ───────────────────────────────
 
 
-@app.get(
+@chat_router.get(
     "/chat/push",
     summary="Long-lived SSE stream for server-initiated push events (cron, background agents)",
 )
@@ -1723,7 +1738,7 @@ async def chat_push(x_session_id: str = Header(..., alias="X-Session-Id")):
 # ─── Monitor Dashboard ─────────────────────────────────────────────────────────
 
 
-@app.get("/webui/chat", summary="WebChat client HTML page")
+@pages_router.get("/webui/chat", summary="WebChat client HTML page")
 def webchat_page():
     """
     返回 WebChat 客户端 HTML 页面。
@@ -1739,7 +1754,7 @@ def webchat_page():
     return HTMLResponse(content=html_path.read_text(encoding="utf-8"))
 
 
-@app.get("/monitor", summary="Monitor dashboard HTML page")
+@pages_router.get("/monitor", summary="Monitor dashboard HTML page")
 def monitor_page() -> str:
     """
     返回监控 Dashboard 的 HTML 页面。
@@ -1751,7 +1766,7 @@ def monitor_page() -> str:
     return HTMLResponse(content=get_monitor_html())
 
 
-@app.websocket("/monitor/ws")
+@pages_router.websocket("/monitor/ws")
 async def monitor_ws(websocket: WebSocket) -> None:
     """
     监控 Dashboard 的 WebSocket 端点。
@@ -1842,6 +1857,18 @@ def _get_or_create_session(session_id: Optional[str]) -> tuple[Session, str]:
     _storage.create_conversation(session.id, conversation_id)
 
     return session, conversation_id
+
+
+# ─── 挂载领域路由器（SRP：所有路由按领域分组后统一注册到 app）──────────────────────
+# 顺序不影响 FastAPI 路由匹配（按注册顺序匹配，但各路径互不冲突）。
+app.include_router(sessions_router)
+app.include_router(scheduled_tasks_router)
+app.include_router(agent_tasks_router)
+app.include_router(teams_router)
+app.include_router(mailbox_router)
+app.include_router(channels_router)
+app.include_router(chat_router)
+app.include_router(pages_router)
 
 
 # ─── Entry point ──────────────────────────────────────────────────────────────
