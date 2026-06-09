@@ -61,6 +61,12 @@ class AgentRuntime(Protocol):
     state: Any
     _schemas: list
 
+    # ── 标识与限流相关(LimitPolicy 等协作者使用)──────────────────────────────────
+    aid_label: str          # 统一日志标签 "id(name)"
+    round_limit: int        # 当前轮次上限
+    limit_strategy: str     # 限流策略名
+    on_limit_callback: Any  # 自定义接管回调(可为 None)
+
     # ── 复用能力方法 ────────────────────────────────────────────────────────────
     def _build_hook_ctx(self) -> HookContext:
         """构造 hook 执行上下文(agent_id / session / depth 等)。"""

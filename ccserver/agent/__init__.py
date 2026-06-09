@@ -208,6 +208,10 @@ class Agent:
             schemas=self._schemas,
         )
 
+        # 协作者:轮次上限兜底策略(Step 1 拆出,Agent 仅持有并委托)
+        from .limit_policy import LimitPolicy
+        self._limit_policy = LimitPolicy(self)
+
     # ── 内部辅助 ──────────────────────────────────────────────────────────────
 
     async def _set_phase(self, new_phase: str) -> None:
@@ -1229,11 +1233,9 @@ class Agent:
 
         round_text = ""
         # 外层 while 支持用户选择"继续"后重入，避免递归调用 _loop()。
-        # _on_limit_ask_user 增加 round_limit 并设置 _continue_loop=True，
-        # 本循环检测到后重置计数器继续执行，否则直接 return。
-        self._continue_loop = False
+        # LimitPolicy 返回 LimitOutcome(continue_loop=True, extra_rounds=N) 时，
+        # 本循环增加 round_limit 额度并重置计数器继续执行，否则直接 return。
         while True:
-            self._continue_loop = False
             for round_num in range(self.round_limit):
                 self.state.round_num = round_num + 1
                 # 处理 inbox 中积压的 Team Mailbox 消息（new_task, shutdown_request, chat 等）
@@ -1355,155 +1357,15 @@ class Agent:
             # for 循环耗尽，达到轮次上限
             logger.warning("Round limit reached | agent={} limit={}", self.aid_label, self.round_limit)
             await self._set_phase("limit_reached")
-            result = await self._on_limit(round_text)
-            # _on_limit_ask_user 选择"继续"时设置 _continue_loop=True 并增加 round_limit
-            if self._continue_loop:
+            # 委托给 LimitPolicy 协作者;通过 LimitOutcome 解读控制流(消除回写耦合)
+            outcome = await self._limit_policy.handle(round_text)
+            if outcome.continue_loop:
+                # 用户选择"继续":增加轮次额度并重置计数,重入外层 while
+                self.round_limit += outcome.extra_rounds
                 self.state.round_num = 0
                 await self._set_phase("running")
                 continue
-            return result
-
-    async def _on_limit(self, last_text: str) -> str:
-        """
-        round limit 到达时的兜底处理。
-
-        执行顺序：
-          1. 触发 agent:limit hook（observing，不影响策略执行）
-          2. 若有 on_limit_callback，优先调用，回调返回空则 fallback 到配置策略
-          3. 按 limit_strategy 执行对应策略
-
-        策略（主 agent）：
-          last_text  — 兜底输出最近一次 last_text，走正常 emit_done 流程
-          ask_user   — 向用户询问是否继续，继续则追加一条 user 消息并返回特殊标记触发重入
-          graceful   — 向用户输出固定提示，emit_done 结束
-          summarize  — 额外调用 LLM 做摘要，把摘要作为最终回复 emit_done
-          callback   — 调用 on_limit_callback（无回调时 fallback 到 last_text）
-
-        策略（子 agent）：
-          last_text  — 兜底返回最近一次 last_text 给父 agent
-          report     — 返回格式化报告给父 agent
-          callback   — 调用 on_limit_callback（无回调时 fallback 到 last_text）
-        """
-        # Step 1：触发 hook（observing，不影响后续）
-        await self.session.hooks.emit_void(
-            "agent:limit",
-            {"last_text": last_text},
-            self._build_hook_ctx(),
-        )
-
-        # Step 2：callback 优先
-        if self.on_limit_callback is not None:
-            try:
-                result = await self.on_limit_callback(self, last_text)
-                if result:
-                    return await self._finish_with_last_text(result)
-            except Exception as e:
-                logger.error("on_limit_callback failed | agent={} error={}", self.aid_label, e)
-            # 回调失败或返回空，fallback 到 last_text 策略
-
-        strategy = self.limit_strategy
-
-        if strategy == "ask_user":
-            return await self._on_limit_ask_user(last_text)
-        elif strategy == "graceful":
-            return await self._on_limit_graceful(last_text)
-        elif strategy == "summarize":
-            return await self._on_limit_summarize(last_text)
-        elif strategy == "report" and not self.context.is_orchestrator:
-            rounds = self.round_limit
-            report = f"[LIMIT_REACHED] 已执行 {rounds} 轮，部分结果：{last_text or '（无输出）'}"
-            return report
-        else:
-            # last_text（默认）或 callback 无回调 fallback，或子 agent 用了主 agent 专属策略
-            return await self._finish_with_last_text(last_text)
-
-    async def _finish_with_last_text(self, last_text: str) -> str:
-        """兜底输出 last_text，走正常结束流程。无 last_text 时 emit_error。"""
-        if last_text:
-            if self.context.is_orchestrator:
-                await self.session.hooks.emit_void(
-                    "agent:stop",
-                    {"reply": last_text},
-                    self._build_hook_ctx(),
-                )
-                await self.emitter.emit_done(last_text)
-            else:
-                await self.emitter.emit_subagent_done(last_text)
-            return last_text
-        else:
-            await self.emitter.emit_error("Round limit reached with no output")
-            return ""
-
-    async def _on_limit_ask_user(self, last_text: str) -> str:
-        """向用户询问是否继续（仅主 agent 有意义）。"""
-        if not self.context.is_orchestrator:
-            return await self._finish_with_last_text(last_text)
-        answer = await self.emitter.emit_ask_user([{
-            "question": f"已执行 {self.round_limit} 轮仍未完成，是否继续？",
-            "header": "继续运行",
-            "options": [
-                {"label": "继续", "description": "重置轮次计数，继续执行"},
-                {"label": "停止", "description": "输出当前结果并结束"},
-            ],
-            "multiSelect": False,
-        }])
-        if answer and "继续" in answer:
-            # 追加 user 消息触发下一轮；增加轮次上限，让外层 while 重入
-            self.context.messages.append({"role": "user", "content": "继续执行未完成的任务。"})
-            self.round_limit += MAIN_ROUND_LIMIT
-            self._continue_loop = True
-            logger.info("User chose to continue | agent={} new_limit={}", self.aid_label, self.round_limit)
-            return ""
-        return await self._finish_with_last_text(last_text)
-
-    async def _on_limit_graceful(self, last_text: str) -> str:
-        """向用户输出固定提示后优雅结束。"""
-        graceful_msg = "处理步骤超出限制，请重新提问或简化需求。"
-        if last_text:
-            graceful_msg = f"{graceful_msg}\n\n目前结果：{last_text}"
-        if self.context.is_orchestrator:
-            await self.session.hooks.emit_void(
-                "agent:stop",
-                {"reply": graceful_msg},
-                self._build_hook_ctx(),
-            )
-            await self.emitter.emit_done(graceful_msg)
-        else:
-            await self.emitter.emit_subagent_done(graceful_msg)
-        return graceful_msg
-
-    async def _on_limit_summarize(self, last_text: str) -> str:
-        """调用 LLM 对当前消息做摘要，以摘要作为最终回复。"""
-        try:
-            import json as _json
-            conversation = _json.dumps(self.context.messages, default=str, ensure_ascii=False)[:20000]
-            response = await self.adapter.create(
-                model=self.model,
-                messages=[{"role": "user", "content": (
-                    "请对以下对话做简洁总结，说明已完成了什么、当前状态是什么：\n\n" + conversation
-                )}],
-                max_tokens=1000,
-            )
-            assert response.content, f"LLM returned empty content in _on_limit_summarize for {self.aid_label}"
-            # 跳过 ThinkingBlock，取第一个 TextBlock（deepseek 等端点默认开启 thinking）
-            text_block = next((b for b in response.content if getattr(b, "type", None) == "text"), None)
-            assert text_block is not None, f"_on_limit_summarize: no TextBlock in response, types={[getattr(b,'type',None) for b in response.content]}"
-            summary = text_block.text
-        except Exception as e:
-            logger.error("_on_limit_summarize failed | agent={} error={}", self.aid_label, e)
-            return await self._finish_with_last_text(last_text)
-
-        result = f"（步骤超限，以下为当前进度摘要）\n\n{summary}"
-        if self.context.is_orchestrator:
-            await self.session.hooks.emit_void(
-                "agent:stop",
-                {"reply": result},
-                self._build_hook_ctx(),
-            )
-            await self.emitter.emit_done(result)
-        else:
-            await self.emitter.emit_subagent_done(result)
-        return result
+            return outcome.final_text
 
     # ── 消息序列验证 ──────────────────────────────────────────────────────────
 
