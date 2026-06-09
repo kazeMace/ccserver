@@ -525,9 +525,6 @@ class BaseChannelAdapter(ABC):
         from ccserver.channels.processor import PassthroughProcessor
         return PassthroughProcessor(adapter=self, target=target)
 
-    # handle_outbound_event / _get_session_route 已在新出站架构中移除。
-    # 出站回复通过 OutputTarget + Processor 机制驱动，无需 OutboundBus 集成层。
-
     # ── 内部工具方法 ──────────────────────────────────────────────────────────
 
     @staticmethod

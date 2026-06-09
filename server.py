@@ -69,7 +69,6 @@ import time as _time
 # ── Channel 系统 ─────────────────────────────────────────────────────────────
 from ccserver.channels import ChannelGateway, ChannelRegistry
 from ccserver.channels.config import ChannelConfig
-# OutboundBus 已在新出站架构中废弃，保留 import 兼容旧调用点
 
 # Logo 最先输出（print 不经过 logging，不受 sink 影响）
 # 仅在直接运行时打印，uvicorn worker reload 时 __name__ != "__main__"，不会重复
@@ -206,7 +205,6 @@ _team_monitor = TeamHealthMonitor(session_manager)
 
 # ── Channel 系统初始化 ────────────────────────────────────────────────────────
 _channel_registry = ChannelRegistry()
-_outbound_bus = None  # OutboundBus 已废弃，Gateway 不再使用
 _channel_gateway: ChannelGateway | None = None  # 延迟初始化
 
 
@@ -260,7 +258,6 @@ def _get_channel_gateway() -> ChannelGateway:
             registry=_channel_registry,
             session_manager=session_manager,
             runner=runner,
-            outbound_bus=_outbound_bus,
             config=ChannelConfig(),
         )
         # 自动扫描 adapters 目录下的所有适配器

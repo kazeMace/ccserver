@@ -32,7 +32,6 @@ from .utils import get_block_attr, normalize_content_blocks, generate_message_id
 from ccserver.builtins.tools import ToolResult
 from ccserver.builtins.tools import BuiltinTools
 from ccserver.emitters import BaseEmitter
-# FilterEmitter 已被 BusEmitter + visibility 机制替代，保留以备 tui_http 等旧调用方向后兼容
 from ccserver.emitters.bus_emitter import BusEmitter
 from .agent_handle import BackgroundAgentHandle
 from .agent_registry import register_handle, unregister_handle
@@ -514,10 +513,8 @@ class Agent:
         if not child_model:
             child_model = self.model
 
-        # emitter：子 agent 默认屏蔽 token 流（stream=False），避免子 agent 的思考过程
-        # 直接透传到客户端与父 agent 输出混在一起。
-        # 子 Agent 使用 BusEmitter，visibility=DONE_ONLY（只有 done/error 对外可见）
-        # 父 Agent 的 FilterEmitter 转发逻辑已由 AgentEvent.visibility 字段替代
+        # 子 Agent 使用 BusEmitter，visibility=DONE_ONLY：
+        # 只有 done/error 事件对外可见，屏蔽 token 流避免与父 agent 输出混在一起。
         from ccserver.event_bus import _VISIBILITY_DONE_ONLY
         child_emitter = BusEmitter(
             bus=self.session.event_bus,

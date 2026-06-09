@@ -1,7 +1,7 @@
 # tests/test_compactor_lib.py
 import pytest
 from unittest.mock import MagicMock, AsyncMock
-from ccserver.compactor import Compactor
+from ccserver.compact import CompactorFactory
 from prompt_library.cc_reverse.v2_1_81.lib import CcReverseV2181
 
 
@@ -26,12 +26,12 @@ async def test_compact_uses_lib_format():
     emitter = MagicMock()
     emitter.emit_compact = AsyncMock()
 
-    compactor = Compactor(adapter=adapter)
+    compactor = CompactorFactory.build_default(adapter=adapter)
     messages = [
         {"role": "user", "content": "hello"},
         {"role": "assistant", "content": "hi"},
     ]
-    result = await compactor.compact(session, emitter, messages, lib=lib)
+    result = await compactor.compact(messages, session, emitter, lib=lib)
 
     assert len(result) == 2
     assert result[0]["role"] == "user"
@@ -52,8 +52,8 @@ async def test_compact_without_lib_uses_default_format():
     emitter = MagicMock()
     emitter.emit_compact = AsyncMock()
 
-    compactor = Compactor(adapter=adapter)
-    result = await compactor.compact(session, emitter, [], lib=None)
+    compactor = CompactorFactory.build_default(adapter=adapter)
+    result = await compactor.compact([], session, emitter, lib=None)
 
     assert len(result) == 2
     assert "fallback summary" in result[0]["content"]

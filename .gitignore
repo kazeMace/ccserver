@@ -143,3 +143,4 @@ reverse_cc*
 .worktrees
 src/pipeline/_bare_roots/
 **/*.log  
+.ruff_cache/

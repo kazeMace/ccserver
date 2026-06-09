@@ -155,14 +155,11 @@ class ChannelGateway:
         registry: ChannelRegistry,
         session_manager,
         runner,
-        outbound_bus=None,  # 保留参数以兼容现有调用方，新架构不再使用
         config: ChannelConfig | None = None,
     ):
         self.registry = registry
         self.session_manager = session_manager
         self.runner = runner
-        # outbound_bus 保留以兼容调用方，不再实际使用
-        self.outbound_bus = outbound_bus
         self.config = config or ChannelConfig()
 
         # channel_id -> account_id -> {adapter, config, snapshot}
@@ -403,7 +400,7 @@ class ChannelGateway:
           3. 构建 OutputTarget + Processor（所有 channel 统一走此路径）
           4. 更新 session.output_targets 和 default_output_targets
           5. 启动 EventBus → Processor 驱动循环（每个 session 唯一）
-          6. 创建 BusEmitter（Agent 的唯一 emitter，无 _ComboEmitter）
+          6. 创建 BusEmitter（Agent 的唯一 emitter）
           7. 异步启动 Agent.run()
 
         Args:
@@ -458,7 +455,7 @@ class ChannelGateway:
         # 7. 确保 EventBus → Processor 驱动循环已启动（每个 session 唯一一个循环）
         await self._ensure_processor_loop(session.id)
 
-        # 8. 创建 BusEmitter（Agent 的唯一 emitter，不再使用 _ComboEmitter）
+        # 8. 创建 BusEmitter（Agent 的唯一 emitter）
         from ccserver.emitters.bus_emitter import BusEmitter
         bus_emitter = BusEmitter(
             bus=session.event_bus,
