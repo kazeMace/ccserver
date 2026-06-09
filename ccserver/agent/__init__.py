@@ -188,6 +188,9 @@ class Agent:
         self.compactor = CompactorFactory.build_default(adapter=adapter, model=model)
         # 上次收到 assistant 消息的时间，供 micro 时间触发压缩使用
         self._last_assistant_time: datetime | None = None
+        # 协作者:压缩协调器(Step 2 拆出,Agent 仅持有并委托)
+        from .compact_coordinator import CompactCoordinator
+        self._compact_coordinator = CompactCoordinator(self, self.compactor)
 
         # 缓存 schema 列表 — 只计算一次，每次 LLM 调用复用
         # 内置工具 + 禁用占位；MCP schema 由调用方（factory / spawn_child）追加，
@@ -1246,7 +1249,7 @@ class Agent:
                 if shutdown_requested:
                     await self._set_phase("done")
                     return round_text + "\n[shutdown by lead]"
-                await self._maybe_compact()
+                await self._compact_coordinator.maybe_compact()
                 # 验证消息序列：修复被外部并发消息打断的 tool_use -> tool_result 对
                 if Agent._sanitize_messages(self.context.messages):
                     if self.persist:
@@ -1348,7 +1351,7 @@ class Agent:
                 # 注意：compaction 必须在追加 tool_result 之前执行，
                 # 否则 tool_result 会随旧消息一起被压缩丢弃。
                 if trigger_compact:
-                    await self._do_compact(reason="manual compact requested")
+                    await self._compact_coordinator.do_compact(reason="manual compact requested")
 
                 self._append({"role": "user", "content": tool_results})
 
@@ -2405,56 +2408,6 @@ class Agent:
         # persist=True 时额外写磁盘（只写盘，不重复 append 到列表）
         if self.persist:
             self.session.persist_message(message)
-
-    async def _maybe_compact(self):
-        self.compactor.run_micro(self.context.messages, self._last_assistant_time)
-        should, reason = self.compactor.should_compact(self.context.messages)
-        if should:
-            logger.info("Compact triggered | agent={} reason={}", self.aid_label, reason)
-            await self._do_compact(reason=reason)
-
-    async def _do_compact(self, reason: str):
-        message_count = len(self.context.messages)
-        tokens_before = _estimate_tokens(self.context.messages)
-        # hook: agent:compact:before（observing）
-        await self.session.hooks.emit_void(
-            "agent:compact:before",
-            {"message_count": message_count, "token_count": tokens_before, "reason": reason},
-            self._build_hook_ctx(),
-        )
-        await self.emitter.emit_compact(reason)
-        try:
-            compacted = await self.compactor.compact(
-                self.context.messages,
-                self.session,
-                self.emitter,
-                lib=self.prompt_engine,
-            )
-            if self.compactor.circuit_breaker:
-                self.compactor.circuit_breaker.record_success()
-        except Exception:
-            if self.compactor.circuit_breaker:
-                self.compactor.circuit_breaker.record_failure()
-            raise
-        tokens_after = _estimate_tokens(compacted)
-        summary_length = len(compacted[0]["content"]) if compacted else 0
-        compacted_count = message_count - len(compacted)
-        if self.persist:
-            self.session.rewrite_messages(compacted)
-        else:
-            self.context.messages[:] = compacted
-        # hook: agent:compact:after（observing）
-        await self.session.hooks.emit_void(
-            "agent:compact:after",
-            {
-                "compacted_count": compacted_count,
-                "summary_length": summary_length,
-                "tokens_before": tokens_before,
-                "tokens_after": tokens_after,
-                "reason": reason,
-            },
-            self._build_hook_ctx(),
-        )
 
     # ── Hook 辅助 ─────────────────────────────────────────────────────────────
 

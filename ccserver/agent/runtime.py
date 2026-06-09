@@ -67,6 +67,11 @@ class AgentRuntime(Protocol):
     limit_strategy: str     # 限流策略名
     on_limit_callback: Any  # 自定义接管回调(可为 None)
 
+    # ── 压缩/持久化相关(CompactCoordinator 使用)─────────────────────────────────
+    persist: bool           # 消息是否持久化到磁盘
+    prompt_engine: Any      # PromptEngine 实例
+    _last_assistant_time: Any  # 上次 assistant 消息时间(micro 压缩用)
+
     # ── 复用能力方法 ────────────────────────────────────────────────────────────
     def _build_hook_ctx(self) -> HookContext:
         """构造 hook 执行上下文(agent_id / session / depth 等)。"""
