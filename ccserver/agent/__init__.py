@@ -22,19 +22,16 @@ from datetime import datetime, timezone
 
 from loguru import logger
 
-from ..config import MODEL, MAIN_ROUND_LIMIT, SUB_ROUND_LIMIT, MAX_DEPTH, RECORD_DIR
+from ..config import MODEL, MAIN_ROUND_LIMIT, RECORD_DIR
 from ccserver.managers.hooks import HookContext
 from ..recorder import Recorder
 from ..session import Session
 from ..compact import CompactorFactory
-from ..compact.tokens import estimate_tokens as _estimate_tokens
-from ..utils import get_block_attr, normalize_content_blocks, generate_message_id
+from ..utils import normalize_content_blocks, generate_message_id
 from ccserver.builtins.tools import ToolResult
 from ccserver.builtins.tools import BuiltinTools
 from ccserver.emitters import BaseEmitter
-from ccserver.emitters.bus_emitter import BusEmitter
 from ..agent_handle import BackgroundAgentHandle
-from ..agent_registry import register_handle, unregister_handle
 from ..event_bus import AgentEvent, EventType, SenderType
 from ..model import ModelAdapter
 from .runtime import AgentRuntime  # noqa: F401  Agent 拆分后协作者依赖的运行时契约(Protocol)
@@ -42,13 +39,8 @@ from .llm_caller import LLMCaller  # Step 3 拆出:LLM 调用器 + 消息净化
 
 from typing import List, Dict, Any, Optional, Callable
 
-# Agent Team 相关导入（延迟导入避免循环依赖）
-from ccserver.team.mailbox import TeamMailbox
-from ccserver.team.protocol import (
-    MsgType,
-    ChatMessage,
-)
-from ccserver.team.helpers import format_agent_id
+# Agent Team 相关导入（_drain_inbox_and_respond 使用 MsgType 分派 inbox 消息）
+from ccserver.team.protocol import MsgType
 
 
 # ─── AgentContext（代理上下文）────────────────────────────────────────────────

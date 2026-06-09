@@ -165,3 +165,49 @@ class AgentRuntime(Protocol):
    `compact_coordinator.py` / `limit_policy.py` / `runtime.py`)。
 - 关键路径手测:一次正常多轮对话、一次 round_limit 触发、一次工具调用、
   一次 spawn 子 agent,行为与重构前一致。
+
+---
+
+## 六、实施完成记录 (2026-06-09)
+
+7 步全部完成,每步独立提交 + 全量回归对照基线(5 个预先存在失败,无新增)。
+
+| Step | 内容 | 提交 |
+|---|---|---|
+| 0 | agent.py 转包 + AgentRuntime 契约 | b2539a7 |
+| 1 | LimitPolicy 策略模式(OCP/LOD) | 3a73ef1 |
+| 2 | CompactCoordinator | bee9ee5 |
+| 3 | LLMCaller(合并 stream/sync,DRY) | 385da04 |
+| 4 | SpawnManager | (Step4 commit) |
+| 5 | ToolDispatcher | (Step5 commit) |
+| 6 | 收尾:清理未用 import + 验收 | (本提交) |
+
+### 最终包结构与行数
+```
+ccserver/agent/__init__.py        718  (Agent 协调者)
+ccserver/agent/runtime.py          82  (AgentRuntime Protocol)
+ccserver/agent/limit_policy.py    264
+ccserver/agent/llm_caller.py      323
+ccserver/agent/compact_coordinator.py  96
+ccserver/agent/spawn_manager.py   719
+ccserver/agent/tool_dispatcher.py 629
+```
+`Agent` 从 **2612 → 718 行(降幅 72.5%)**,退化为协调者:
+`__init__` 装配 5 协作者 + `_loop` 编排 + run/run_stream/命令处理/inbox。
+
+### 与设计的偏差(均为降风险的务实选择)
+1. **保留公共委托 wrapper**:`spawn_child` / `spawn_background` / `_spawn_teammate`
+   及 `_handle_tools` / `_handle_agent` 在 Agent 上保留薄委托方法,因它们是
+   agent_scheduler 与多个测试直接调用的公共契约。实现已全部迁出。
+2. **派生/工具委托回 rt.spawn_***:SpawnManager/ToolDispatcher 内部经 `rt.spawn_*`
+   调用(而非自身),保持"spawn_background 使用父 Agent 的 spawn_child"契约,
+   使外部 monkeypatch agent.spawn_child 仍生效(test_spawn_background_inherits_env_vars)。
+3. **团队 inbox 未拆**:`_drain_inbox_and_respond` 与 _loop 轮次节奏强绑定,本轮保留
+   在 Agent(设计第三节已说明)。
+4. `_resolve_model_hint` 随 SpawnManager 迁出为 `resolve_model_hint` 静态方法。
+
+### 验收结果
+- 全量测试 735 passed / 5 failed(5 个均为预先存在,与本任务无关)。
+- LimitPolicy 5 策略 + ask_user 继续/停止控制流:功能测试全过。
+- factory + pipeline-node 两条创建路径:均正确装配 5 协作者。
+
