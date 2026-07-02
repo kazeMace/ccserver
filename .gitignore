@@ -8,6 +8,7 @@
 *.egg
 dist/
 build/
+**/node_modules/
 wheels/
 sdist/
 .installed.cfg
@@ -57,7 +58,6 @@ ipython_config.py
 .env
 .env.*
 !.env.example
-
 
 # ─── Windows ──────────────────────────────────────────────────────────────────
 Thumbs.db
@@ -114,33 +114,61 @@ fabric.properties
 \#*\#
 .\#*
 
+# ─── Hidden files / local tool state（隐藏文件与本地工具状态，不上传）──────────────
+.*
+**/.*
+!.gitignore
+!.env.example
+
 # ─── CCServer 敏感配置（含 token/secret，不上传）─────────────────────────────────
 .ccserver/
 **/channels.json
 
-# ─── 参考项目 & 分析文档（本地使用，不上传）────────────────────────────────────────────
+# ─── 参考项目 & 文档产物（本地使用，不上传）────────────────────────────────────────────
 refs/
+docs/
+**/docs/**
+legacy_docs/
+**/legacy_docs/**
+documentation/
 trace_docs/
 plan/
+design/
+designs/
+*.md
+!README.md
+!CHANGELOG.md
+!**/README.md
+!**/CHANGELOG.md
+MagicMock/
 
 # ─── CCServer 运行时数据 ──────────────────────────────────────────────────────────
 sessions/
 logs/
 bak/
-docs/
 conversations_*.jsonl
 .specify
 .worktree
-bak
+.worktrees
 loggings
 records
+drama_engine/.runtime/
 workflows
 **/*.jsonl
 **/*.db
+**/*.log
+reverse_cc*
+src/pipeline/_bare_roots/
+.ruff_cache/
+
+# ─── AI 工具配置（本地使用，不上传）──────────────────────────────────────────────────
 **/.claude/
 **/CLAUDE.md
-reverse_cc*
-.worktrees
-src/pipeline/_bare_roots/
-**/*.log  
-.ruff_cache/
+AGENT.md
+AGENTS.md
+**/.codex/
+**/.agents/
+skills-lock.json
+drama_engine/viewer/frontend/node_modules/
+drama_engine/viewer/frontend/dist/
+._*

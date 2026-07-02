@@ -256,3 +256,110 @@ def test_command_loader_from_project_root(tmp_path):
     """from_project_root() 构建标准路径，不存在的目录静默跳过。"""
     loader = CommandLoader.from_project_root(tmp_path)
     assert loader.commands == {}  # 目录不存在，无命令
+
+
+# ── CommandLoader 新字段测试（P2：aliases / args）──────────────────────────────
+
+def _make_command_with_aliases(cmds_dir, filename, name, aliases=None, args=None):
+    """创建带 aliases / args 的 command 文件。"""
+    cmds_dir.mkdir(parents=True, exist_ok=True)
+    lines = ["---", f"name: {name}", "description: test"]
+    if aliases:
+        lines.append("aliases: [" + ", ".join(aliases) + "]")
+    if args:
+        lines.append("args:")
+        for arg in args:
+            lines.append(f"  - name: {arg['name']}")
+            lines.append(f"    description: {arg.get('description', '')}")
+            if arg.get("required"):
+                lines.append("    required: true")
+            if arg.get("choices"):
+                lines.append("    choices: [" + ", ".join(arg["choices"]) + "]")
+    lines.extend(["---", "body text"])
+    (cmds_dir / f"{filename}.md").write_text("\n".join(lines), encoding="utf-8")
+
+
+def test_command_loader_aliases_parsed(tmp_path):
+    """frontmatter aliases 字段应正确解析到 CommandDef.aliases。"""
+    cmds_dir = tmp_path / "commands"
+    _make_command_with_aliases(cmds_dir, "myskill", "myskill", aliases=["ms", "m"])
+    loader = CommandLoader(cmds_dir)
+    cmd = loader.get("myskill")
+    assert cmd is not None
+    assert "ms" in cmd.aliases
+    assert "m" in cmd.aliases
+
+
+def test_command_loader_get_by_alias(tmp_path):
+    """按别名 get() 应返回对应 CommandDef。"""
+    cmds_dir = tmp_path / "commands"
+    _make_command_with_aliases(cmds_dir, "persona", "persona", aliases=["p"])
+    loader = CommandLoader(cmds_dir)
+    cmd_by_name = loader.get("persona")
+    cmd_by_alias = loader.get("p")
+    assert cmd_by_alias is not None
+    assert cmd_by_alias.name == cmd_by_name.name
+
+
+def test_command_loader_alias_collision_skipped(tmp_path):
+    """别名与已有命令名冲突时，冲突别名被跳过，不影响其他别名。"""
+    cmds_dir = tmp_path / "commands"
+    _make_command_file(cmds_dir, "persona", name="persona", description="persona cmd")
+    # 创建另一个命令，其别名与 persona 冲突
+    _make_command_with_aliases(cmds_dir, "shortcut", "shortcut", aliases=["persona"])
+    loader = CommandLoader(cmds_dir)
+    # persona 原命令应正常存在
+    assert loader.get("persona") is not None
+    assert loader.get("persona").name == "persona"
+
+
+def test_command_loader_args_parsed(tmp_path):
+    """frontmatter args 字段应正确解析到 CommandDef.args。"""
+    cmds_dir = tmp_path / "commands"
+    _make_command_with_aliases(
+        cmds_dir, "model", "model",
+        args=[
+            {"name": "model_id", "description": "模型 ID", "choices": ["claude-opus", "claude-sonnet"]},
+        ]
+    )
+    loader = CommandLoader(cmds_dir)
+    cmd = loader.get("model")
+    assert cmd is not None
+    assert len(cmd.args) == 1
+    assert cmd.args[0].name == "model_id"
+    assert cmd.args[0].choices == ["claude-opus", "claude-sonnet"]
+
+
+def test_command_loader_list_commands_includes_aliases(tmp_path):
+    """list_commands 返回的条目应包含 aliases 字段。"""
+    cmds_dir = tmp_path / "commands"
+    _make_command_with_aliases(cmds_dir, "test_cmd", "test_cmd", aliases=["tc"])
+    loader = CommandLoader(cmds_dir)
+    listing = loader.list_commands()
+    entry = next(e for e in listing if e["name"] == "/test_cmd")
+    assert "aliases" in entry
+    assert "/tc" in entry["aliases"]
+
+
+def test_command_loader_list_commands_includes_args(tmp_path):
+    """list_commands 返回的条目，有 args 时应包含 args 字段。"""
+    cmds_dir = tmp_path / "commands"
+    _make_command_with_aliases(
+        cmds_dir, "switch", "switch",
+        args=[{"name": "target", "description": "目标"}]
+    )
+    loader = CommandLoader(cmds_dir)
+    listing = loader.list_commands()
+    entry = next(e for e in listing if e["name"] == "/switch")
+    assert "args" in entry
+    assert entry["args"][0]["name"] == "target"
+
+
+def test_command_loader_list_commands_no_args_key_when_empty(tmp_path):
+    """无 args 字段的命令，list_commands 条目中不应有 args 键。"""
+    cmds_dir = tmp_path / "commands"
+    _make_command_file(cmds_dir, "plain", name="plain", description="no args")
+    loader = CommandLoader(cmds_dir)
+    listing = loader.list_commands()
+    entry = listing[0]
+    assert "args" not in entry

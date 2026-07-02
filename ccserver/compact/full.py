@@ -20,8 +20,8 @@ from typing import Protocol, runtime_checkable
 
 from loguru import logger
 
-from ..config import MODEL
-from ..model import ModelAdapter
+from ..model_engine import ModelAdapter
+from ..model_engine.client import LLMCaller
 from .strip import strip_images_from_messages
 
 
@@ -150,8 +150,11 @@ class DefaultFullCompactor:
         model:   摘要使用的模型 ID，默认 config.MODEL。
     """
 
-    def __init__(self, adapter: ModelAdapter, model: str = MODEL):
+    def __init__(self, adapter: ModelAdapter, model: str = None):
         self.adapter = adapter
+        if model is None:
+            from ..configuration import get_process_config
+            model = get_process_config().model.model_id
         self.model = model
         # 实例级 summarization provider（优先于全局）
         self._instance_provider: SummarizationProvider | None = None
@@ -382,42 +385,38 @@ class DefaultFullCompactor:
         """
         使用 Anthropic LLM 对消息列表进行摘要压缩（内置默认实现）。
 
+        使用 LLMCaller.invoke()（含重试）获取完整 Message，
+        优先取 TextBlock；reasoning 端点可能忽略 thinking=disabled 而只返回
+        ThinkingBlock，此时降级使用思考链文本（劣化但不崩溃），与迁移前行为一致。
+
         Args:
             messages: 已剥离图片的消息列表。
 
         Returns:
-            摘要字符串。
+            摘要字符串，非空。
         """
         # 按消息边界截断，保证 JSON 完整性（避免截到 JSON 中间）
         conversation_text = _truncate_messages_to_chars(messages, max_chars=80000)
 
+        # 通过 L1 调用（含重试）；max_tokens 保持 2000；thinking=disabled 透传
         # 部分模型（如 claude-3-5-sonnet）不支持 thinking 参数，显式关闭
-        create_kwargs: dict = {"thinking": {"type": "disabled"}}
-
-        response = await self.adapter.create(
-            model=self.model,
-            messages=[{"role": "user", "content": (
+        caller = LLMCaller(self.adapter, model=self.model, max_tokens=2000)
+        response = await caller.invoke(
+            [{"role": "user", "content": (
                 "Summarize this conversation for continuity. Include: "
                 "1) What was accomplished, 2) Current state, 3) Key decisions. "
                 "Be concise but preserve critical details.\n\n" + conversation_text
             )}],
-            max_tokens=2000,
-            **create_kwargs,
+            thinking={"type": "disabled"},
         )
 
-        assert response.content, (
-            f"LLM 返回空 content | model={self.model}"
-        )
+        # 优先取 TextBlock 文本
+        text = LLMCaller.extract_text(response)
+        if text is not None:
+            return text
 
-        # 优先取 TextBlock
-        text_block = next(
-            (b for b in response.content if getattr(b, "type", None) == "text"),
-            None,
-        )
-        if text_block is not None:
-            return text_block.text
-
-        # 部分模型返回 ThinkingBlock（如开启了 extended thinking 的模型）
+        # 降级：部分 reasoning 端点可能忽略 thinking=disabled，只返回 ThinkingBlock。
+        # 此时用思考链文本作为摘要（劣化但不崩溃），与迁移前行为保持一致。
         thinking_block = next(
             (b for b in response.content if getattr(b, "type", None) == "thinking"),
             None,

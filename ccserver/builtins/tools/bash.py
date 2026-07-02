@@ -27,7 +27,7 @@ else:
     # session.py 在末尾才导入 bash.py，所以这里安全
     from ccserver.session import Session
 
-from ccserver.settings import ProjectSettings
+from ccserver.configuration import PermissionConfig
 
 
 class BTBash(BuiltinTools):
@@ -237,14 +237,14 @@ class BTBash(BuiltinTools):
     def __init__(
         self,
         workdir: Path,
-        settings: "ProjectSettings",
+        settings: "PermissionConfig",
         session: "Session | None" = None,
         emitter: "BaseEmitter | None" = None,
     ):
         """
         Args:
             workdir: 命令执行的工作目录。
-            settings: 项目配置（用于命令 allow/deny 检查）。
+            settings: 权限配置 PermissionConfig（用于命令 allow/deny 检查）。
             session: Session 实例，提供 shell_tasks 注册表。
                      不传则后台任务无法注册，但仍能执行。
             emitter: BaseEmitter，用于推送 task_started / task_done 事件。
@@ -308,12 +308,10 @@ class BTBash(BuiltinTools):
         if blocked_result:
             return blocked_result
 
-        # 运行时从 settings 读取 allow/deny，支持动态变更
+        # 运行时从权限配置读取 allow/deny，支持动态变更
         if not self.settings.is_command_allowed("Bash", cmd):
-            denied_prefixes = self.settings.denied_commands.get("Bash", [])
-            allowed_prefixes = (
-                self.settings.allowed_commands.get("Bash") if self.settings.allowed_commands else None
-            )
+            denied_prefixes = self.settings.denied_command_prefixes("Bash")
+            allowed_prefixes = self.settings.allowed_command_prefixes("Bash")
             # 判断是被 deny 命中，还是 allow 白名单未命中
             hit_deny = any(cmd.startswith(p) for p in denied_prefixes)
             reason = "matched deny prefix" if hit_deny else f"not in allow whitelist {allowed_prefixes}"

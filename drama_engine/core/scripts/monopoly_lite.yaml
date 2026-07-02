@@ -1,0 +1,163 @@
+meta:
+  title: 大富翁地图经济局
+  description: 可直接运行的大富翁派对脚本：玩家顺序掷骰移动，落到无主地产可购买，落到他人地产自动付租，现金为负时破产出局。
+  min_players: 2
+  max_players: 4
+runtime:
+  type: game_session
+extensions:
+  board:
+    enabled: true
+    version: "0.1"
+    config:
+      boards:
+        track:
+          type: loop_track
+          tiles: 20
+  dice:
+    enabled: true
+    version: "0.1"
+    config:
+      dice:
+        movement: d6
+  economy:
+    enabled: true
+    version: "0.1"
+    config:
+      currency: coin
+rule_set:
+  plugin: builtin.board.monopoly_lite
+  config:
+    objective: highest_net_worth
+    board_size: 20
+    start_bonus: 200
+    properties:
+      "1": {price: 60, rent: 10}
+      "2": {price: 60, rent: 10}
+      "3": {price: 100, rent: 20}
+      "5": {price: 120, rent: 25}
+      "6": {price: 140, rent: 30}
+      "8": {price: 160, rent: 35}
+      "9": {price: 180, rent: 40}
+      "11": {price: 220, rent: 50}
+      "13": {price: 260, rent: 60}
+      "14": {price: 280, rent: 65}
+      "16": {price: 320, rent: 75}
+      "18": {price: 360, rent: 90}
+concepts:
+  roles:
+    tycoon:
+      display_name: 地产玩家
+      description: 掷骰移动、购买资产并收取租金。
+  factions:
+    solo:
+      display_name: 个人胜利
+      description: 每名玩家独立经营。
+  scopes:
+    public:
+      display_name: 地图
+      description: 全员可见的地图、资金和资产状态。
+  abilities:
+    roll:
+      display_name: 掷骰
+      description: 掷骰决定移动步数。
+      prompt: 提交本轮骰点，系统根据地图规则移动。
+    buy:
+      display_name: 购买
+      description: 落到可购买资产时选择是否购买。
+      prompt: 判断价格、现金和战略价值后决定是否购买。
+roles:
+  - name: tycoon
+    display_name: 地产玩家
+    faction: solo
+    brief: 你要通过掷骰移动、购买地产和收租积累最高资产。
+    scopes: [public]
+    abilities: [roll, buy]
+players:
+  count: 4
+  initial_attrs:
+    alive: true
+    cash: 1500
+    position: 0
+  casting:
+    type: shuffle
+    distribution:
+      tycoon: 4
+scopes:
+  - name: public
+    members: all
+flow:
+  loop: true
+  scenes:
+    - name: map-open
+      display_name: 地图与资金初始化
+      scene_type: narration
+      scope: public
+      participants: all
+      dialogue_policy:
+        mode: none
+      response:
+        mode: none
+        cue: 系统建立 20 格环形地图，每名玩家初始现金 1500。经过起点奖励 200；现金为负即破产出局。
+      publication:
+        views:
+          - id: monopoly-status
+            kind: key-value
+            title: 大富翁状态
+            audience: public
+            data:
+              rows:
+                - label: 地产归属
+                  value:
+                    ref: GAME.monopoly_owners
+                - label: 最近破产
+                  value:
+                    ref: GAME.last_bankrupt_player
+    - name: roll-and-move
+      display_name: 玩家顺序掷骰移动与购买
+      scene_type: board
+      scope: public
+      participants:
+        filter:
+          alive: true
+      action_policy:
+        kind: board_move
+        input:
+          widget: board_move
+      response:
+        mode: structured
+        schema: move
+        cue: |
+          轮到你时提交掷骰后的移动动作，例如 steps=4, from=0, to=4。
+          如果落到无主地产且你想购买，同时提交 buy=true；系统会扣现金并写入 GAME.monopoly_owners。
+          如果落到他人地产，系统自动付租；现金为负时 alive=false 并记录 GAME.last_bankrupt_player。
+      resolution:
+        effects:
+          - type: rule_set_apply
+            result_path: GAME.last_map_rule_result
+      publication:
+        views:
+          - id: monopoly-last-result
+            kind: key-value
+            title: 最近移动结算
+            audience: public
+            data:
+              rows:
+                - label: 结算
+                  value:
+                    ref: GAME.last_map_rule_result
+    - name: buy-or-auction
+      display_name: 资产盘点与谈判
+      scene_type: speak
+      scope: public
+      participants:
+        filter:
+          alive: true
+      dialogue_policy:
+        mode: sequential
+      response:
+        mode: text
+        include_reason: true
+        cue: 玩家公开说明当前现金、地产、租金压力和下一轮策略。允许口头谈判，但正式交易应在后续脚本版本用 economy rule_set 记录。
+referee:
+  win_conditions: []

@@ -22,20 +22,19 @@ from datetime import datetime, timezone
 
 from loguru import logger
 
-from ..config import MODEL, MAIN_ROUND_LIMIT, RECORD_DIR
 from ccserver.managers.hooks import HookContext
 from ..recorder import Recorder
 from ..session import Session
 from ..compact import CompactorFactory
-from ..utils import normalize_content_blocks, generate_message_id
+from ..utils import generate_message_id
 from ccserver.builtins.tools import ToolResult
 from ccserver.builtins.tools import BuiltinTools
 from ccserver.emitters import BaseEmitter
 from ..agent_handle import BackgroundAgentHandle
 from ..event_bus import AgentEvent, EventType, SenderType
-from ..model import ModelAdapter
+from ..model_engine import ModelAdapter
 from .runtime import AgentRuntime  # noqa: F401  Agent 拆分后协作者依赖的运行时契约(Protocol)
-from .llm_caller import LLMCaller  # Step 3 拆出:LLM 调用器 + 消息净化
+from .message_builder import MessageBuilder  # L2 造消息器 + 消息净化
 
 from typing import List, Dict, Any, Optional, Callable
 
@@ -128,8 +127,8 @@ class Agent:
         tools: dict[str, BuiltinTools],             # 工具集，key 为工具名，value 为工具实例
         context: AgentContext,                  # 独立上下文，持有 name / depth / id 等身份信息
         disabled_tools: dict[str, BuiltinTools] | None = None,  # 被禁用的工具，生成占位 schema 告知 LLM
-        model: str = MODEL,                     # 使用的 LLM 模型名称
-        round_limit: int = MAIN_ROUND_LIMIT,    # 最大执行轮次，防止无限循环
+        model: str = None,                      # 使用的 LLM 模型名称（None=从 session.config 取）
+        round_limit: int = None,                # 最大执行轮次（None=从 session.config 取）
         persist: bool = True,                   # 是否将消息持久化到磁盘（子代理为 False）
         prompt_version: str = "cc_reverse:v2.1.81", # 使用哪个 prompt lib
         language: str = "简体中文",              # system prompt 语言
@@ -144,6 +143,11 @@ class Agent:
         env_vars: dict[str, str] | None = None,     # 环境变量，会合并到 context.env_vars
     ):
         self.session:Session = session
+        # model / round_limit 未显式传入时，从该会话配置解析（factory/spawn 一般显式传入）
+        if model is None:
+            model = session.config.model.model_id
+        if round_limit is None:
+            round_limit = session.config.agent.main_round_limit
         self.adapter:ModelAdapter = adapter
         self.emitter:BaseEmitter = emitter
         self.tools:Dict[str, Any] = tools
@@ -169,7 +173,7 @@ class Agent:
         if run_mode is not None:
             self.run_mode: str = run_mode
         else:
-            self.run_mode = session.settings.run_mode
+            self.run_mode = session.config.agent.run_mode
 
         from ccserver.prompt_engine import PromptEngine
         self.prompt_engine: PromptEngine = PromptEngine(prompt_version)
@@ -181,9 +185,13 @@ class Agent:
         # 协作者:压缩协调器(Step 2 拆出,Agent 仅持有并委托)
         from .compact_coordinator import CompactCoordinator
         self._compact_coordinator = CompactCoordinator(self, self.compactor)
-        # 协作者:LLM 调用器(Step 3 拆出,合并 stream/sync 调用)
-        from .llm_caller import LLMCaller
-        self._llm_caller = LLMCaller(self)
+        # L2 造消息器：build hook + sanitize + input hook
+        from .message_builder import MessageBuilder
+        self._message_builder = MessageBuilder(self)
+        # L1 健壮 LLM 客户端：重试 / 流式 / extract_text（零 agent 依赖）
+        from ccserver.model_engine.client import LLMCaller
+        # 注意：system 仅作默认占位，每轮调用都用 build() 产出的 effective_system 覆盖
+        self._llm_caller = LLMCaller(self.adapter, model=self.model, system=self.system, max_tokens=8000)
         # 协作者:派生管理器(Step 4 拆出,负责 spawn_child/background/teammate)
         from .spawn_manager import SpawnManager
         self._spawn_manager = SpawnManager(self)
@@ -204,7 +212,7 @@ class Agent:
         self._schemas: List[dict] = agent_schemas + other_schemas + disabled_schemas
 
         self.recorder = Recorder(
-            record_dir=RECORD_DIR,
+            record_dir=session.config.infra.record_dir,
             agent_id=self.context.agent_id,
             agent_name=self.context.name,
             depth=self.context.depth,
@@ -249,6 +257,22 @@ class Agent:
             "Phase changed | agent={} {} -> {}",
             self.aid_label, old_phase, new_phase,
         )
+
+    async def _publish_llm_retry(self, attempt, error):
+        """
+        重试可观测回调：L1 LLMCaller 每次重试前调用，发 LLM_RETRY 事件到 event_bus。
+
+        Args:
+            attempt: 第几次重试（从 0 开始）。
+            error:   触发重试的异常。
+        """
+        await self.session.event_bus.publish(AgentEvent(
+            type=EventType.LLM_RETRY,
+            agent_id=self.context.agent_id,
+            session_id=self.session.id,
+            sender_type=SenderType.AGENT,
+            payload={"model": self.model, "attempt": attempt + 1, "error": str(error)},
+        ))
 
     # ── 公共入口点 ────────────────────────────────────────────────────────────
 
@@ -358,26 +382,26 @@ class Agent:
         """
         解析 /command [args] 格式的输入，构建 command 消息追加到上下文。
 
-        内置命令（builtin=True）在这里执行前置逻辑（如 /clear 清空历史），
-        执行结果作为 stdout 注入消息。
-        非内置命令直接将 command 信息传给 lib 包装。
+        内置命令（builtin=True）通过 command_registry 查找处理器并执行，
+        返回结果作为 stdout 注入消息。非内置命令直接将 command 信息传给 LLM。
         """
-        # 解析 command 名称和参数
         rest = raw[1:]  # 去掉开头的 /
         name, _, args = rest.partition(" ")
-        name = name.strip()
+        name = name.strip().lower()
         args = args.strip()
 
         cmd = self.session.commands.get(name)
         stdout = ""
 
-        # 内置命令的前置逻辑
         if cmd and cmd.builtin:
-            stdout = await self._run_builtin(name, args)
+            # 从注册表获取处理器，替代 if/elif 链
+            from ccserver.agent.command_registry import get_handler
+            handler = get_handler(name)
+            if handler:
+                stdout = await handler(self, args)
 
         body = cmd.load_body() if cmd else ""
 
-        # 将 command 信息作为 dict 传给 _append，由 lib.on_message 负责包装格式
         self._append({
             "role": "user",
             "content": {
@@ -388,18 +412,6 @@ class Agent:
                 "body": body,
             },
         })
-
-    async def _run_builtin(self, name: str, args: str) -> str:
-        """
-        执行内置 command 的前置逻辑，返回 stdout 字符串。
-        目前只有 clear 需要特殊处理。
-        """
-        if name == "clear":
-            self.context.messages.clear()
-            if self.persist:
-                self.session.rewrite_messages([])
-            return ""
-        return ""
 
     # ── 派生(委托给 SpawnManager,Step 4 拆出)────────────────────────────────────
 
@@ -465,20 +477,66 @@ class Agent:
                     return round_text + "\n[shutdown by lead]"
                 await self._compact_coordinator.maybe_compact()
                 # 验证消息序列：修复被外部并发消息打断的 tool_use -> tool_result 对
-                if LLMCaller.sanitize_messages(self.context.messages):
+                # sanitize 是 dict 工具：转 dict 副本处理；若有修复则从结果重建 context.messages
+                from ccserver.messages import UnifiedMessage, unified_message_to_wire, wire_to_unified_message
+                _wire = [unified_message_to_wire(m) for m in self.context.messages]
+                if MessageBuilder.sanitize_messages(_wire):
+                    self.context.messages[:] = [wire_to_unified_message(m) for m in _wire]
                     if self.persist:
                         self.session.rewrite_messages(self.context.messages)
                 logger.debug("Round {}/{} | agent={}", round_num + 1, self.round_limit, self.aid_label)
-                # 调用前快照 messages（深拷贝，防止后续 append 污染记录）
-                input_messages_snapshot = [dict(m) for m in self.context.messages]
+                # 调用前快照 messages（转 wire dict，防止后续 append 污染记录）
+                input_messages_snapshot = [unified_message_to_wire(m) for m in self.context.messages]
 
-                # 委托 LLMCaller(合并了 stream/sync 调用)
-                response = await self._llm_caller.call(stream=self.stream)
+                # ── LLM 一次请求：L2 造消息 → 发遥测 → L1 调模型 → 推 token ──
+                await self._set_phase("llm_calling")
+                effective_system, effective_messages = await self._message_builder.build()
+                # 断言：build() 必须产出非空 messages，否则无法调用 LLM
+                assert effective_messages, "MessageBuilder.build() 返回空 messages，无法调用 LLM"
 
-                if response is None:
-                    # LLM 永久失败（重试耗尽）
+                llm_start_ts = datetime.now(timezone.utc)
+                await self.session.event_bus.publish(AgentEvent(
+                    type=EventType.LLM_REQUEST,
+                    agent_id=self.context.agent_id,
+                    session_id=self.session.id,
+                    sender_type=SenderType.AGENT,
+                    payload={
+                        "model": self.model,
+                        "message_count": len(effective_messages),
+                        "tools_count": len(self._schemas),
+                        "system_len": len(effective_system) if effective_system else 0,
+                    },
+                ))
+
+                try:
+                    if self.stream:
+                        response = await self._llm_caller.stream(
+                            effective_messages,
+                            system=effective_system,
+                            tools=self._schemas,
+                            on_text=self.emitter.emit_token,
+                            on_thinking=self.emitter.emit_thinking,
+                            on_retry=self._publish_llm_retry,
+                        )
+                    else:
+                        response = await self._llm_caller.invoke(
+                            effective_messages,
+                            system=effective_system,
+                            tools=self._schemas,
+                            on_retry=self._publish_llm_retry,
+                        )
+                except Exception as e:
+                    # LLM 永久失败（重试耗尽或不可重试）
+                    logger.error("LLM error | agent={} exc_type={} error={}",
+                                 self.aid_label, type(e).__name__, e)
+                    await self.emitter.emit_error(str(e))
+                    await self.session.hooks.emit_void(
+                        "prompt:llm:error",
+                        {"error": str(e), "model": self.model},
+                        self._build_hook_ctx(),
+                    )
                     await self._set_phase("error")
-                    self.state.last_error = "LLM call failed after retries"
+                    self.state.last_error = "LLM call failed"
                     await self.session.hooks.emit_void(
                         "agent:stop:failure",
                         {"error": self.state.last_error},
@@ -486,14 +544,49 @@ class Agent:
                     )
                     return ""
 
-                content = normalize_content_blocks(response.content)
+                # 发布 llm_response 事件（含耗时）
+                llm_duration_ms = int((datetime.now(timezone.utc) - llm_start_ts).total_seconds() * 1000)
+                # response 是 UnifiedResponse：content 是字符串，tool_calls 是列表
+                tool_calls_count = len(response.tool_calls)
+                await self.session.event_bus.publish(AgentEvent(
+                    type=EventType.LLM_RESPONSE,
+                    agent_id=self.context.agent_id,
+                    session_id=self.session.id,
+                    sender_type=SenderType.AGENT,
+                    payload={
+                        "model": self.model,
+                        "stop_reason": response.stop_reason,
+                        "content_blocks_count": tool_calls_count + (1 if response.content else 0),
+                        "duration_ms": llm_duration_ms,
+                    },
+                ))
+
+                # 构建 assistant 消息的 block 列表，写入 context 和 recorder
+                from ccserver.messages import UnifiedMessage, UnifiedTextBlock, UnifiedThinkingBlock, UnifiedToolUseBlock
+                assistant_blocks = []
+                if response.thinking:
+                    assistant_blocks.append(UnifiedThinkingBlock(thinking=response.thinking))
+                if response.content:
+                    assistant_blocks.append(UnifiedTextBlock(text=response.content))
+                for tc in response.tool_calls:
+                    assistant_blocks.append(UnifiedToolUseBlock(id=tc.id, name=tc.name, input=tc.input))
+                # 序列化为 wire dict 供 recorder 使用
+                content_for_recorder = [b.to_dict() for b in assistant_blocks]
                 self.recorder.record(
                     round_num + 1,
                     input_messages=input_messages_snapshot,
-                    response_content=content,
+                    response_content=content_for_recorder,
                     stop_reason=response.stop_reason,
                 )
-                self._append({"role": "assistant", "content": content})
+                self._append(UnifiedMessage(role="assistant", content=assistant_blocks))
+
+                # ── 非流式分支：直接从 response.content（字符串）累加进 round_text ──
+                # 背景：UnifiedResponse.content 现在是字符串，直接累加即可。
+                # 流式分支：on_text 回调只推送给 emitter（UI），不写入 round_text。
+                # 用 += 累加是为兼容「多轮 tool_use 之间穿插 text」的情况。
+                if not self.stream:
+                    if response.content:
+                        round_text += response.content
                 self._last_assistant_time = datetime.now(timezone.utc)
                 if round_text:
                     # hook: prompt:llm:output — 每轮 LLM 完成后（observing，纯观测）
@@ -557,14 +650,15 @@ class Agent:
                     payload=progress_payload,
                 ))
 
-                tool_results, trigger_compact = await self._tool_dispatcher.handle(response.content)
+                tool_results, trigger_compact = await self._tool_dispatcher.handle(response.tool_calls)
 
                 # 注意：compaction 必须在追加 tool_result 之前执行，
                 # 否则 tool_result 会随旧消息一起被压缩丢弃。
                 if trigger_compact:
                     await self._compact_coordinator.do_compact(reason="manual compact requested")
 
-                self._append({"role": "user", "content": tool_results})
+                from ccserver.messages import UnifiedMessage
+                self._append(UnifiedMessage(role="user", content=tool_results))
 
                 await self._set_phase("running")
 
@@ -595,25 +689,23 @@ class Agent:
 
     # ── 上下文管理 ────────────────────────────────────────────────────────────
 
-    def _append(self, message: dict):
-        """
-        向上下文追加消息，并根据配置决定是否持久化。
+    def _append(self, message):
+        """向上下文追加消息（统一存 UnifiedMessage），并按配置持久化。
 
-        始终将消息写入 context.messages（对根代理来说，这与 session.messages 是同一对象）。
-        persist=True 时额外调用 session.persist_message 将消息写入磁盘。
-
-        消息在写入前统一经过 lib.on_message() 处理（包装格式、注入 reminder 等）。
+        message 可为 dict 或 UnifiedMessage。经 prompt_engine.on_message（dict-facing）
+        处理后，统一转为 UnifiedMessage 存入 context.messages。
         """
-        message = self.prompt_engine.on_message(
-            message, self.session, self.context.messages,
+        from ccserver.messages import UnifiedMessage, unified_message_to_wire, wire_to_unified_message
+        # prompt lib 是 dict-facing：转 dict 进、dict 出
+        msg_dict = unified_message_to_wire(message)
+        msg_dict = self.prompt_engine.on_message(
+            msg_dict, self.session, [unified_message_to_wire(m) for m in self.context.messages],
             skills_override=self.skills_override,
         )
-
-        # 始终写入 context.messages
-        self.context.messages.append(message)
-        # persist=True 时额外写磁盘（只写盘，不重复 append 到列表）
+        unified = wire_to_unified_message(msg_dict)
+        self.context.messages.append(unified)
         if self.persist:
-            self.session.persist_message(message)
+            self.session.persist_message(unified)
 
     # ── Hook 辅助 ─────────────────────────────────────────────────────────────
 

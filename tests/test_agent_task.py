@@ -72,29 +72,38 @@ class TestAgentTaskStateLifecycle:
         assert state.start_time is not None
 
     @pytest.mark.anyio
-    async def test_mark_running_asserts_on_wrong_state(self):
-        """非 pending 状态调用 mark_running 应抛出 AssertionError。"""
+    async def test_mark_running_wrong_state_warns_not_raises(self):
+        """非 pending 状态调用 mark_running 应记录 warning 但不崩溃（P0-3 soft 处理）。"""
         state = AgentTaskState(id="a00000001", agent_id="agent-001")
         state.mark_running()
-        with pytest.raises(AssertionError):
-            state.mark_running()
+        # 第二次 mark_running（RUNNING → RUNNING）：记录 warning，但不抛异常
+        state.mark_running()  # should NOT raise
+        assert state.status == AgentTaskStatus.RUNNING
 
     @pytest.mark.anyio
-    async def test_mark_completed_sets_result_and_end_time(self):
-        """mark_completed 应设置 result 和 end_time。"""
+    async def test_mark_completed_wrong_state_warns_not_raises(self):
+        """非 running 状态调用 mark_completed 应记录 warning 但不崩溃（P0-3 soft 处理）。"""
         state = AgentTaskState(id="a00000001", agent_id="agent-001")
-        state.mark_running()
-        state.mark_completed(result="done!")
+        # PENDING → mark_completed：记录 warning，但不抛异常
+        state.mark_completed(result="early done")  # should NOT raise
         assert state.status == AgentTaskStatus.COMPLETED
-        assert state.result == "done!"
-        assert state.end_time is not None
+        assert state.result == "early done"
 
     @pytest.mark.anyio
-    async def test_mark_completed_asserts_on_wrong_state(self):
-        """非 running 状态调用 mark_completed 应抛出 AssertionError。"""
+    async def test_teammate_multi_task_state_cycle(self):
+        """Teammate 多任务场景：完成一个任务后状态重置为 RUNNING 再完成第二个任务（P0-5）。"""
         state = AgentTaskState(id="a00000001", agent_id="agent-001")
-        with pytest.raises(AssertionError):
-            state.mark_completed()
+        # 第一个任务
+        state.mark_running()
+        state.mark_completed(result="task1 done")
+        assert state.status == AgentTaskStatus.COMPLETED
+        # spawn_manager 会在新任务前重置状态
+        state.status = AgentTaskStatus.RUNNING
+        state.result = None
+        # 第二个任务
+        state.mark_completed(result="task2 done")
+        assert state.status == AgentTaskStatus.COMPLETED
+        assert state.result == "task2 done"
 
     @pytest.mark.anyio
     async def test_mark_failed_sets_error_and_end_time(self):

@@ -107,22 +107,31 @@ class FileStorageAdapter(StorageAdapter):
     # ── 消息 IO ───────────────────────────────────────────────────────────────
 
     def append_message(self, session_id: str, message: dict) -> None:
+        # Session 已在边界归一为 dict；此处保留 unified_message_to_wire 作为兜底，
+        # 覆盖少数绕过 Session 直接调用 adapter 的路径（如 spawn_manager 写 background-done 消息）。
+        # unified_message_to_wire 对 dict 幂等，重复调用无副作用。
+        from ccserver.messages import unified_message_to_wire
+        message = unified_message_to_wire(message)
         msg_path = self._session_dir(session_id) / "messages.jsonl"
         with open(msg_path, "a", encoding="utf-8") as f:
             f.write(json.dumps(message, default=_json_default) + "\n")
 
     def rewrite_messages(self, session_id: str, messages: list) -> None:
+        from ccserver.messages import unified_message_to_wire
         msg_path = self._session_dir(session_id) / "messages.jsonl"
         with open(msg_path, "w", encoding="utf-8") as f:
             for msg in messages:
+                msg = unified_message_to_wire(msg)
                 f.write(json.dumps(msg, default=_json_default) + "\n")
         logger.debug("FileAdapter: messages rewritten | id={} count={}", session_id[:8], len(messages))
 
     def save_transcript(self, session_id: str, messages: list) -> str:
+        from ccserver.messages import unified_message_to_wire
         ts = int(time.time())
         path = self._session_dir(session_id) / "transcripts" / f"transcript_{ts}.jsonl"
         with open(path, "w") as f:
             for msg in messages:
+                msg = unified_message_to_wire(msg)
                 f.write(json.dumps(msg, default=str) + "\n")
         return str(path)
 

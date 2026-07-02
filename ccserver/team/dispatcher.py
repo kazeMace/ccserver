@@ -61,8 +61,8 @@ class TeamTaskDispatcher:
         if self._task is None or self._task.done():
             self._task = asyncio.create_task(self._run())
             logger.info(
-                "TeamTaskDispatcher started | team={} interval={}s",
-                self.team.name, self.interval
+                "TeamTaskDispatcher started | team={} fallback_interval={}s",
+                self.team.name, self.FALLBACK_INTERVAL,
             )
 
     def stop(self) -> None:

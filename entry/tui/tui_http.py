@@ -17,7 +17,7 @@ import os
 import sys
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import httpx
 from dotenv import load_dotenv

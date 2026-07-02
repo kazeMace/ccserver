@@ -17,7 +17,6 @@ from unittest.mock import MagicMock
 
 from ccserver.agent import Agent, AgentContext
 from ccserver.managers.agents import AgentDef
-from ccserver.settings import ProjectSettings
 from ccserver.builtins.tools.constants import CHILD_DEFAULT_TOOLS, TEAMMATE_EXTRA_TOOLS
 
 
@@ -39,19 +38,21 @@ def _make_tools(*names: str) -> dict:
 def _make_settings(
     allowed: list[str] | None = None,
     denied: list[str] | None = None,
-) -> ProjectSettings:
-    return ProjectSettings(
-        allowed_tools=frozenset(allowed) if allowed is not None else None,
-        denied_tools=frozenset(denied) if denied is not None else frozenset(),
-        allowed_commands=None,
-        denied_commands={},
-        enabled_mcp_servers=None,
-    )
+):
+    """构建带 permissions 的 CcServerConfig（allow/deny 为纯工具名列表）。"""
+    from ccserver.configuration.schema import CcServerConfig
+    perms = {}
+    if allowed is not None:
+        perms["allow"] = list(allowed)
+    if denied is not None:
+        perms["deny"] = list(denied)
+    return CcServerConfig.from_dict({"permissions": perms})
 
 
-def _make_agent(tools: dict, project_root: Path, settings: ProjectSettings | None = None) -> Agent:
+def _make_agent(tools: dict, project_root: Path, settings=None) -> Agent:
     session = MagicMock()
-    session.settings = settings or _make_settings()
+    # Agent / spawn 现读 session.config（含 permissions）
+    session.config = settings or _make_settings()
     session.mcp.schemas.return_value = []
     session.skills = MagicMock()
     # 必须是真实 Path，prompts_lib 会访问 session.project_root / "CLAUDE.md"

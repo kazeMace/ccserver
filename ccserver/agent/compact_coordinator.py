@@ -39,9 +39,12 @@ class CompactCoordinator:
         与原 Agent._maybe_compact 行为一致。
         """
         rt = self._rt
-        # micro 压缩(按时间触发的轻量裁剪)
-        self._compactor.run_micro(rt.context.messages, rt._last_assistant_time)
-        should, reason = self._compactor.should_compact(rt.context.messages)
+        from ccserver.messages import UnifiedMessage, unified_message_to_wire, wire_to_unified_message
+        # compact 内部是 dict 工具：转 wire dict 处理，处理后从结果重建 context.messages
+        wire = [unified_message_to_wire(m) for m in rt.context.messages]
+        self._compactor.run_micro(wire, rt._last_assistant_time)
+        rt.context.messages[:] = [wire_to_unified_message(m) for m in wire]
+        should, reason = self._compactor.should_compact(wire)
         if should:
             logger.info("Compact triggered | agent={} reason={}", rt.aid_label, reason)
             await self.do_compact(reason=reason)
@@ -53,8 +56,11 @@ class CompactCoordinator:
         与原 Agent._do_compact 行为一致。
         """
         rt = self._rt
-        message_count = len(rt.context.messages)
-        tokens_before = _estimate_tokens(rt.context.messages)
+        from ccserver.messages import UnifiedMessage, unified_message_to_wire, wire_to_unified_message
+        # compactor 是 dict 工具：在边界转 wire dict
+        wire = [unified_message_to_wire(m) for m in rt.context.messages]
+        message_count = len(wire)
+        tokens_before = _estimate_tokens(wire)
         # hook: agent:compact:before（observing）
         await rt.session.hooks.emit_void(
             "agent:compact:before",
@@ -64,7 +70,7 @@ class CompactCoordinator:
         await rt.emitter.emit_compact(reason)
         try:
             compacted = await self._compactor.compact(
-                rt.context.messages,
+                wire,
                 rt.session,
                 rt.emitter,
                 lib=rt.prompt_engine,
@@ -79,9 +85,9 @@ class CompactCoordinator:
         summary_length = len(compacted[0]["content"]) if compacted else 0
         compacted_count = message_count - len(compacted)
         if rt.persist:
-            rt.session.rewrite_messages(compacted)
+            rt.session.rewrite_messages([wire_to_unified_message(m) for m in compacted])
         else:
-            rt.context.messages[:] = compacted
+            rt.context.messages[:] = [wire_to_unified_message(m) for m in compacted]
         # hook: agent:compact:after（observing）
         await rt.session.hooks.emit_void(
             "agent:compact:after",

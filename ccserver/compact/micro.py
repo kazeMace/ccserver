@@ -19,7 +19,6 @@ from typing import Protocol, runtime_checkable
 
 from loguru import logger
 
-from ..config import KEEP_RECENT
 
 # ─── 可压缩工具集 ──────────────────────────────────────────────────────────────
 # 参考 CC microCompact.ts COMPACTABLE_TOOLS。
@@ -97,10 +96,14 @@ class DefaultMicroCompactor:
 
     def __init__(
         self,
-        keep_recent: int = KEEP_RECENT,
+        keep_recent: int = None,
         compactable_tools: frozenset[str] = COMPACTABLE_TOOLS,
         time_threshold_secs: int = TIME_COMPACT_THRESHOLD_SECS,
     ):
+        # 默认从进程级配置取 compaction.keep_recent
+        if keep_recent is None:
+            from ..configuration import get_process_config
+            keep_recent = get_process_config().compaction.keep_recent
         assert keep_recent > 0, f"keep_recent 必须大于 0，收到: {keep_recent}"
         assert time_threshold_secs > 0, f"time_threshold_secs 必须大于 0，收到: {time_threshold_secs}"
         self.keep_recent = keep_recent

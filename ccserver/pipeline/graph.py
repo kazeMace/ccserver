@@ -41,8 +41,7 @@ from typing import Any, Callable
 
 from loguru import logger
 
-from ..config import MODEL
-from ..model import ModelAdapter, get_adapter
+from ..model_engine import ModelAdapter, AdapterFactory, ModelEndpoint
 from ..factory import AgentFactory
 from ..session import Session, SessionManager
 from ..emitters import BaseEmitter
@@ -88,13 +87,15 @@ class Graph:
     def __init__(
         self,
         session_manager: SessionManager,
-        model: str = MODEL,
+        model: str | None = None,
         adapter: ModelAdapter | None = None,
         mcp: MCPManager | None = None,
     ):
         self._session_manager = session_manager
         self._model = model
-        self._adapter = adapter or get_adapter()
+        # 未注入 adapter 时，按配置的模型（self._model，None 则取环境/默认）构造，
+        # 经 AdapterFactory 自动注入 model_info / compatibility。
+        self._adapter = adapter or AdapterFactory.build(ModelEndpoint.from_env(self._model))
         self._mcp: MCPManager | None = mcp
 
         self._nodes: dict[str, AgentNode | FunctionNode | MCPToolNode] = {}

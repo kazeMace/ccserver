@@ -8,9 +8,9 @@ test_model_info — 测试 ModelInfo 和 ModelInfoRegistry。
 - 进程级单例 get_registry()
 """
 import pytest
-from ccserver.model.info.model_info import ModelInfo
-from ccserver.model.info.registry import ModelInfoRegistry
-from ccserver.model.info.registry import get_registry
+from ccserver.model_engine.metadata.model_info import ModelInfo
+from ccserver.model_engine.metadata.model_info_registry import ModelInfoRegistry
+from ccserver.model_engine.metadata.model_info_registry import get_registry
 
 
 class TestModelInfo:
@@ -35,7 +35,7 @@ class TestModelInfo:
         assert info.supports_video
 
     def test_supports_file(self):
-        """supports_file 属性检查（GLM-5V 支持 file）。"""
+        """supports_file 属性检查（多模态模型支持 file）。"""
         info = ModelInfo(model_id="file-model", input_types=frozenset({"text", "file"}))
         assert info.supports_file
 
@@ -164,20 +164,8 @@ class TestModelInfoRegistrySingleton:
         assert claude.supports_image
         assert claude.provider == "anthropic"
 
-    def test_glm_capabilities(self):
-        """GLM-5V 多模态能力声明正确。"""
+    def test_deepseek_removed_from_catalog(self):
+        """deepseek 已从内置目录移除（无专属 Provider）。"""
         reg = get_registry()
-        glm = reg.get("glm-5v-turbo")
-        assert glm is not None
-        assert glm.supports_image
-        assert glm.supports_video
-        assert glm.supports_file
-        assert glm.provider == "zhipuai"
-
-    def test_deepseek_text_only(self):
-        """DeepSeek 是纯文本模型。"""
-        reg = get_registry()
-        ds = reg.get("deepseek-chat")
-        assert ds is not None
-        assert not ds.supports_image
-        assert ds.input_types == frozenset({"text"})
+        assert reg.get("deepseek-chat") is None
+        assert reg.get("gemini-2.5-pro-exp-03-25") is None

@@ -37,6 +37,9 @@ def make_agent(context_depth: int = 0):
     session.settings.ask_tools = []
     session.settings.run_mode = None
     session.settings.is_command_allowed = MagicMock(return_value=True)
+    # Agent 现读 session.config；用真实 CcServerConfig（默认 max_depth=5 等）
+    from ccserver.configuration.schema import CcServerConfig
+    session.config = CcServerConfig()
     session.shell_tasks = MagicMock()
     session.storage = MagicMock()
     session.storage.append_message = MagicMock()

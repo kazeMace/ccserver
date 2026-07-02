@@ -27,8 +27,8 @@ from typing import Protocol
 
 from loguru import logger
 
-from ..config import MAIN_ROUND_LIMIT
 from .runtime import AgentRuntime
+from ccserver.model_engine.client import LLMCaller
 
 
 # ── 策略返回的纯数据结果 ────────────────────────────────────────────────────────
@@ -146,9 +146,11 @@ class AskUserStrategy:
         }])
         if answer and "继续" in answer:
             # 追加一条 user 消息触发下一轮;通过 LimitOutcome 告知 _loop 继续 + 加额度。
-            rt.context.messages.append({"role": "user", "content": "继续执行未完成的任务。"})
-            logger.info("User chose to continue | agent={} extra_rounds={}", rt.aid_label, MAIN_ROUND_LIMIT)
-            return LimitOutcome(final_text="", continue_loop=True, extra_rounds=MAIN_ROUND_LIMIT)
+            from ccserver.messages import UnifiedMessage, UnifiedTextBlock
+            rt.context.messages.append(UnifiedMessage(role="user", content=[UnifiedTextBlock(text="继续执行未完成的任务。")]))
+            _extra = rt.session.config.agent.main_round_limit
+            logger.info("User chose to continue | agent={} extra_rounds={}", rt.aid_label, _extra)
+            return LimitOutcome(final_text="", continue_loop=True, extra_rounds=_extra)
         return await finish_with_last_text(rt, last_text)
 
 
@@ -179,19 +181,19 @@ class SummarizeStrategy:
     async def handle(self, rt: AgentRuntime, last_text: str) -> LimitOutcome:
         try:
             import json as _json
-            conversation = _json.dumps(rt.context.messages, default=str, ensure_ascii=False)[:20000]
-            response = await rt.adapter.create(
-                model=rt.model,
-                messages=[{"role": "user", "content": (
+            from ccserver.messages import unified_message_to_wire
+            conversation = _json.dumps(
+                [unified_message_to_wire(m) for m in rt.context.messages],
+                default=str, ensure_ascii=False,
+            )[:20000]
+            # 通过 L1 LLMCaller 调用（白捡重试）；max_tokens 保持 1000
+            caller = LLMCaller(rt.adapter, model=rt.model, max_tokens=1000)
+            summary = await caller.invoke_text([
+                {"role": "user", "content": (
                     "请对以下对话做简洁总结，说明已完成了什么、当前状态是什么：\n\n" + conversation
-                )}],
-                max_tokens=1000,
-            )
-            assert response.content, f"LLM returned empty content in summarize for {rt.aid_label}"
-            # 跳过 ThinkingBlock，取第一个 TextBlock（deepseek 等端点默认开启 thinking）
-            text_block = next((b for b in response.content if getattr(b, "type", None) == "text"), None)
-            assert text_block is not None, f"summarize: no TextBlock in response, types={[getattr(b,'type',None) for b in response.content]}"
-            summary = text_block.text
+                )},
+            ])
+            assert summary is not None, f"summarize: 无 TextBlock for {rt.aid_label}"
         except Exception as e:
             logger.error("summarize strategy failed | agent={} error={}", rt.aid_label, e)
             return await finish_with_last_text(rt, last_text)

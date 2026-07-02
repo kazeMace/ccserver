@@ -24,12 +24,12 @@ import asyncio
 
 from loguru import logger
 
-from ..config import MODEL, SUB_ROUND_LIMIT
 from ..event_bus import AgentEvent, EventType, SenderType
 from ..emitters.bus_emitter import BusEmitter
 from ..agent_handle import BackgroundAgentHandle
 from ..agent_registry import register_handle, unregister_handle
 from ..team.protocol import MsgType
+from ..tasks.agent import AgentTaskStatus
 from .runtime import AgentRuntime
 
 
@@ -58,9 +58,10 @@ class SpawnManager:
 
         不支持的 hint 返回 None，由调用方 fallback 到父模型。
         """
+        from ..configuration import get_process_config
         _HINT_MAP = {
             "haiku": "claude-haiku-4-5-20251001",
-            "sonnet": MODEL,          # 跟随全局默认模型
+            "sonnet": get_process_config().model.model_id,  # 跟随进程默认模型
             "opus": "claude-opus-4-7",
             "inherit": None,          # 由调用方使用 rt.model
         }
@@ -155,7 +156,7 @@ class SpawnManager:
             child_context.agent_id = agent_id_override
 
         # ── 内置工具过滤（分层权限决策）────────────────────────────────────
-        settings = rt.session.settings
+        permissions = rt.session.config.permissions
 
         # 步骤 1：确定基础白名单
         if agent_def is not None and agent_def.tools is not None:
@@ -169,12 +170,12 @@ class SpawnManager:
         if agent_def is not None and agent_def.disallowed_tools is not None:
             allowed -= set(agent_def.disallowed_tools)
 
-        # 步骤 3：应用 settings 黑名单
-        allowed -= settings.denied_tools
+        # 步骤 3：应用全局/项目权限黑名单
+        allowed -= permissions.denied_tool_set()
 
-        # 步骤 4：应用 settings 白名单约束（None 表示不限制）
-        if settings.allowed_tools is not None:
-            allowed &= settings.allowed_tools
+        # 步骤 4：应用权限白名单约束（None 表示不限制）
+        if permissions.allowed_tool_set() is not None:
+            allowed &= permissions.allowed_tool_set()
 
         # 步骤 5：硬编码永久禁用（最后一道）
         allowed -= CHILD_DISALLOWED_TOOLS
@@ -216,7 +217,7 @@ class SpawnManager:
             system=injected_system,
             context=child_context,
             model=child_model,
-            round_limit=agent_def.round_limit if agent_def and agent_def.round_limit else SUB_ROUND_LIMIT,
+            round_limit=agent_def.round_limit if agent_def and agent_def.round_limit else rt.session.config.agent.sub_round_limit,
             limit_strategy=agent_def.limit_strategy if agent_def else "last_text",
             persist=False,
             prompt_version=prompt_version or rt.prompt_version,
@@ -404,17 +405,23 @@ class SpawnManager:
                         f"[Background agent '{agent_name}' (task_id={agent_task_id}) completed]\n"
                         f"Result: {summary}"
                     )
-                done_message = {
-                    "role": "system",
-                    "content": content,
-                    "_ccserver_background_agent_done": True,
-                    "agent_task_id": agent_task_id,
-                    "agent_name": agent_name,
-                }
+                # 后台 agent 完成标记：统一为 UnifiedMessage（与 context.messages 类型一致）。
+                # Background-agent done marker: build as UnifiedMessage so context.messages
+                # stays homogeneous; persist a dict via to_wire_dict (sqlite/mongo 安全)。
+                from ccserver.messages import UnifiedMessage, UnifiedTextBlock, unified_message_to_wire
+                done_message = UnifiedMessage(
+                    role="system",
+                    content=[UnifiedTextBlock(text=content)],
+                    metadata={
+                        "_ccserver_background_agent_done": True,
+                        "agent_task_id": agent_task_id,
+                        "agent_name": agent_name,
+                    },
+                )
                 rt.context.messages.append(done_message)
 
                 if rt.session.storage is not None:
-                    rt.session.storage.append_message(rt.session.id, done_message)
+                    rt.session.storage.append_message(rt.session.id, unified_message_to_wire(done_message))
 
                 _hook_coro = rt.session.hooks.emit_void(
                     "background_agent:done",
@@ -470,11 +477,19 @@ class SpawnManager:
                             agent_task_state.mark_cancelled()
                         await _inject_done_notice(cancelled=True)
 
-        asyncio.create_task(_watch_terminal_events())
+        # P0-4：保存强引用防止 GC 回收 watcher task。
+        # asyncio 文档要求：create_task 返回的 Task 必须保存在某处，
+        # 否则事件循环只保留弱引用，GC 可能在任务完成前提前回收。
+        # 把 watcher task 挂到 handle 上，生命周期与 handle 绑定。
+        handle._watcher_task = asyncio.create_task(_watch_terminal_events())
 
         # 8. 启动后台 Agent 协程（不阻塞）
         async def _run_background():
             try:
+                # 标记为 running（首次启动）
+                if agent_task_state is not None:
+                    agent_task_state.mark_running()
+
                 await child.run(prompt)
 
                 # ── Teammate 空闲循环：任务完成后进入 idle，等待新任务 ───────
@@ -522,6 +537,13 @@ class SpawnManager:
                                     "Teammate new task | agent_id={} task_id={}",
                                     child.context.agent_id, msg.get("task_id")
                                 )
+                                # 新任务开始前重置 AgentTaskState 为 running
+                                # （P0-5：防止 mark_completed 因状态不是 running 而警告）
+                                if agent_task_state is not None:
+                                    agent_task_state.status = AgentTaskStatus.RUNNING
+                                    agent_task_state.result = None
+                                    agent_task_state.error = None
+
                                 await child.run(task_prompt)
                                 await child._set_phase("idle")
                                 if registry is not None:

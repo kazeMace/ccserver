@@ -48,6 +48,10 @@ from .base import (
 )
 from .registry import ChannelRegistry
 from .gateway import ChannelGateway
+from .lifecycle import ChannelLifecycle
+from .processor_loop import ProcessorLoopManager
+from .outbound import OutboundDispatcher
+from .health_monitor import ChannelHealthMonitor
 from .config import ChannelConfig
 
 __all__ = [
@@ -59,5 +63,9 @@ __all__ = [
     "ChatType",
     "ChannelRegistry",
     "ChannelGateway",
+    "ChannelLifecycle",
+    "ProcessorLoopManager",
+    "OutboundDispatcher",
+    "ChannelHealthMonitor",
     "ChannelConfig",
 ]

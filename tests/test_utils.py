@@ -9,7 +9,6 @@ tests/test_utils.py — 工具函数单元测试
 
   src/utils/sdk.py:
     - get_block_attr() dict 和 SDK 对象
-    - normalize_content_blocks() SDK 对象转 dict
     - estimate_tokens() 字符数/4 估算
     - generate_message_id() 格式和唯一性
 """
@@ -18,7 +17,7 @@ import pytest
 from unittest.mock import MagicMock
 
 from ccserver.utils import safe_path
-from ccserver.utils.sdk import get_block_attr, normalize_content_blocks, estimate_tokens, generate_message_id
+from ccserver.utils.sdk import get_block_attr, estimate_tokens, generate_message_id
 
 
 # ─── safe_path() ─────────────────────────────────────────────────────────────
@@ -89,52 +88,8 @@ def test_block_get_missing_attr_from_sdk_object():
 
 
 # ─── normalize_content_blocks() ──────────────────────────────────────────────
-
-
-def test_normalize_content_passthrough_dicts():
-    content = [{"type": "text", "text": "hello"}, {"type": "other"}]
-    result = normalize_content_blocks(content)
-    assert result == content
-
-
-def test_normalize_content_sdk_text_block():
-    block = MagicMock()
-    block.type = "text"
-    block.text = "hello world"
-    result = normalize_content_blocks([block])
-    assert result == [{"type": "text", "text": "hello world"}]
-
-
-def test_normalize_content_sdk_tool_use_block():
-    block = MagicMock()
-    block.type = "tool_use"
-    block.id = "abc123"
-    block.name = "Bash"
-    block.input = {"command": "ls"}
-    result = normalize_content_blocks([block])
-    assert result == [{"type": "tool_use", "id": "abc123", "name": "Bash", "input": {"command": "ls"}}]
-
-
-def test_normalize_content_unknown_type():
-    block = MagicMock()
-    block.type = "unknown_type"
-    result = normalize_content_blocks([block])
-    assert result == [{"type": "unknown_type"}]
-
-
-def test_normalize_content_empty_list():
-    assert normalize_content_blocks([]) == []
-
-
-def test_normalize_content_mixed():
-    text_dict = {"type": "text", "text": "plain dict"}
-    sdk_block = MagicMock()
-    sdk_block.type = "text"
-    sdk_block.text = "sdk object"
-    result = normalize_content_blocks([text_dict, sdk_block])
-    assert len(result) == 2
-    assert result[0] == text_dict
-    assert result[1] == {"type": "text", "text": "sdk object"}
+# R3 S4：normalize_content_blocks 已删除（生产侧改用 messages 包 block.to_dict），
+# 对应单测随之移除。详见 R3 S4 迁移说明。
 
 
 # ─── estimate_tokens() ───────────────────────────────────────────────────────

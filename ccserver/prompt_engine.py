@@ -17,8 +17,8 @@ from prompt_library.base import PromptLib
 
 if TYPE_CHECKING:
     from ccserver.session import Session
-    from ccserver.settings import ProjectSettings
-    from ccserver.model import ModelAdapter
+    from ccserver.configuration import PermissionConfig
+    from ccserver.model_engine import ModelAdapter
     from ccserver.emitters.base import BaseEmitter
 
 
@@ -62,7 +62,7 @@ class PromptEngine:
         self,
         session: "Session",
         adapter: "ModelAdapter",
-        settings: "ProjectSettings",
+        settings: "PermissionConfig",
         emitter: "BaseEmitter | None" = None,
         model: str = "",
     ) -> dict:
@@ -89,7 +89,7 @@ class PromptEngine:
         self,
         session: "Session",
         adapter: "ModelAdapter",
-        settings: "ProjectSettings",
+        settings: "PermissionConfig",
         emitter: "BaseEmitter | None" = None,
         model: str = "",
     ) -> dict:
@@ -97,7 +97,7 @@ class PromptEngine:
         默认工具集构建逻辑（原 PromptLib.build_tools 默认实现）。
 
         WebSearch 选择策略（同一时刻只注册一个）：
-          - lib_id == "cc_reverse:v2.1.81" 且 adapter 是 AnthropicAdapter → Anthropic BTWebSearch
+          - lib_id == "cc_reverse:v2.1.81" 且 adapter 是 AnthropicProvider → Anthropic BTWebSearch
           - 其余情况 → DuckDuckGo BTDDGWebSearch（不依赖 Anthropic）
         """
         from ccserver.builtins.tools import (
@@ -106,11 +106,11 @@ class PromptEngine:
             BTTaskList, BTTaskStop, BTAskUser, BTWebFetch,
             BTWebSearch, BTDDGWebSearch, BTAgent, BTSendMessage,
         )
-        from ccserver.model import AnthropicAdapter
+        from ccserver.model_engine.providers.anthropic import AnthropicProvider as AnthropicAdapter
 
         # 基础工具（不需要 LLM client）
         tools: dict = {
-            "Bash":       BTBash(session.project_root, settings, session=session, emitter=emitter),
+            "Bash":       BTBash(session.project_root, session.config.permissions, session=session, emitter=emitter),
             "Read":       BTRead(session.project_root),
             "Write":      BTWrite(session.project_root),
             "Edit":       BTEdit(session.project_root),
@@ -139,7 +139,7 @@ class PromptEngine:
         tools["Agent"] = BTAgent(agent_catalog=session.agents.build_catalog())
 
         # Agent Team 通信工具（仅在开启 team 功能时注册）
-        if session.settings.user_agent_team:
+        if session.config.tools.user_agent_team:
             tools["SendMessage"] = BTSendMessage()
 
         # 定时任务工具（始终注册）

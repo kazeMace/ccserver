@@ -1,0 +1,173 @@
+meta:
+  title: COC 固定调查
+  description: 可直接运行的 COC 调查脚本：调查地点记录线索，异常场景进行 d100 理智检定，失败扣理智。
+  min_players: 3
+  max_players: 4
+runtime:
+  type: game_session
+extensions:
+  story:
+    enabled: true
+    version: "0.1"
+    config:
+      setting: seaside_town
+  dice:
+    enabled: true
+    version: "0.1"
+    config:
+      checks: d100
+rule_set:
+  plugin: builtin.story.coc_fixed_mystery
+  config:
+    objective: solve_mystery
+concepts:
+  roles:
+    investigator:
+      display_name: 调查员
+      description: 搜集线索并抵抗异常事件。
+  factions:
+    investigators:
+      display_name: 调查员小队
+      description: 揭开真相并尽量存活。
+  scopes:
+    public:
+      display_name: 调查桌
+      description: 全员可见的场景、线索和推理。
+  abilities:
+    investigate:
+      display_name: 调查
+      description: 选择地点或物品进行调查。
+      prompt: 明确调查对象、方法和希望获得的信息。
+    sanity_check:
+      display_name: 理智检定
+      description: 面对异常时提交检定结果。
+      prompt: 提交 d100 点数并描述角色反应。
+roles:
+  - name: investigator
+    display_name: 调查员
+    faction: investigators
+    brief: 你要在海边小镇调查失踪案，注意理智和线索之间的平衡。
+    scopes: [public]
+    abilities: [investigate, sanity_check]
+players:
+  count: 4
+  initial_attrs:
+    alive: true
+    sanity: 60
+  casting:
+    type: shuffle
+    distribution:
+      investigator: 4
+scopes:
+  - name: public
+    members: all
+flow:
+  loop: true
+  scenes:
+    - name: case-briefing
+      display_name: 案件导入
+      scene_type: narration
+      scope: public
+      participants: all
+      dialogue_policy:
+        mode: none
+      response:
+        mode: none
+        cue: 小镇灯塔守夜人失踪，现场留下潮湿脚印和未知符号。
+      publication:
+        views:
+          - id: coc-case-state
+            kind: key-value
+            title: COC 调查状态
+            audience: public
+            data:
+              rows:
+                - label: 线索
+                  value:
+                    ref: GAME.clues
+    - name: clue-search
+      display_name: 搜集线索
+      scene_type: action
+      scope: public
+      participants: all
+      dialogue_policy:
+        mode: sequential
+      action_policy:
+        kind: form
+        input:
+          widget: text
+      response:
+        mode: structured
+        schema: custom
+        fields:
+          location:
+            type: string
+            description: 调查地点
+          method:
+            type: string
+            description: 调查方法
+        cue: 选择一个地点和调查方法。
+      resolution:
+        effects:
+          - type: rule_set_apply
+            result_path: GAME.last_clue_result
+      publication:
+        views:
+          - id: coc-last-clue
+            kind: key-value
+            title: 最近线索
+            audience: public
+            data:
+              rows:
+                - label: 结算
+                  value:
+                    ref: GAME.last_clue_result
+    - name: sanity-scene
+      display_name: 理智检定
+      scene_type: action
+      scope: public
+      participants: all
+      action_policy:
+        kind: form
+        input:
+          widget: text
+      response:
+        mode: structured
+        schema: custom
+        fields:
+          roll:
+            type: int
+            description: d100 点数
+          reaction:
+            type: string
+            description: 角色反应
+        cue: 面对异常低语，提交理智检定点数和角色反应。
+      resolution:
+        effects:
+          - type: rule_set_apply
+            result_path: GAME.last_sanity_result
+      publication:
+        views:
+          - id: coc-last-sanity
+            kind: key-value
+            title: 最近理智检定
+            audience: public
+            data:
+              rows:
+                - label: 结算
+                  value:
+                    ref: GAME.last_sanity_result
+    - name: final-deduction
+      display_name: 最终推理
+      scene_type: speak
+      scope: public
+      participants: all
+      dialogue_policy:
+        mode: openchat
+        rounds: 2
+        speakers_per_round: 4
+      response:
+        mode: text
+        cue: 讨论真相、幕后存在和是否封印灯塔地下室。
+referee:
+  win_conditions: []

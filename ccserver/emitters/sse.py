@@ -24,7 +24,7 @@ class SSEEmitter(BaseEmitter):
     - 客户端断开时调用 stop_event_bus_subscription() 注销订阅，防止泄漏。
     """
 
-    def __init__(self, session=None, event_bus=None, client_id=None):
+    def __init__(self, session=None, event_bus=None, client_id=None, root_agent_id=None):
         self._queue: asyncio.Queue[Optional[dict]] = asyncio.Queue()
         # 用于 AskUserQuestion 的等待机制（老 SSE 直连流）
         self._answer_event: asyncio.Event = asyncio.Event()
@@ -34,6 +34,12 @@ class SSEEmitter(BaseEmitter):
         self._permission_granted: bool = False
         # session 引用，用于触发 message:outbound:sending hook
         self._session = session
+
+        # ── 根 Agent ID：用于 EventBus 事件过滤 ──────────────────────────────
+        # token/tool_start/tool_done/done/error 只推送根 Agent 的事件；
+        # task_started/task_done/progress（含 task_id）对所有 agent 都推送。
+        # 初始为 None，由 set_root_agent_id() 在 Agent 创建后注入。
+        self._root_agent_id: Optional[str] = root_agent_id
 
         # ── 新出站架构：Processor callback 机制 ──────────────────────────────
         # Gateway 流中由 WebChatProcessor.on_ask_user() 设置，
@@ -72,14 +78,19 @@ class SSEEmitter(BaseEmitter):
 
     # ── EventBus 订阅（P1：SSEEmitter 直接订阅 EventBus）──────────────────────
 
-    async def start_event_bus_subscription(self, filter_fn) -> None:
+    async def start_event_bus_subscription(
+        self, filter_fn, last_event_id: Optional[str] = None
+    ) -> None:
         """
         启动 EventBus 订阅，收到的事件自动转换为 SSE 格式并推入队列。
 
         Args:
-            filter_fn: 事件过滤函数，接收 AgentEvent 返回 bool。
-                       常用示例：
-                           lambda e: e.session_id == session_id
+            filter_fn:     事件过滤函数，接收 AgentEvent 返回 bool。
+                           常用示例：
+                               lambda e: e.session_id == session_id
+            last_event_id: P2-4 断线重连时，携带上次收到的 event_id。
+                           不为 None 时先从 EventBus 重放缓冲区回放历史事件，
+                           再启动实时订阅，避免用户看到内容跳空。
 
         Note:
             必须在 EventBus 实例存在时调用（event_bus 参数不为 None）。
@@ -93,6 +104,21 @@ class SSEEmitter(BaseEmitter):
 
         sub_id = f"sse_{self._client_id or id(self)}"
         self._event_bus_sub_id = sub_id
+
+        # P2-4：断线重连时先回放历史事件
+        if last_event_id is not None and hasattr(self._event_bus, "replay_since"):
+            replayed = self._event_bus.replay_since(
+                last_event_id=last_event_id,
+                filter_fn=filter_fn,
+            )
+            for past_event in replayed:
+                sse_event = self._convert_agent_event(past_event)
+                if sse_event is not None:
+                    await self._queue.put(sse_event)
+            if replayed:
+                import json as _json
+                # 回放结束标记，客户端可选择性展示
+                await self._queue.put({"type": "replay_end", "count": len(replayed)})
 
         async def _event_bus_loop():
             """
@@ -132,9 +158,28 @@ class SSEEmitter(BaseEmitter):
         self._event_bus_task = None
         self._event_bus_sub_id = None
 
+    def set_root_agent_id(self, agent_id: str) -> None:
+        """
+        设置根 Agent ID。
+
+        由 runner.run() 创建 Agent 后立即调用，让 SSEEmitter 知道哪个 Agent 的
+        token/tool_start/done/error 事件需要推送，哪些是子 Agent 的应该过滤掉。
+
+        Args:
+            agent_id: 根 Agent 的 agent_id（AgentContext.agent_id）
+        """
+        self._root_agent_id = agent_id
+
     def _convert_agent_event(self, event) -> Optional[dict]:
         """
         将 AgentEvent 转换为 SSE emitter 的 dict 格式。
+
+        agent_id 过滤规则：
+          - token / tool_start / tool_done / done / error / cancelled / ask_user：
+            只推送根 Agent（self._root_agent_id）的事件，子 Agent 的忽略。
+            root_agent_id 未设置时（None），放行所有（兼容旧路径）。
+          - task_started / task_done / progress（含 task_id）/ image：
+            所有 Agent 的都推送（后台任务状态需要呈现给用户）。
 
         映射规则（与 BusEmitter 的 emit_* 方法对应）：
           - TOKEN        → fmt_token
@@ -157,6 +202,18 @@ class SSEEmitter(BaseEmitter):
 
         payload = event.payload
         etype = event.type
+
+        # ── agent_id 过滤：流式内容事件只推送根 Agent 的 ──────────────────────
+        # root_agent_id 设置后，非根 Agent 的 token/done/error/tool 事件一律丢弃，
+        # 防止子 Agent 的中间过程与根 Agent 的流混杂，导致客户端渲染错乱。
+        _stream_types = {
+            EventType.TOKEN, EventType.TOOL_START, EventType.TOOL_DONE,
+            EventType.DONE, EventType.ERROR, EventType.CANCELLED,
+            EventType.ASK_USER,
+        }
+        if etype in _stream_types and self._root_agent_id is not None:
+            if event.agent_id != self._root_agent_id:
+                return None  # 子 Agent 的流式事件，丢弃
 
         if etype == EventType.TOKEN:
             return self.fmt_token(payload.get("token", ""))

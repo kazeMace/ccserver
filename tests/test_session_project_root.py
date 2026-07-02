@@ -1,37 +1,37 @@
 # tests/test_session_project_root.py
-import importlib
 
 
-def test_session_manager_uses_project_dir(tmp_path, monkeypatch):
-    """不传 project_root 时，SessionManager 应使用 config.PROJECT_DIR。
+def test_session_manager_uses_project_dir(tmp_path):
+    """不传 project_root 时，SessionManager 应使用 process_config.infra.project_dir。
 
-    特意把 PROJECT_DIR 设置成与 base_dir.parent 不同的路径，
-    以区分两种实现：base_dir.parent vs config.PROJECT_DIR。
+    特意把 project_dir 设置成与 base_dir.parent 不同的路径，
+    以区分两种实现：base_dir.parent vs config.infra.project_dir。
     """
     project_dir = tmp_path / "project"
     project_dir.mkdir()
-    monkeypatch.setenv("CCSERVER_PROJECT_DIR", str(project_dir.resolve()))
-
-    import ccserver.config as config
-    importlib.reload(config)
 
     from ccserver.storage import FileStorageAdapter
-    import ccserver.session as session_mod
-    importlib.reload(session_mod)
+    from ccserver.session import SessionManager
+    from ccserver.configuration.loader import ProcessConfig
 
-    # sessions_dir 故意放在 tmp_path 下（而非 project_dir 下）
-    # 使得 base_dir.parent == tmp_path != project_dir
+    # 通过环境变量驱动新配置系统（CCSERVER_PROJECT_DIR → infra.project_dir）
+    pc = ProcessConfig.load(
+        global_file=tmp_path / "none.json",
+        environ={"CCSERVER_PROJECT_DIR": str(project_dir.resolve())},
+    )
+
     sessions_dir = tmp_path / "sessions"
     sessions_dir.mkdir()
     storage = FileStorageAdapter(sessions_dir)
-    sm = session_mod.SessionManager(
+    sm = SessionManager(
         base_dir=sessions_dir,
         storage=storage,
+        process_config=pc,
     )
     assert sm.project_root == project_dir.resolve()
 
 
-def test_session_manager_explicit_project_root(tmp_path, monkeypatch):
+def test_session_manager_explicit_project_root(tmp_path):
     """显式传入 project_root 时，应优先使用传入值。"""
     other = tmp_path / "other"
     other.mkdir()

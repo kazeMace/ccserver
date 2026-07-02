@@ -13,19 +13,14 @@ import asyncio
 from pathlib import Path
 
 from ccserver.builtins.tools import BTBash
-from ccserver.settings import ProjectSettings
+from ccserver.configuration.schema import PermissionConfig
 
 
-def _make_settings(allowed=None, denied=None) -> ProjectSettings:
-    allowed_commands = {"Bash": allowed} if allowed is not None else None
-    denied_commands = {"Bash": denied} if denied is not None else {}
-    return ProjectSettings(
-        allowed_tools=None,
-        denied_tools=frozenset(),
-        allowed_commands=allowed_commands,
-        denied_commands=denied_commands,
-        enabled_mcp_servers=None,
-    )
+def _make_settings(allowed=None, denied=None) -> PermissionConfig:
+    # 命令前缀列表 → 权限条目格式 "Bash(prefix:*)"
+    allow = [f"Bash({p}:*)" for p in allowed] if allowed is not None else []
+    deny = [f"Bash({p}:*)" for p in denied] if denied is not None else []
+    return PermissionConfig(allow=allow, deny=deny)
 
 
 def _make_bash(allowed=None, denied=None) -> BTBash:

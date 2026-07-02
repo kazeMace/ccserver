@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from .client import MCPClient
-from ..config import PROJECT_DIR as _PROJECT_DIR
 
 if TYPE_CHECKING:
     from ccserver.session import Session
@@ -41,7 +40,11 @@ class MCPManager:
         enabled_servers: 允许连接的 server 名称列表，None 表示全部允许。
         session: Session 引用，用于发射 mcp:connect:* hooks。
         """
-        resolved_cwd = str(project_dir or _PROJECT_DIR)
+        if project_dir is not None:
+            resolved_cwd = str(project_dir)
+        else:
+            from ..configuration import get_process_config
+            resolved_cwd = str(get_process_config().infra.project_dir or "")
 
         if not config_path.exists():
             logger.debug("mcp.json not found, MCP disabled | path={}", config_path)

@@ -104,6 +104,8 @@ class EventType:
     HOOK_EXECUTED   = "hook_executed"
     # ── 多媒体内容事件 ──────────────────────────────────────────────────────────
     IMAGE           = "image"            # 图像内容（截图、生成图、图表等）
+    # ── 内部通知事件（不推送到用户，仅进程内通知）──────────────────────────────
+    MAILBOX_ARRIVED = "mailbox_arrived"  # Mailbox 有新消息到达（唤醒 TeamMailboxPoller）
 
 
 # ── AgentEvent ────────────────────────────────────────────────────────────────
@@ -693,14 +695,16 @@ class EventBus:
     # 订阅者 Queue 的默认最大容量
     DEFAULT_QUEUE_MAXSIZE = 256
 
-    def __init__(self, overflow_dir: Optional[Path] = None):
+    def __init__(self, overflow_dir: Optional[Path] = None, replay_buffer_size: int = 500):
         """
         初始化 EventBus。
 
         Args:
-            overflow_dir: 可选的溢出目录路径。如果提供，Queue 满时事件会被
-                         持久化到该目录下的 JSONL 文件；如果为 None，Queue 满时
-                         直接丢弃最旧事件（与旧行为一致）。
+            overflow_dir:        可选的溢出目录路径。如果提供，Queue 满时事件会被
+                                 持久化到该目录下的 JSONL 文件；如果为 None，Queue 满时
+                                 直接丢弃最旧事件（与旧行为一致）。
+            replay_buffer_size:  环形重放缓冲区大小（P2-4），保存最近 N 个事件供断线重连使用。
+                                 0 表示禁用重放缓冲。默认 500。
         """
         # subscriber_id -> (asyncio.Queue, filter_fn, overflow, monitor)
         # filter_fn: 接收 AgentEvent 返回 bool，None 表示接收所有事件
@@ -712,6 +716,13 @@ class EventBus:
         if overflow_dir is not None:
             overflow_dir.mkdir(parents=True, exist_ok=True)
             logger.debug("EventBus: overflow enabled | dir={}", overflow_dir)
+
+        # P2-4：环形重放缓冲区
+        # 每次 publish 时同步追加，deque 满时自动淘汰最旧事件（maxlen 控制）。
+        # visibility="hidden" 的事件（进程内通知）不写入缓冲，避免客户端收到无意义内容。
+        from collections import deque as _deque
+        self._replay_buffer: _deque = _deque(maxlen=replay_buffer_size if replay_buffer_size > 0 else None)
+        self._replay_enabled: bool = replay_buffer_size > 0
 
     def subscribe(
         self,
@@ -810,9 +821,14 @@ class EventBus:
              b. 磁盘溢出也满时，发出 emergency 告警并丢弃事件
           4. 记录监控指标，触发分级告警
 
+        同时将事件追加到环形重放缓冲区（visibility != "hidden" 时）。
+
         Args:
             event: 要广播的事件。
         """
+        # P2-4：写入环形重放缓冲（hidden 事件是进程内通知，不写入缓冲）
+        if self._replay_enabled and event.visibility != _VISIBILITY_HIDDEN:
+            self._replay_buffer.append(event)
         if not self._subscribers:
             return
 
@@ -916,3 +932,47 @@ class EventBus:
             overflow_count=overflow._overflow_count if overflow else 0,
         )
         return metrics
+
+    # ── P2-4：环形重放缓冲 ────────────────────────────────────────────────────
+
+    def replay_since(
+        self,
+        last_event_id: Optional[str] = None,
+        filter_fn: Optional[Callable[[AgentEvent], bool]] = None,
+    ) -> list[AgentEvent]:
+        """
+        从环形重放缓冲区取出指定 event_id 之后的历史事件。
+
+        用于客户端断线重连场景：重连时携带上次收到的最后一个 event_id，
+        服务端从缓冲区回放错过的事件，避免用户看到内容跳空。
+
+        Args:
+            last_event_id: 上次收到的最后一个 event_id。
+                           None 或缓冲区中找不到时，返回全部缓冲事件。
+            filter_fn:     可选过滤函数，过滤不需要回放的事件类型。
+
+        Returns:
+            按时间顺序排列的 AgentEvent 列表（从 last_event_id 之后开始）。
+            如果重放缓冲未启用（replay_buffer_size=0），返回空列表。
+        """
+        if not self._replay_enabled:
+            return []
+
+        events = list(self._replay_buffer)  # deque → list（有序，旧→新）
+
+        if last_event_id is not None:
+            # 找到 last_event_id 的位置，返回其后的事件
+            found_idx = None
+            for i, e in enumerate(events):
+                if e.event_id == last_event_id:
+                    found_idx = i
+                    break
+            if found_idx is not None:
+                events = events[found_idx + 1:]
+            # 未找到时（缓冲区已轮转），返回全部缓冲事件
+
+        # 应用过滤（与 subscribe 的 filter_fn 语义一致）
+        if filter_fn is not None:
+            events = [e for e in events if filter_fn(e)]
+
+        return events

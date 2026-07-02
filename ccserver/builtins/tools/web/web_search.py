@@ -5,7 +5,7 @@ Uses the Anthropic Beta API (web_search_20250305). This tool makes a secondary
 LLM call that has web search enabled, then extracts and returns the search results as plain text.
 
 Requires betas=["web-search-2025-03-05"] and a model that supports web search.
-Currently only AnthropicAdapter is supported.
+Currently only AnthropicProvider is supported.
 
 For non-Anthropic adapters, use BTDDGWebSearch (duckduckgo_search.py) instead.
 """
@@ -14,7 +14,8 @@ import asyncio
 import logging
 import random
 
-from ccserver.model import ModelAdapter, AnthropicAdapter
+from ccserver.model_engine import ModelAdapter
+from ccserver.model_engine.providers.anthropic import AnthropicProvider
 
 from ..base import BuiltinTools, ToolParam, ToolResult
 
@@ -35,7 +36,7 @@ class BTWebSearch(BuiltinTools):
     WebSearch backed by Anthropic's web_search_20250305 beta tool.
 
     Usage condition:
-      - Adapter must be AnthropicAdapter.
+      - Adapter must be AnthropicProvider.
       - Registered in PromptLib.build_tools() only when this condition holds.
       - For non-Anthropic adapters, BTDDGWebSearch is used instead.
     """
@@ -88,7 +89,7 @@ class BTWebSearch(BuiltinTools):
     ):
         """
         Args:
-            adapter: AnthropicAdapter instance (required for beta web search API).
+            adapter: AnthropicProvider instance (required for beta web search API).
             model:   Model used for the search call. Defaults to haiku for speed/cost.
         """
         self.adapter = adapter
@@ -101,7 +102,7 @@ class BTWebSearch(BuiltinTools):
         blocked_domains: list = None,
     ) -> ToolResult:
         # Guard: ensure we have an Anthropic adapter.
-        if not isinstance(self.adapter, AnthropicAdapter):
+        if not isinstance(self.adapter, AnthropicProvider):
             return ToolResult.error("WebSearch requires Anthropic provider.")
 
         # Concurrency guard.
@@ -137,7 +138,7 @@ class BTWebSearch(BuiltinTools):
 
         for attempt in range(3):
             try:
-                response = await self.adapter._client.beta.messages.create(
+                response = await self.adapter.adapter._client.beta.messages.create(
                     model=self.model,
                     max_tokens=4096,
                     messages=[

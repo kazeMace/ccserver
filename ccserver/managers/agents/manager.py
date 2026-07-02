@@ -20,6 +20,7 @@ Agent 定义文件格式（Markdown + frontmatter）：
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -61,6 +62,108 @@ class AgentDef:
     mcp_servers: list[str] | None = None      # 内置 Agent 专用的 MCP 服务器列表
     hooks: dict | None = None                 # 生命周期钩子配置
     is_builtin: bool = False                  # True = 由 AgentSpec（Python 类）注册的 AgentDef
+
+    def overrides(self) -> dict:
+        """
+        把 AgentDef 字段映射成 CcServerConfig 的部分覆盖 dict（AGENT 作用域）。
+
+        目前覆盖 model（其余如 tools/round_limit 由 spawn 的分层逻辑直接消费）。
+        返回的 dict 可喂给 configuration.resolve_agent / deep_merge。
+        """
+        out: dict = {}
+        if self.model:
+            out.setdefault("model", {})["model_id"] = self.model
+        return out
+
+
+def _agent_def_from_meta(meta: dict, body: str, location: Path) -> "AgentDef | None":
+    """
+    从元数据 dict（.md frontmatter 或 agent.json）+ system 正文构建 AgentDef。
+
+    供 AgentLoader._parse（单文件 .md）与 AgentLoader.load_package（文件夹包）共用，
+    保证两种来源解析逻辑一致（DRY）。
+
+    Args:
+        meta:     元数据字典（含 name/description/model/tools 等）。
+        body:     system prompt 正文。
+        location: 来源文件路径（.md 或 agent.json），用于日志与 AgentDef.location。
+
+    Returns:
+        AgentDef；description 缺失时返回 None。
+    """
+    name = str(meta.get("name", location.parent.name)).strip()
+    description = str(meta.get("description", "")).strip()
+    if not description:
+        logger.error("Missing description, skipping | path={}", location)
+        return None
+
+    raw_tools = _parse_str_or_list(meta.get("tools"))
+    basic_tools, mcps = _devide_basic_tools_and_mcps(raw_tools)
+    disallowed_tools = _parse_str_or_list(meta.get("disallowed_tools"))
+    skills = _parse_str_or_list(meta.get("skills"))
+
+    output_mode = meta.get("output_mode") or None
+    if output_mode and output_mode not in _OUTPUT_MODES:
+        logger.warning("Unknown output_mode={} in {}, ignoring", output_mode, location)
+        output_mode = None
+
+    def _as_bool(key: str) -> bool:
+        return str(meta.get(key, "false")).strip().lower() in ("true", "1", "yes")
+
+    is_teammate = _as_bool("is_teammate")
+    is_team_capable = _as_bool("is_team_capable")
+    is_persistent = _as_bool("is_persistent")
+    omit_claude_md = _as_bool("omit_claude_md")
+    auto_background = _as_bool("auto_background")
+    auto_approve_tools = _as_bool("auto_approve_tools")
+
+    def _as_int(key: str):
+        raw = meta.get(key)
+        if raw is None:
+            return None
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            logger.warning("Invalid {}={} in {}, ignoring", key, raw, location)
+            return None
+
+    round_limit = _as_int("round_limit")
+    max_turns = _as_int("max_turns")
+    limit_strategy = meta.get("limit_strategy", "last_text")
+    model_hint = meta.get("model_hint") or None
+    permission_mode = meta.get("permission_mode") or None
+    isolation = meta.get("isolation") or None
+    color = meta.get("color") or None
+    mcp_servers = _parse_str_or_list(meta.get("mcp_servers"))
+    hooks = meta.get("hooks") or None
+
+    return AgentDef(
+        name=name,
+        description=description,
+        system=body,
+        location=location.resolve(),
+        model=meta.get("model") or None,
+        tools=basic_tools or None,
+        disallowed_tools=disallowed_tools,
+        mcp=mcps or None,
+        skills=skills,
+        output_mode=output_mode,
+        is_teammate=is_teammate,
+        is_team_capable=is_team_capable,
+        is_persistent=is_persistent,
+        round_limit=round_limit,
+        limit_strategy=limit_strategy,
+        model_hint=model_hint,
+        omit_claude_md=omit_claude_md,
+        permission_mode=permission_mode,
+        isolation=isolation,
+        auto_background=auto_background,
+        max_turns=max_turns,
+        color=color,
+        auto_approve_tools=auto_approve_tools,
+        mcp_servers=mcp_servers,
+        hooks=hooks,
+    )
 
 
 
@@ -158,102 +261,41 @@ class AgentLoader:
         if meta is None:
             logger.error("Unparseable frontmatter, skipping | path={}", md_file)
             return None
+        return _agent_def_from_meta(meta, body, md_file)
 
-        # name 默认取文件名（去掉 .md）
-        name = meta.get("name", md_file.stem).strip()
-        description = meta.get("description", "").strip()
-        if not description:
-            logger.error("Missing description, skipping | path={}", md_file)
+    @staticmethod
+    def load_package(pkg_dir: Path) -> "AgentDef | None":
+        """
+        从文件夹 Agent Package 加载 AgentDef（spec §7）。
+
+        约定：
+          <pkg_dir>/agent.json  —— AgentDef 元数据（等价于 .md frontmatter 的 meta）
+          <pkg_dir>/system.md   —— system prompt 正文（也可在 agent.json 内联 "system"）
+
+        Returns:
+            AgentDef，或 None（agent.json 缺失/无法解析时）。
+        """
+        pkg_dir = Path(pkg_dir)
+        json_path = pkg_dir / "agent.json"
+        if not json_path.exists():
+            logger.error("Agent package 缺少 agent.json | dir={}", pkg_dir)
+            return None
+        try:
+            meta = json.loads(json_path.read_text(encoding="utf-8"))
+        except Exception as e:
+            logger.error("Agent package agent.json 解析失败 | dir={} error={}", pkg_dir, e)
+            return None
+        if not isinstance(meta, dict):
+            logger.error("Agent package agent.json 顶层必须是对象 | dir={}", pkg_dir)
             return None
 
-        # tools: 内置工具名白名单，不填则 None（使用 CHILD_DEFAULT_TOOLS）
-        # mcp__* 前缀的条目会被自动拆分到 mcp 字段，tools 只存纯内置工具名
-        raw_tools = _parse_str_or_list(meta.get("tools"))
-        basic_tools, mcps = _devide_basic_tools_and_mcps(raw_tools)
+        # system 正文：优先 agent.json 内联 "system"，否则读 system.md
+        body = meta.get("system")
+        if not body:
+            sys_md = pkg_dir / "system.md"
+            body = sys_md.read_text(encoding="utf-8") if sys_md.exists() else ""
 
-        # disallowed_tools: 内置工具黑名单，不填则 None（不额外禁用）
-        disallowed_tools = _parse_str_or_list(meta.get("disallowed_tools"))
-
-        # skills: skill 名称列表，不填则 None（subagent 不注入 skills catalog）
-        skills = _parse_str_or_list(meta.get("skills"))
-
-        output_mode = meta.get("output_mode") or None
-        if output_mode and output_mode not in _OUTPUT_MODES:
-            logger.warning("Unknown output_mode={} in {}, ignoring", output_mode, md_file)
-            output_mode = None
-
-        # is_teammate: 声明为 Teammate 角色，额外允许 Task 工具
-        is_teammate_raw = meta.get("is_teammate", "false")
-        is_teammate = str(is_teammate_raw).strip().lower() in ("true", "1", "yes")
-
-        # is_team_capable: 该 agent 是否支持 Agent Team 功能
-        is_team_capable_raw = meta.get("is_team_capable", "false")
-        is_team_capable = str(is_team_capable_raw).strip().lower() in ("true", "1", "yes")
-
-        # is_persistent: 永久驻留，完成后不自动从 agent_tasks 清理
-        is_persistent_raw = meta.get("is_persistent", "false")
-        is_persistent = str(is_persistent_raw).strip().lower() in ("true", "1", "yes")
-
-        # round_limit: 覆盖全局 SUB_ROUND_LIMIT，不填则 None
-        round_limit = None
-        round_limit_raw = meta.get("round_limit")
-        if round_limit_raw is not None:
-            try:
-                round_limit = int(round_limit_raw)
-            except (TypeError, ValueError):
-                logger.warning("Invalid round_limit={} in {}, ignoring", round_limit_raw, md_file)
-
-        limit_strategy = meta.get("limit_strategy", "last_text")
-
-        # ---- 新增字段解析（对齐 Claude Code AgentDefinition）----
-        model_hint = meta.get("model_hint") or None
-        omit_claude_md_raw = meta.get("omit_claude_md", "false")
-        omit_claude_md = str(omit_claude_md_raw).strip().lower() in ("true", "1", "yes")
-        permission_mode = meta.get("permission_mode") or None
-        isolation = meta.get("isolation") or None
-        auto_background_raw = meta.get("auto_background", "false")
-        auto_background = str(auto_background_raw).strip().lower() in ("true", "1", "yes")
-        color = meta.get("color") or None
-        auto_approve_tools_raw = meta.get("auto_approve_tools", "false")
-        auto_approve_tools = str(auto_approve_tools_raw).strip().lower() in ("true", "1", "yes")
-        mcp_servers = _parse_str_or_list(meta.get("mcp_servers"))
-        hooks = meta.get("hooks") or None
-        max_turns = None
-        max_turns_raw = meta.get("max_turns")
-        if max_turns_raw is not None:
-            try:
-                max_turns = int(max_turns_raw)
-            except (TypeError, ValueError):
-                logger.warning("Invalid max_turns={} in {}, ignoring", max_turns_raw, md_file)
-
-        return AgentDef(
-            name=name,
-            description=description,
-            system=body,
-            location=md_file.resolve(),
-            model=meta.get("model") or None,
-            tools=basic_tools or None,
-            disallowed_tools=disallowed_tools,
-            mcp=mcps or None,
-            skills=skills,
-            output_mode=output_mode,
-            is_teammate=is_teammate,
-            is_team_capable=is_team_capable,
-            is_persistent=is_persistent,
-            round_limit=round_limit,
-            limit_strategy=limit_strategy,
-            # 新增字段
-            model_hint=model_hint,
-            omit_claude_md=omit_claude_md,
-            permission_mode=permission_mode,
-            isolation=isolation,
-            auto_background=auto_background,
-            max_turns=max_turns,
-            color=color,
-            auto_approve_tools=auto_approve_tools,
-            mcp_servers=mcp_servers,
-            hooks=hooks,
-        )
+        return _agent_def_from_meta(meta, body, json_path)
 
     # ── 公共接口 ──────────────────────────────────────────────────────────────
 

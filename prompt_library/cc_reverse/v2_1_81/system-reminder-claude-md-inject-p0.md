@@ -1,1 +1,0 @@
-As you answer the user's questions, you can use the following context:

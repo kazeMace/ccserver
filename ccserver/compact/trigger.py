@@ -14,7 +14,6 @@ from typing import Protocol, runtime_checkable
 
 from loguru import logger
 
-from ..config import THRESHOLD
 from .tokens import estimate_tokens
 
 
@@ -57,7 +56,11 @@ class DefaultTriggerPolicy:
         max_messages: 消息条数上限，超过即触发。
     """
 
-    def __init__(self, threshold: int = THRESHOLD, max_messages: int = 300):
+    def __init__(self, threshold: int = None, max_messages: int = 300):
+        # 默认从进程级配置取 compaction.threshold
+        if threshold is None:
+            from ..configuration import get_process_config
+            threshold = get_process_config().compaction.threshold
         assert threshold > 0,    f"threshold 必须大于 0，收到: {threshold}"
         assert max_messages > 0, f"max_messages 必须大于 0，收到: {max_messages}"
         self.threshold    = threshold

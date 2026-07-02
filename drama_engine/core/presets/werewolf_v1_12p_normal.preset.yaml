@@ -1,0 +1,7 @@
+name: "狼人杀v1 12人白痴局"
+description: "4狼4民1预1女1猎1白痴，纯AI，警长/PK/空刀/刀边胜负，女巫不能自救且同夜不可救毒"
+script: scripts/werewolf_v1.yaml
+
+params:
+  total_players: 12
+  werewolf_count: 4

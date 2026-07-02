@@ -257,6 +257,9 @@ class BaseChannelAdapter(ABC):
         self._inbound_handler: Optional[
             Callable[[InboundMessage], Awaitable[None]]
         ] = None
+        # 最后一次收到任何平台消息的时间戳（monotonic），供 ChannelHealthMonitor 判断断线
+        import time as _time
+        self._last_event_at: float = _time.monotonic()
 
         # 断言：子类必须定义 channel_id
         assert self.channel_id, (
@@ -271,6 +274,21 @@ class BaseChannelAdapter(ABC):
             "Channel adapter initialized | channel_id={} aliases={}",
             self.channel_id, self.aliases,
         )
+
+    def touch_last_event(self) -> None:
+        """
+        更新最后一次收到平台消息的时间戳。
+
+        各 Adapter 在收到任意平台消息（WebSocket 消息/轮询结果/Webhook 回调）时调用，
+        供 ChannelHealthMonitor 判断 channel 是否静默过久（潜在断线）。
+        """
+        import time as _time
+        self._last_event_at = _time.monotonic()
+
+    @property
+    def last_event_at(self) -> float:
+        """最后一次收到平台消息的 monotonic 时间戳。"""
+        return self._last_event_at
 
     # ── 入站消息回调注册 ──────────────────────────────────────────────────────
 

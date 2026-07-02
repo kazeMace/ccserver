@@ -19,7 +19,8 @@ from typing import Optional
 import httpx
 import html2text
 
-from ccserver.model import ModelAdapter
+from ccserver.model_engine import ModelAdapter
+from ccserver.model_engine.client import LLMCaller
 
 from ..base import BuiltinTools, ToolParam, ToolResult
 
@@ -280,18 +281,13 @@ async def _apply_prompt(
         f"Based on the content above, please: {prompt}"
     )
 
+    # 通过 L1 调用（含重试）；max_tokens 保持动态计算值
+    caller = LLMCaller(adapter, model=model, max_tokens=max_tokens)
     try:
-        response = await adapter.create(
-            model=model,
-            max_tokens=max_tokens,
-            messages=[{"role": "user", "content": user_message}],
+        text = await caller.invoke_text(
+            [{"role": "user", "content": user_message}],
         )
     except Exception as exc:
         return f"LLM call failed: {exc}"
 
-    # Extract text from the response.
-    for block in response.content:
-        if getattr(block, "type", None) == "text":
-            return block.text
-
-    return "No response from model."
+    return text if text is not None else "No response from model."

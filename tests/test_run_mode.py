@@ -2,10 +2,10 @@
 tests/test_run_mode.py — RunMode 运行时权限确认测试
 
 覆盖：
-  - settings.run_mode 解析（auto/interactive/默认值/非法值）
-  - settings.ask_tools 解析（全局+项目合并取并集）
-  - auto 模式：ask_tools 中的工具直接拒绝
-  - interactive 模式：ask_tools 中的工具发起 permission_request
+  - run_mode 解析（auto/interactive/默认值/非法值）— 走新配置加载器
+  - ask 解析
+  - auto 模式：ask 中的工具直接拒绝
+  - interactive 模式：ask 中的工具发起 permission_request
   - 子代理始终强制 auto 模式
   - FilterEmitter 透传 permission_request 和 ask_user 事件
 """
@@ -16,27 +16,22 @@ from pathlib import Path
 from unittest.mock import MagicMock, AsyncMock
 
 from ccserver.agent import Agent, AgentContext
-from ccserver.settings import ProjectSettings
+from ccserver.configuration.schema import CcServerConfig
+from ccserver.configuration.loader import ProcessConfig, resolve_session
 from ccserver.emitters import BaseEmitter
 from ccserver.emitters.filter import FilterEmitter
+from ccserver.messages import UnifiedToolCall
 
 
 # ─── 辅助 ────────────────────────────────────────────────────────────────────
 
 
-def _make_settings(
-    ask: list[str] | None = None,
-    run_mode: str = "auto",
-) -> ProjectSettings:
-    return ProjectSettings(
-        allowed_tools=None,
-        denied_tools=frozenset(),
-        allowed_commands=None,
-        denied_commands={},
-        enabled_mcp_servers=None,
-        ask_tools=frozenset(ask) if ask else frozenset(),
-        run_mode=run_mode,
-    )
+def _make_settings(ask: list[str] | None = None, run_mode: str = "auto") -> CcServerConfig:
+    """构建带 run_mode / ask 的 CcServerConfig（取代旧 ProjectSettings）。"""
+    return CcServerConfig.from_dict({
+        "agent": {"run_mode": run_mode},
+        "permissions": {"ask": list(ask) if ask else []},
+    })
 
 
 def _make_hook_result(block=False, permission_behavior="passthrough"):
@@ -52,18 +47,16 @@ def _make_hook_result(block=False, permission_behavior="passthrough"):
 def _make_agent(
     tools: dict,
     project_root: Path,
-    settings: ProjectSettings | None = None,
+    settings: CcServerConfig | None = None,
     run_mode: str | None = None,
 ) -> Agent:
     session = MagicMock()
-    session.settings = settings or _make_settings()
+    session.config = settings or _make_settings()
     session.mcp.schemas.return_value = []
     session.skills = MagicMock()
     session.project_root = project_root
-    # hooks.emit 是 async，返回有 .block 属性的对象
     session.hooks.emit = AsyncMock(return_value=_make_hook_result(block=False))
     session.hooks.emit_void = AsyncMock(return_value=None)
-    # event_bus.publish 是 async，测试中需要支持 await
     session.event_bus.publish = AsyncMock(return_value=None)
 
     context = AgentContext(name="orchestrator", messages=[], depth=0)
@@ -78,95 +71,47 @@ def _make_agent(
     )
 
 
-# ─── settings.run_mode 解析 ─────────────────────────────────────────────────
+# ─── run_mode / ask 解析（新配置加载器，nested 格式）─────────────────────────
 
 
-def _write_settings_file(tmp_path: Path, data: dict, filename: str = "settings.local.json") -> Path:
+def _write_project(tmp_path: Path, data: dict) -> Path:
     ccserver = tmp_path / ".ccserver"
     ccserver.mkdir(exist_ok=True)
-    (ccserver / filename).write_text(json.dumps(data), encoding="utf-8")
-    return tmp_path
+    (ccserver / "settings.local.json").write_text(json.dumps(data), encoding="utf-8")
+    return ccserver / "settings.local.json"
+
+
+def _resolve(tmp_path: Path, data: dict | None = None) -> CcServerConfig:
+    pf = _write_project(tmp_path, data) if data is not None else tmp_path / "none.json"
+    pc = ProcessConfig.load(global_file=tmp_path / "none-global.json", environ={})
+    return resolve_session(pc, project_file=pf)
 
 
 def test_run_mode_default_auto(tmp_path):
-    s = ProjectSettings.from_dirs(tmp_path)
-    assert s.run_mode == "auto"
+    cfg = _resolve(tmp_path)
+    assert cfg.agent.run_mode == "auto"
 
 
 def test_run_mode_interactive_from_file(tmp_path):
-    _write_settings_file(tmp_path, {"runMode": "interactive"})
-    s = ProjectSettings.from_dirs(tmp_path)
-    assert s.run_mode == "interactive"
-
-
-def test_run_mode_auto_explicit(tmp_path):
-    _write_settings_file(tmp_path, {"runMode": "auto"})
-    s = ProjectSettings.from_dirs(tmp_path)
-    assert s.run_mode == "auto"
+    cfg = _resolve(tmp_path, {"agent": {"run_mode": "interactive"}})
+    assert cfg.agent.run_mode == "interactive"
 
 
 def test_run_mode_invalid_falls_back_to_auto(tmp_path):
-    _write_settings_file(tmp_path, {"runMode": "something_invalid"})
-    s = ProjectSettings.from_dirs(tmp_path)
-    assert s.run_mode == "auto"
-
-
-def test_run_mode_project_overrides_global(tmp_path, monkeypatch):
-    home_tmp = tmp_path / "home"
-    home_tmp.mkdir()
-    project_tmp = tmp_path / "project"
-    project_tmp.mkdir()
-
-    (home_tmp / ".ccserver").mkdir(exist_ok=True)
-    (home_tmp / ".ccserver" / "settings.json").write_text(
-        json.dumps({"runMode": "interactive"}), encoding="utf-8"
-    )
-    _write_settings_file(project_tmp, {"runMode": "auto"})
-
-    monkeypatch.setenv("HOME", str(home_tmp))
-    import importlib
-    import ccserver.settings as sm
-    importlib.reload(sm)
-
-    s = sm.ProjectSettings.from_dirs(project_tmp)
-    assert s.run_mode == "auto"
-
-
-# ─── settings.ask_tools 解析 ────────────────────────────────────────────────
+    cfg = _resolve(tmp_path, {"agent": {"run_mode": "something_invalid"}})
+    assert cfg.agent.run_mode == "auto"
 
 
 def test_ask_tools_parsed(tmp_path):
-    _write_settings_file(tmp_path, {"permissions": {"ask": ["Bash", "WriteFile"]}})
-    s = ProjectSettings.from_dirs(tmp_path)
-    assert "Bash" in s.ask_tools
-    assert "WriteFile" in s.ask_tools
+    cfg = _resolve(tmp_path, {"permissions": {"ask": ["Bash", "WriteFile"]}})
+    ask = cfg.permissions.ask_tools()
+    assert "Bash" in ask
+    assert "WriteFile" in ask
 
 
 def test_ask_tools_default_empty(tmp_path):
-    s = ProjectSettings.from_dirs(tmp_path)
-    assert s.ask_tools == frozenset()
-
-
-def test_ask_tools_global_and_project_union(tmp_path, monkeypatch):
-    home_tmp = tmp_path / "home"
-    home_tmp.mkdir()
-    project_tmp = tmp_path / "project"
-    project_tmp.mkdir()
-
-    (home_tmp / ".ccserver").mkdir(exist_ok=True)
-    (home_tmp / ".ccserver" / "settings.json").write_text(
-        json.dumps({"permissions": {"ask": ["Bash"]}}), encoding="utf-8"
-    )
-    _write_settings_file(project_tmp, {"permissions": {"ask": ["WriteFile"]}})
-
-    monkeypatch.setenv("HOME", str(home_tmp))
-    import importlib
-    import ccserver.settings as sm
-    importlib.reload(sm)
-
-    s = sm.ProjectSettings.from_dirs(project_tmp)
-    assert "Bash" in s.ask_tools
-    assert "WriteFile" in s.ask_tools
+    cfg = _resolve(tmp_path)
+    assert cfg.permissions.ask_tools() == frozenset()
 
 
 # ─── Agent.run_mode 初始化 ───────────────────────────────────────────────────
@@ -179,7 +124,7 @@ def test_agent_run_mode_from_settings(tmp_path):
 
 
 def test_agent_run_mode_explicit_override(tmp_path):
-    # 即使 settings 是 interactive，显式传 auto 也生效
+    # 即使 config 是 interactive，显式传 auto 也生效
     settings = _make_settings(run_mode="interactive")
     agent = _make_agent({}, tmp_path, settings, run_mode="auto")
     assert agent.run_mode == "auto"
@@ -192,56 +137,58 @@ def test_child_agent_always_auto(tmp_path):
     assert child.run_mode == "auto"
 
 
-# ─── auto 模式：ask_tools 直接拒绝 ──────────────────────────────────────────
+# ─── auto / interactive 模式工具确认 ────────────────────────────────────────
 
 
 def _run(coro):
     return asyncio.get_event_loop().run_until_complete(coro)
 
 
-def test_auto_mode_ask_tool_denied(tmp_path):
-    """auto 模式下，ask_tools 中的工具调用应被直接拒绝（不调用 emit_permission_request）"""
-    settings = _make_settings(ask=["Bash"], run_mode="auto")
-
+def _make_perm_session(tmp_path, settings):
+    """构建带 permission 行为的 mock session。"""
     session = MagicMock()
-    session.settings = settings
+    session.config = settings
     session.mcp.schemas.return_value = []
     session.skills = MagicMock()
     session.project_root = tmp_path
     session.hooks.emit = AsyncMock(return_value=_make_hook_result(block=False))
     session.hooks.emit_void = AsyncMock(return_value=None)
     session.event_bus.publish = AsyncMock(return_value=None)
+    return session
 
+
+def _make_perm_emitter(grant: bool):
     emitter = MagicMock(spec=BaseEmitter)
-    emitter.emit_permission_request = AsyncMock(return_value=True)
+    emitter.emit_permission_request = AsyncMock(return_value=grant)
     emitter.emit_tool_start = AsyncMock()
     emitter.emit_tool_result = AsyncMock()
+    return emitter
+
+
+def test_auto_mode_ask_tool_denied(tmp_path):
+    """auto 模式下，ask 中的工具调用应被直接拒绝（不调用 emit_permission_request）"""
+    settings = _make_settings(ask=["Bash"], run_mode="auto")
+    session = _make_perm_session(tmp_path, settings)
+    emitter = _make_perm_emitter(grant=True)
 
     context = AgentContext(name="test", messages=[], depth=0)
     agent = Agent(
-        session=session,
-        adapter=MagicMock(),
-        emitter=emitter,
-        tools={},
-        context=context,
-        prompt_version="cc_reverse:v2.1.81",
-        run_mode="auto",
+        session=session, adapter=MagicMock(), emitter=emitter, tools={},
+        context=context, prompt_version="cc_reverse:v2.1.81", run_mode="auto",
     )
 
-    # 构造一个 Bash tool_use block
-    blocks = [{"type": "tool_use", "id": "abc", "name": "Bash", "input": {"command": "ls"}}]
+    blocks = [UnifiedToolCall(id="abc", name="Bash", input={"command": "ls"})]
     results, _ = _run(agent._handle_tools(blocks))
 
-    # auto 模式：不应调用 emit_permission_request
     emitter.emit_permission_request.assert_not_called()
-    # 应该有一个错误结果
     assert len(results) == 1
-    assert results[0]["is_error"] is True
-    assert "auto" in results[0]["content"]
+    # R3 S4：handle 返回 ToolResultBlock（类型化），按属性断言
+    assert results[0].is_error is True
+    assert "auto" in results[0].content
 
 
 def test_auto_mode_non_ask_tool_not_blocked(tmp_path):
-    """auto 模式下，不在 ask_tools 中的工具正常执行"""
+    """auto 模式下，不在 ask 中的工具正常执行"""
     settings = _make_settings(ask=["WriteFile"], run_mode="auto")
 
     bash_result = MagicMock()
@@ -250,40 +197,20 @@ def test_auto_mode_non_ask_tool_not_blocked(tmp_path):
     bash_result.to_api_dict = MagicMock(return_value={"type": "tool_result", "tool_use_id": "abc", "content": "ok", "is_error": False})
     bash_tool = AsyncMock(return_value=bash_result)
 
-    session = MagicMock()
-    session.settings = settings
-    session.mcp.schemas.return_value = []
-    session.skills = MagicMock()
-    session.project_root = tmp_path
-    session.hooks.emit = AsyncMock(return_value=_make_hook_result(block=False))
-    session.hooks.emit_void = AsyncMock(return_value=None)
-    session.event_bus.publish = AsyncMock(return_value=None)
-
-    emitter = MagicMock(spec=BaseEmitter)
-    emitter.emit_permission_request = AsyncMock(return_value=True)
-    emitter.emit_tool_start = AsyncMock()
-    emitter.emit_tool_result = AsyncMock()
+    session = _make_perm_session(tmp_path, settings)
+    emitter = _make_perm_emitter(grant=True)
 
     context = AgentContext(name="test", messages=[], depth=0)
     agent = Agent(
-        session=session,
-        adapter=MagicMock(),
-        emitter=emitter,
-        tools={"Bash": bash_tool},
-        context=context,
-        prompt_version="cc_reverse:v2.1.81",
-        run_mode="auto",
+        session=session, adapter=MagicMock(), emitter=emitter, tools={"Bash": bash_tool},
+        context=context, prompt_version="cc_reverse:v2.1.81", run_mode="auto",
     )
 
-    blocks = [{"type": "tool_use", "id": "abc", "name": "Bash", "input": {"command": "ls"}}]
+    blocks = [UnifiedToolCall(id="abc", name="Bash", input={"command": "ls"})]
     results, _ = _run(agent._handle_tools(blocks))
 
-    # Bash 不在 ask_tools 中，不应被拒绝
     emitter.emit_permission_request.assert_not_called()
     bash_tool.assert_called_once()
-
-
-# ─── interactive 模式：ask_tools 等待确认 ────────────────────────────────────
 
 
 def test_interactive_mode_ask_tool_granted(tmp_path):
@@ -296,37 +223,19 @@ def test_interactive_mode_ask_tool_granted(tmp_path):
     bash_result.to_api_dict = MagicMock(return_value={"type": "tool_result", "tool_use_id": "abc", "content": "command output", "is_error": False})
     bash_tool = AsyncMock(return_value=bash_result)
 
-    session = MagicMock()
-    session.settings = settings
-    session.mcp.schemas.return_value = []
-    session.skills = MagicMock()
-    session.project_root = tmp_path
-    session.hooks.emit = AsyncMock(return_value=_make_hook_result(block=False))
-    session.hooks.emit_void = AsyncMock(return_value=None)
-    session.event_bus.publish = AsyncMock(return_value=None)
-
-    emitter = MagicMock(spec=BaseEmitter)
-    emitter.emit_permission_request = AsyncMock(return_value=True)   # 用户批准
-    emitter.emit_tool_start = AsyncMock()
-    emitter.emit_tool_result = AsyncMock()
+    session = _make_perm_session(tmp_path, settings)
+    emitter = _make_perm_emitter(grant=True)
 
     context = AgentContext(name="test", messages=[], depth=0)
     agent = Agent(
-        session=session,
-        adapter=MagicMock(),
-        emitter=emitter,
-        tools={"Bash": bash_tool},
-        context=context,
-        prompt_version="cc_reverse:v2.1.81",
-        run_mode="interactive",
+        session=session, adapter=MagicMock(), emitter=emitter, tools={"Bash": bash_tool},
+        context=context, prompt_version="cc_reverse:v2.1.81", run_mode="interactive",
     )
 
-    blocks = [{"type": "tool_use", "id": "abc", "name": "Bash", "input": {"command": "ls"}}]
+    blocks = [UnifiedToolCall(id="abc", name="Bash", input={"command": "ls"})]
     results, _ = _run(agent._handle_tools(blocks))
 
-    # 应调用 emit_permission_request
     emitter.emit_permission_request.assert_called_once_with("Bash", {"command": "ls"})
-    # 用户批准，工具应被执行
     bash_tool.assert_called_once()
 
 
@@ -337,42 +246,24 @@ def test_interactive_mode_ask_tool_denied(tmp_path):
     bash_tool = MagicMock()
     bash_tool.__call__ = AsyncMock()
 
-    session = MagicMock()
-    session.settings = settings
-    session.mcp.schemas.return_value = []
-    session.skills = MagicMock()
-    session.project_root = tmp_path
-    session.hooks.emit = AsyncMock(return_value=_make_hook_result(block=False))
-    session.hooks.emit_void = AsyncMock(return_value=None)
-    session.event_bus.publish = AsyncMock(return_value=None)
-
-    emitter = MagicMock(spec=BaseEmitter)
-    emitter.emit_permission_request = AsyncMock(return_value=False)  # 用户拒绝
-    emitter.emit_tool_start = AsyncMock()
-    emitter.emit_tool_result = AsyncMock()
+    session = _make_perm_session(tmp_path, settings)
+    emitter = _make_perm_emitter(grant=False)
 
     context = AgentContext(name="test", messages=[], depth=0)
     agent = Agent(
-        session=session,
-        adapter=MagicMock(),
-        emitter=emitter,
-        tools={"Bash": bash_tool},
-        context=context,
-        prompt_version="cc_reverse:v2.1.81",
-        run_mode="interactive",
+        session=session, adapter=MagicMock(), emitter=emitter, tools={"Bash": bash_tool},
+        context=context, prompt_version="cc_reverse:v2.1.81", run_mode="interactive",
     )
 
-    blocks = [{"type": "tool_use", "id": "abc", "name": "Bash", "input": {"command": "rm -rf ."}}]
+    blocks = [UnifiedToolCall(id="abc", name="Bash", input={"command": "rm -rf ."})]
     results, _ = _run(agent._handle_tools(blocks))
 
-    # 应调用 emit_permission_request
     emitter.emit_permission_request.assert_called_once()
-    # 用户拒绝，工具不执行
     bash_tool.assert_not_called()
-    # 结果是错误
     assert len(results) == 1
-    assert results[0]["is_error"] is True
-    assert "denied" in results[0]["content"]
+    # R3 S4：handle 返回 ToolResultBlock（类型化），按属性断言
+    assert results[0].is_error is True
+    assert "denied" in results[0].content
 
 
 # ─── FilterEmitter 透传 permission_request ───────────────────────────────────

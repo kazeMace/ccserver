@@ -114,7 +114,7 @@ def new_session(base_url: str, sessions_cache: list):
 
     try:
         session = api_create_session(base_url)
-    except Exception as e:
+    except Exception:
         return gr.update(), None, sessions_cache, []
 
     sessions_cache.insert(0, session)

@@ -84,9 +84,11 @@ class TeamCoordinator:
                     })
 
                 case MsgType.PERMISSION_RESPONSE:
-                    # 权限响应：由 _wait_permission_response 轮询处理，这里只消费掉避免堆积
+                    # P1-2：权限审批已统一走 EventBus PERMISSION_REQ 路径（内存 Future）。
+                    # Mailbox 的 permission_response 路径已废弃，此 case 仅做兼容性保留：
+                    # 如果有遗留消息进入 inbox，静默消费掉，防止堆积影响其他消息处理。
                     logger.debug(
-                        "Inbox permission_response consumed | agent={} request_id={}",
+                        "Inbox permission_response consumed (deprecated Mailbox path) | agent={} request_id={}",
                         rt.aid_label,
                         msg.get("request_id"),
                     )

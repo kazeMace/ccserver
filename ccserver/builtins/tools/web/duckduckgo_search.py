@@ -19,7 +19,7 @@ import time
 import httpx
 from bs4 import BeautifulSoup
 
-from ccserver.model import ModelAdapter
+from ccserver.model_engine import ModelAdapter
 
 from ..base import BuiltinTools, ToolParam, ToolResult
 

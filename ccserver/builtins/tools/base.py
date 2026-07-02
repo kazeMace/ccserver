@@ -92,6 +92,15 @@ class ToolResult:
             "is_error": self.is_error,
         }
 
+    def to_block(self, tool_use_id: str):
+        """Render as a typed UnifiedToolResultBlock（过滤 image_thumbnail 同 to_api_dict）。"""
+        from ccserver.messages import UnifiedToolResultBlock, block_from_dict
+        if isinstance(self.content, list):
+            api_content = [block_from_dict(b) for b in self.content if b.get("type") != "image_thumbnail"]
+        else:
+            api_content = self.content
+        return UnifiedToolResultBlock(tool_use_id=tool_use_id, content=api_content, is_error=self.is_error)
+
     # ── 多模态辅助属性 ────────────────────────────────────────────────────────
 
     @property

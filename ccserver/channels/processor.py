@@ -18,7 +18,7 @@ Processor 是出站事件流的处理单元，每个 OutputTarget 持有一个 P
   await target.processor.on_done(full_text, event)
 """
 
-from typing import Callable, Awaitable, Optional, TYPE_CHECKING
+from typing import Callable, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ccserver.event_bus import AgentEvent

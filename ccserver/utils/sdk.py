@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import datetime
-from typing import Any, Iterable
+from typing import Any
 
 """
 sdk.py — Anthropic SDK 辅助工具函数。
@@ -21,7 +21,6 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "get_block_attr",
-    "normalize_content_blocks",
     "estimate_tokens",
     "generate_message_id",
 ]
@@ -49,52 +48,6 @@ def get_block_attr(block: dict[str, Any] | Any, attr: str) -> Any:
     if isinstance(block, dict):
         return block.get(attr)
     return getattr(block, attr, None)
-
-
-def normalize_content_blocks(content: Iterable[Any]) -> list[dict[str, Any]]:
-    """将 Anthropic SDK 返回的内容块列表转换为纯字典列表。
-
-    SDK 返回的 block 可能是对象（如 TextBlock、ToolUseBlock），无法直接 JSON 序列化。
-    该函数遍历每个 block，提取关键字段并转换为字典，方便后续存储、传输或日志记录。
-
-    Args:
-        content: 可迭代的 block 集合（列表、元组等）。
-
-    Returns:
-        由纯字典组成的列表，每个字典包含对应 block 的类型和字段。
-
-    Raises:
-        TypeError: 如果 content 不可迭代（将通过 for 循环自然抛出）。
-    """
-    if content is None:
-        raise TypeError("content 参数不能为 None")
-
-    result: list[dict[str, Any]] = []
-    for block in content:
-        if isinstance(block, dict):
-            result.append(block)
-        elif get_block_attr(block, "type") == "text":
-            result.append({
-                "type": "text",
-                "text": getattr(block, "text", ""),
-            })
-        elif get_block_attr(block, "type") == "tool_use":
-            result.append({
-                "type": "tool_use",
-                "id": getattr(block, "id", ""),
-                "name": getattr(block, "name", ""),
-                "input": getattr(block, "input", {}),
-            })
-        elif get_block_attr(block, "type") == "thinking":
-            result.append({
-                "type": "thinking",
-                "thinking": getattr(block, "thinking", ""),
-            })
-        else:
-            block_type = str(get_block_attr(block, "type") or "unknown")
-            result.append({"type": block_type})
-            logger.debug("normalize_content_blocks: 遇到未知类型 block: %s", block_type)
-    return result
 
 
 def estimate_tokens(messages: list[Any]) -> int:

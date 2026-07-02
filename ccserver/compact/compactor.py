@@ -17,8 +17,7 @@ CompactorFactory.build_default() 用默认参数一键构建完整 Compactor。
 
 from loguru import logger
 
-from ..config import KEEP_RECENT, MODEL, THRESHOLD
-from ..model import ModelAdapter
+from ..model_engine import ModelAdapter
 from .full import DefaultFullCompactor, FullCompactor
 from .micro import DefaultMicroCompactor, MicroCompactor
 from .trigger import CircuitBreaker, DefaultTriggerPolicy, TriggerPolicy
@@ -134,7 +133,7 @@ class CompactorFactory:
     @staticmethod
     def build_default(
         adapter: ModelAdapter,
-        model: str = MODEL,
+        model: str = None,
         *,
         micro: MicroCompactor | None = None,
         full: FullCompactor | None = None,
@@ -161,9 +160,13 @@ class CompactorFactory:
         Returns:
             配置好的 Compactor 实例。
         """
-        resolved_micro   = micro   or DefaultMicroCompactor(keep_recent=KEEP_RECENT)
+        # model 默认从进程级配置取；micro/trigger 用各自的 None-默认自行解析
+        if model is None:
+            from ..configuration import get_process_config
+            model = get_process_config().model.model_id
+        resolved_micro   = micro   or DefaultMicroCompactor()
         resolved_full    = full    or DefaultFullCompactor(adapter=adapter, model=model)
-        resolved_trigger = trigger or DefaultTriggerPolicy(threshold=THRESHOLD)
+        resolved_trigger = trigger or DefaultTriggerPolicy()
         resolved_breaker = circuit_breaker if circuit_breaker is not None else CircuitBreaker()
 
         # 注入 memory provider（零成本摘要路径）

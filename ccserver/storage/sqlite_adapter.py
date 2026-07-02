@@ -183,8 +183,8 @@ class SQLiteStorageAdapter(StorageAdapter):
     # ── session 生命周期 ───────────────────────────────────────────────────────
 
     def get_workdir(self, session_id: str) -> Path:
-        from ccserver.config import TEMP_DIR
-        return TEMP_DIR / f"ccserver-session-{session_id}" / "workdir"
+        from ccserver.configuration import get_process_config
+        return get_process_config().infra.temp_dir / f"ccserver-session-{session_id}" / "workdir"
 
     def create_session(self, record: SessionRecord) -> None:
         with self._conn() as conn:

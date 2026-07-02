@@ -1249,8 +1249,10 @@ class HookLoader:
 
         messages = [{"role": "user", "content": user_prompt}]
         try:
-            from ccserver.model import get_adapter
-            adapter = get_adapter()
+            from ccserver.model_engine import AdapterFactory, ModelEndpoint
+            # 按 hook 配置的 model 构造 adapter（自动注入 model_info / compatibility），
+            # 避免旧 get_adapter() 固定走 anthropic 与非 anthropic 模型不匹配的问题。
+            adapter = AdapterFactory.build(ModelEndpoint(model_id=model))
             response = await adapter.create(
                 model=model,
                 system=system or None,

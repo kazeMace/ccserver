@@ -1,0 +1,62 @@
+:root {
+  --bg: #101318;
+  --panel: #181d24;
+  --panel-2: #202632;
+  --text: #eef2f7;
+  --muted: #9aa6b2;
+  --line: #303846;
+  --accent: #7dd3fc;
+  --good: #88d498;
+  --warn: #ffd166;
+  --bad: #ff6b6b;
+  --radius: 6px;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+button, input, textarea { font: inherit; }
+.app-shell { display: flex; min-height: 100vh; }
+.sidebar { width: 230px; background: #0b0e13; border-right: 1px solid var(--line); padding: 18px 12px; position: sticky; top: 0; height: 100vh; }
+.brand { font-weight: 700; letter-spacing: .08em; text-transform: uppercase; margin: 0 0 24px; }
+.brand span { color: var(--muted); font-size: 12px; }
+.nav-btn { display: block; width: 100%; margin: 8px 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: transparent; color: var(--text); text-align: left; cursor: pointer; }
+.nav-btn.active, .nav-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(125, 211, 252, .08); }
+.main { flex: 1; padding: 22px; max-width: 1500px; }
+.topbar { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; background: var(--panel); }
+h1, h2, h3 { margin: 0; }
+p { color: var(--muted); margin: 6px 0 0; }
+.primary, .small-btn { border: 1px solid var(--accent); border-radius: var(--radius); background: rgba(125, 211, 252, .12); color: var(--text); padding: 9px 12px; cursor: pointer; }
+.small-btn { padding: 5px 8px; margin: 2px; font-size: 12px; }
+.primary:hover, .small-btn:hover { background: rgba(125, 211, 252, .22); }
+.status-box { margin: 14px 0; border: 1px solid var(--line); border-radius: var(--radius); background: #0d1117; padding: 10px 12px; color: var(--muted); white-space: pre-wrap; }
+.panel { display: none; }
+.panel.active { display: block; }
+.panel-head { margin: 16px 0 12px; }
+.table-wrap, .card, .tab-panel { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); padding: 12px; overflow: auto; }
+table { width: 100%; border-collapse: collapse; }
+th, td { border-bottom: 1px solid var(--line); padding: 8px; vertical-align: top; text-align: left; }
+th { color: var(--muted); font-weight: 600; }
+.badge { display: inline-block; border: 1px solid var(--line); border-radius: 4px; padding: 2px 6px; color: var(--muted); }
+.badge.approved { color: var(--good); border-color: var(--good); }
+.badge.draft { color: var(--warn); border-color: var(--warn); }
+.badge.valid { color: var(--accent); border-color: var(--accent); }
+.form-grid { display: grid; gap: 12px; max-width: 720px; }
+label { display: grid; gap: 6px; color: var(--muted); }
+input, textarea { width: 100%; border: 1px solid var(--line); border-radius: var(--radius); background: #0d1117; color: var(--text); padding: 9px; }
+.tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 12px 0; }
+.tab { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel-2); color: var(--muted); padding: 8px 10px; cursor: pointer; }
+.tab.active { color: var(--accent); border-color: var(--accent); }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.kv { display: grid; grid-template-columns: 180px 1fr; border-bottom: 1px solid var(--line); padding: 6px 0; }
+.kv span:first-child { color: var(--muted); }
+.issue { border-left: 3px solid var(--line); padding: 8px; margin: 8px 0; background: #111720; }
+.issue.error, .issue.fatal { border-left-color: var(--bad); }
+.issue.warning { border-left-color: var(--warn); }
+.issue.info { border-left-color: var(--accent); }
+pre { margin: 0; white-space: pre-wrap; color: #dbeafe; }
+.tree ul { list-style: none; padding-left: 18px; border-left: 1px solid var(--line); }
+.tree li { margin: 4px 0; }
+.node-type { color: var(--muted); font-size: 12px; }
+.flow-list { display: grid; gap: 8px; }
+.flow-node { border: 1px solid var(--line); border-radius: var(--radius); padding: 8px; background: #111720; }

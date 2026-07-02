@@ -83,6 +83,8 @@ class BackgroundAgentHandle:
     state: Optional["AgentState"] = None
     inbox: asyncio.Queue = field(default_factory=asyncio.Queue)
     _task: Optional[asyncio.Task] = None
+    # P0-4：保存 watcher task 的强引用，防止 GC 提前回收
+    _watcher_task: Optional[asyncio.Task] = field(default=None, repr=False)
     agent_task_state: "AgentTaskState | None" = field(default=None, repr=False)
 
     async def cancel(self) -> None:

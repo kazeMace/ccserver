@@ -62,6 +62,9 @@ class Recorder:
         if self._file is None:
             return
 
+        from ccserver.messages import unified_message_to_wire
+        input_messages = [unified_message_to_wire(m) for m in input_messages]
+
         entry = {
             "ts": datetime.now(timezone.utc).isoformat(),
             "agent_id": self.agent_id,

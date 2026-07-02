@@ -19,6 +19,7 @@ from unittest.mock import MagicMock, AsyncMock
 from ccserver.agent import Agent, AgentContext, AgentState
 from ccserver.agent_handle import BackgroundAgentHandle
 from ccserver.agent_scheduler import AgentScheduler
+from ccserver.messages import UnifiedToolCall
 
 
 def _make_session():
@@ -27,6 +28,9 @@ def _make_session():
     session.settings.denied_tools = frozenset()
     session.settings.allowed_tools = None
     session.settings.run_mode = "auto"
+    # Agent 现读 session.config；用真实 CcServerConfig（run_mode=auto）
+    from ccserver.configuration.schema import CcServerConfig
+    session.config = CcServerConfig.from_dict({"agent": {"run_mode": "auto"}})
     session.mcp.schemas.return_value = []
     session.skills = MagicMock()
     session.project_root = Path("/tmp/test")
@@ -410,44 +414,40 @@ async def test_handle_tools_parallels_multiple_agent_calls():
 
     agent.spawn_child = mock_spawn_child
 
-    # 构造 4 个 Agent tool_use 块（模拟 LLM 返回）
+    # 构造 4 个 Agent tool_use 块（模拟 LLM 返回，使用 UnifiedToolCall）
     blocks = [
-        {
-            "type": "tool_use",
-            "id": "tool-1",
-            "name": "Agent",
-            "input": {
+        UnifiedToolCall(
+            id="tool-1",
+            name="Agent",
+            input={
                 "prompt": "agent-a prompt",
                 "description": "agent-a",
             },
-        },
-        {
-            "type": "tool_use",
-            "id": "tool-2",
-            "name": "Agent",
-            "input": {
+        ),
+        UnifiedToolCall(
+            id="tool-2",
+            name="Agent",
+            input={
                 "prompt": "agent-b prompt",
                 "description": "agent-b",
             },
-        },
-        {
-            "type": "tool_use",
-            "id": "tool-3",
-            "name": "Agent",
-            "input": {
+        ),
+        UnifiedToolCall(
+            id="tool-3",
+            name="Agent",
+            input={
                 "prompt": "agent-c prompt",
                 "description": "agent-c",
             },
-        },
-        {
-            "type": "tool_use",
-            "id": "tool-4",
-            "name": "Agent",
-            "input": {
+        ),
+        UnifiedToolCall(
+            id="tool-4",
+            name="Agent",
+            input={
                 "prompt": "agent-d prompt",
                 "description": "agent-d",
             },
-        },
+        ),
     ]
 
     start = time.monotonic()
@@ -473,8 +473,8 @@ async def test_handle_tools_parallels_multiple_agent_calls():
     assert names_in_order[0] == "agent-d", f"expected agent-d first, got {names_in_order}"
     assert names_in_order[-1] == "agent-a", f"expected agent-a last, got {names_in_order}"
 
-    # 4. results 中应包含各子 agent 的结果（ToolResult.to_api_dict 字段为 content）
-    contents = [r.get("content", "") for r in results if r]
+    # 4. results 中应包含各子 agent 的结果（R3 S4：handle 返回 ToolResultBlock，content 字段）
+    contents = [r.content for r in results if r and isinstance(r.content, str)]
     assert any("agent-a" in c for c in contents)
     assert any("agent-d" in c for c in contents)
 
@@ -507,16 +507,16 @@ async def test_handle_tools_single_agent_no_gather_overhead():
     agent.spawn_child = lambda prompt, **kw: make_child()
 
     blocks = [
-        {
-            "type": "tool_use",
-            "id": "tool-single",
-            "name": "Agent",
-            "input": {"prompt": "single prompt", "description": "single"},
-        },
+        UnifiedToolCall(
+            id="tool-single",
+            name="Agent",
+            input={"prompt": "single prompt", "description": "single"},
+        ),
     ]
 
     results, _ = await agent._handle_tools(blocks)
 
     assert len(results) == 1
     assert child_completed
-    assert "single result" in (results[0].get("content") or "")
+    # R3 S4：handle 返回 ToolResultBlock（类型化），按 content 属性断言
+    assert "single result" in (results[0].content or "")

@@ -33,7 +33,7 @@ else:
 import asyncio
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import AsyncIterator, Optional
 
 from fastapi import APIRouter, FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
@@ -44,19 +44,14 @@ from ccserver import (
     AgentRunner,
     Session,
     SessionManager,
-    SESSIONS_BASE,
     Pipeline,
 )
-from ccserver.config import (
-    DB_PATH, INJECT_SYSTEM_FILE, APPEND_SYSTEM, STORAGE_BACKEND,
-    MONGO_URI, MONGO_DB, REDIS_URL, REDIS_CACHE_SIZE, REDIS_TTL,
-)
+from ccserver.configuration import get_process_config
 from ccserver.storage import build_storage
 from ccserver.emitters.sse import SSEEmitter
 from ccserver.emitters.ws import WSEmitter
 from ccserver.emitters.collect import CollectEmitter
-from ccserver.emitters.filter import FilterEmitter, VALID_VERBOSITY
-from ccserver.emitters.tui import gradient_text
+from ccserver.emitters.filter import FilterEmitter
 from ccserver.team import TeamHealthMonitor
 from ccserver.team.mailbox import TeamMailbox
 from ccserver.team.models import TeamMemberRole
@@ -67,7 +62,7 @@ from contextlib import asynccontextmanager
 import time as _time
 
 # ── Channel 系统 ─────────────────────────────────────────────────────────────
-from ccserver.channels import ChannelGateway, ChannelRegistry
+from ccserver.channels import ChannelGateway, ChannelRegistry, ChannelHealthMonitor
 from ccserver.channels.config import ChannelConfig
 
 # Logo 最先输出（print 不经过 logging，不受 sink 影响）
@@ -92,10 +87,13 @@ setup_logging(stderr=True)
 
 # ─── App setup ────────────────────────────────────────────────────────────────
 
+# 进程级配置（解析一次，server 与所有 Session 共享）
+_process_cfg = get_process_config()
+_infra = _process_cfg.infra
 _storage = build_storage(
-    STORAGE_BACKEND, SESSIONS_BASE, DB_PATH,
-    mongo_uri=MONGO_URI, mongo_db=MONGO_DB,
-    redis_url=REDIS_URL, redis_cache_size=REDIS_CACHE_SIZE, redis_ttl=REDIS_TTL,
+    _infra.storage_backend, _infra.sessions_base, _infra.db_path,
+    mongo_uri=_infra.mongo_uri, mongo_db=_infra.mongo_db,
+    redis_url=_infra.redis_url, redis_cache_size=_infra.redis_cache_size, redis_ttl=_infra.redis_ttl,
 )
 
 
@@ -126,7 +124,19 @@ async def lifespan(app: FastAPI):
         )
 
     asyncio.create_task(_start_channels_async())
+
+    # Channel 健康监控：Channel 启动后开始周期性检查（60s 宽限期后生效）
+    global _channel_health_monitor
+    gateway = _get_channel_gateway()
+    _channel_health_monitor = ChannelHealthMonitor(gateway._lifecycle)
+    _channel_health_monitor.start()
+
+    global _gateway_ready
+    _gateway_ready = True
     yield
+    # shutdown：ChannelHealthMonitor → ChannelGateway → Team 监控 → 存储 → HTTP 客户端
+    if _channel_health_monitor is not None:
+        _channel_health_monitor.stop()
     # shutdown：ChannelGateway 关闭 → Team 监控停止 → 存储关闭 → HTTP 客户端关闭
     if _channel_gateway is not None:
         await _channel_gateway.shutdown()
@@ -141,6 +151,58 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="CCServer", version="1.0.0", lifespan=lifespan)
+
+# ─── Shared Token 认证 middleware ─────────────────────────────────────────────
+# 环境变量 CCSERVER_API_TOKEN 设置后，所有 API 请求需带 Authorization: Bearer <token>。
+# 未设置时打印警告允许无认证访问（开发模式）。
+# 豁免路径：/healthz /readyz（K8s 探针无法携带 token）。
+_API_TOKEN: str | None = os.environ.get("CCSERVER_API_TOKEN") or None
+
+if _API_TOKEN is None:
+    logger.warning(
+        "CCSERVER_API_TOKEN not set — API is open without authentication. "
+        "Set this env var in production to enable bearer token auth."
+    )
+
+# 豁免认证的路径前缀（探针 + 公开端点）
+_AUTH_EXEMPT_PATHS = {"/healthz", "/readyz"}
+
+if _API_TOKEN is not None:
+    from starlette.middleware.base import BaseHTTPMiddleware as _BaseHTTPMiddleware
+    from starlette.requests import Request as _AuthRequest
+    from starlette.responses import JSONResponse as _JSONResponse
+
+    class _BearerAuthMiddleware(_BaseHTTPMiddleware):
+        """
+        Bearer token 认证中间件。
+
+        所有非豁免路径的请求必须携带 Authorization: Bearer <CCSERVER_API_TOKEN> header。
+        WebSocket 连接支持 token query param（ws://host/chat/ws?token=xxx）作为备用。
+        """
+
+        async def dispatch(self, request: _AuthRequest, call_next):
+            path = request.url.path
+            if path in _AUTH_EXEMPT_PATHS:
+                return await call_next(request)
+
+            # 从 Authorization header 提取 token
+            auth_header = request.headers.get("Authorization", "")
+            token = None
+            if auth_header.startswith("Bearer "):
+                token = auth_header[7:]
+            # WebSocket 备用：query param ?token=xxx
+            if token is None:
+                token = request.query_params.get("token")
+
+            if token != _API_TOKEN:
+                return _JSONResponse(
+                    status_code=401,
+                    content={"detail": "Unauthorized: missing or invalid token"},
+                )
+            return await call_next(request)
+
+    app.add_middleware(_BearerAuthMiddleware)
+    logger.info("Bearer token auth enabled | exempt_paths={}", list(_AUTH_EXEMPT_PATHS))
 
 # ─── HTTP 访问日志 middleware ──────────────────────────────────────────────────
 # 环境变量 CCSERVER_ACCESS_LOG=0 可关闭（默认开启）
@@ -200,12 +262,13 @@ if _ACCESS_LOG_ENABLED:
 
     app.add_middleware(_AccessLogMiddleware)
 
-session_manager = SessionManager(SESSIONS_BASE, storage=_storage)
+session_manager = SessionManager(storage=_storage, process_config=_process_cfg)
 _team_monitor = TeamHealthMonitor(session_manager)
 
 # ── Channel 系统初始化 ────────────────────────────────────────────────────────
 _channel_registry = ChannelRegistry()
-_channel_gateway: ChannelGateway | None = None  # 延迟初始化
+_channel_gateway: ChannelGateway | None = None   # 延迟初始化
+_channel_health_monitor: ChannelHealthMonitor | None = None  # Channel 健康监控器
 
 
 def _init_builtin_agents() -> int:
@@ -269,6 +332,9 @@ def _get_channel_gateway() -> ChannelGateway:
         )
     return _channel_gateway
 
+# 就绪标志：lifespan startup 完成后置 True，readyz 探针用
+_gateway_ready: bool = False
+
 # SSE 会话的 emitter 注册表：session_id → SSEEmitter
 # 用于 AskUserQuestion：客户端通过 POST /chat/stream/answer 将答案注入正在等待的 emitter。
 _sse_emitters: dict[str, "SSEEmitter"] = {}
@@ -285,7 +351,7 @@ def _read_system_file(path: str | None) -> str | None:
     return p.read_text(encoding="utf-8")
 
 
-runner = AgentRunner(system=_read_system_file(INJECT_SYSTEM_FILE), append_system=APPEND_SYSTEM)
+runner = AgentRunner(system=_read_system_file(_process_cfg.agent.inject_system_file), append_system=_process_cfg.agent.append_system)
 
 
 def _wrap_emitter(
@@ -369,6 +435,30 @@ mailbox_router = APIRouter(tags=["mailbox"])            # 团队 mailbox
 channels_router = APIRouter(tags=["channels"])          # 渠道接入
 chat_router = APIRouter(tags=["chat"])                  # 对话（HTTP/SSE/WS/push）+ 注入
 pages_router = APIRouter(tags=["pages"])                # 静态页面与 monitor
+infra_router = APIRouter(tags=["infra"])                # 健康探针
+
+
+# ─── Infra: 健康探针 ──────────────────────────────────────────────────────────
+
+
+@infra_router.get("/healthz", summary="Liveness probe — process is alive", tags=["infra"])
+def healthz() -> dict:
+    """活跃探针：进程存活即返回 200。用于 Docker/K8s livenessProbe。"""
+    return {"status": "alive"}
+
+
+@infra_router.get("/readyz", summary="Readiness probe — gateway is ready to handle requests", tags=["infra"])
+def readyz() -> dict:
+    """
+    就绪探针：Gateway 初始化完成后返回 200，否则返回 503。
+    用于 Docker/K8s readinessProbe，确保初始化完成前不分流流量。
+    """
+    if not _gateway_ready:
+        raise HTTPException(status_code=503, detail="initializing")
+    channels = []
+    if _channel_gateway is not None:
+        channels = _channel_gateway.list_running()
+    return {"status": "ready", "channels": len(channels)}
 
 
 # ─── Session routes ───────────────────────────────────────────────────────────
@@ -1439,7 +1529,11 @@ async def chat(req: ChatRequest, x_session_id: Optional[str] = Header(None, alia
     "/chat/stream",
     summary="Send a message and receive a stream of Server-Sent Events",
 )
-async def chat_sse(req: ChatRequest, x_session_id: Optional[str] = Header(None, alias="X-Session-Id")):
+async def chat_sse(
+    req: ChatRequest,
+    x_session_id: Optional[str] = Header(None, alias="X-Session-Id"),
+    last_event_id: Optional[str] = None,   # P2-4：断线重连时携带上次收到的 event_id
+):
     """
     Returns a `text/event-stream` response.
     Each line is `data: <json>\n\n` where json has a `type` field:
@@ -1465,8 +1559,8 @@ async def chat_sse(req: ChatRequest, x_session_id: Optional[str] = Header(None, 
     # 注册 emitter，允许 /chat/stream/answer 端点注入 AskUserQuestion 的答案
     _sse_emitters[session.id] = raw_emitter
 
-    # 注册到 ChannelGateway（WebChatAdapter），支持多 channel 架构
-    gateway = _get_channel_gateway()
+    # 确保 ChannelGateway 已初始化（延迟初始化，含副作用），再从 registry 取适配器
+    _get_channel_gateway()
     webchat = _channel_registry.get_adapter("webchat")
     if webchat is not None:
         webchat.register_emitter(session.id, raw_emitter, client_info={
@@ -1517,7 +1611,8 @@ async def chat_sse(req: ChatRequest, x_session_id: Optional[str] = Header(None, 
         _agent_task = asyncio.create_task(_run())
 
     # 启动 EventBus 订阅，使 SSE 客户端能直接收到后台 Agent / teammate 的事件
-    await raw_emitter.start_event_bus_subscription(_event_bus_filter)
+    # P2-4：传入 last_event_id 支持断线重连时历史回放
+    await raw_emitter.start_event_bus_subscription(_event_bus_filter, last_event_id=last_event_id)
 
     async def _generate() -> AsyncIterator[str]:
         try:
@@ -1861,6 +1956,7 @@ def _get_or_create_session(session_id: Optional[str]) -> tuple[Session, str]:
 
 # ─── 挂载领域路由器（SRP：所有路由按领域分组后统一注册到 app）──────────────────────
 # 顺序不影响 FastAPI 路由匹配（按注册顺序匹配，但各路径互不冲突）。
+app.include_router(infra_router)
 app.include_router(sessions_router)
 app.include_router(scheduled_tasks_router)
 app.include_router(agent_tasks_router)

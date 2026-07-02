@@ -228,11 +228,12 @@ def setup_logging(
         - 优先写入 /dev/tty（避免与 stdout 混淆）
         - 无 tty 环境（Docker/CI）降级到 sys.stderr，关闭颜色
     """
-    # 延迟导入 config，避免模块加载时产生副作用（读取环境变量、计算路径）
+    # 延迟导入配置，避免模块加载时产生副作用（读取环境变量、计算路径）
     if log_dir is None or level is None:
-        from .config import LOG_DIR, LOG_LEVEL
-        log_dir = log_dir or LOG_DIR
-        level = level or LOG_LEVEL
+        from .configuration import get_process_config
+        infra = get_process_config().infra
+        log_dir = log_dir or infra.log_dir
+        level = level or infra.log_level
 
     logger.remove()  # 移除所有已有 sink，防止重复输出
 

@@ -19,6 +19,7 @@ visibility 字段
 ──────────────
   BusEmitter 构造时接受 visibility 参数，所有 publish 的 AgentEvent 都带此字段。
   父 Agent spawn 子 Agent 时，根据可见性需求传入不同的 visibility。
+  也可在运行中通过 set_visibility() 动态切换（Drama/Pipeline 场景）。
 """
 
 import asyncio
@@ -69,6 +70,19 @@ class BusEmitter(BaseEmitter):
         self._agent_id = agent_id
         self._session_id = session_id
         self._sender_type = sender_type
+        self._visibility = visibility
+
+    def set_visibility(self, visibility: str) -> None:
+        """
+        动态切换事件可见性。
+
+        用于 Drama / Pipeline 场景：某个 Agent 在不同阶段需要不同可见性，
+        例如旁白 Agent 先以 HIDDEN 静默运行，汇报阶段再切换为 FULL 输出给用户。
+
+        Args:
+            visibility: 新的可见性值，取值见 event_bus._VISIBILITY_* 常量：
+                        "full" / "done_only" / "hidden"
+        """
         self._visibility = visibility
 
     def _make_event(

@@ -18,7 +18,9 @@ class MsgType(StrEnum):
     IDLE_NOTIFICATION  = "idle_notification"
     NEW_TASK           = "new_task"
     SHUTDOWN_REQUEST   = "shutdown_request"
-    PERMISSION_REQUEST = "permission_request"
+    # P1-2：以下两个 MsgType 已废弃，权限审批统一走 EventBus PERMISSION_REQ / PERMISSION_RESP
+    # 保留枚举值仅为向后兼容（防止旧序列化数据反序列化时 KeyError），不再发送此类消息
+    PERMISSION_REQUEST  = "permission_request"
     PERMISSION_RESPONSE = "permission_response"
     CRON_TRIGGER           = "cron_trigger"
     SCHEDULED_TASK_TRIGGER = "scheduled_task_trigger"
@@ -261,13 +263,14 @@ class PermissionResponseMessage(TeamMessage):
 
 
 # 消息类型到反序列化函数的映射
+# P1-2：permission_request / permission_response 已从映射中移除。
+# 权限审批统一走 EventBus PERMISSION_REQ 事件（内存 Future，实时）。
+# Mailbox 路径不再使用：Mailbox 有延迟（3s→30s 兜底），无法满足实时审批需求。
 _MESSAGE_DESERIALIZERS: dict[str, type] = {
     "chat": ChatMessage,
     "idle_notification": IdleNotificationMessage,
     "new_task": NewTaskMessage,
     "shutdown_request": ShutdownRequestMessage,
-    "permission_request": PermissionRequestMessage,
-    "permission_response": PermissionResponseMessage,
 }
 
 

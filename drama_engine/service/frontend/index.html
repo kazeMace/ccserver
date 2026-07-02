@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>创建狼人杀房间</title>
+  <link rel="stylesheet" href="/frontend/live_viewer.css">
+</head>
+<body class="create-page">
+  <main class="create-shell">
+    <section id="createPanel" class="create-panel create-panel-standalone">
+      <p class="create-eyebrow">Drama Engine · Werewolf</p>
+      <h1>创建狼人杀房间</h1>
+      <p>选择剧本和真人玩家数量。创建后会在本页展示真人玩家链接，玩家点击链接进入玩家视角页，导演可进入 Dashboard 发牌并开始游戏。</p>
+
+      <label class="create-field" for="scriptSelect">
+        <span>选择剧本</span>
+        <select id="scriptSelect">
+          <option value="werewolf_v1_12p_guard" selected>预女猎守局12人</option>
+        </select>
+      </label>
+
+      <label class="create-field" for="humanCountInput">
+        <span>真人玩家数量</span>
+        <input id="humanCountInput" type="number" min="0" max="12" step="1" value="0">
+        <small id="humanCountHint">0 人：观战模式，全部玩家由真实 Agent 托管。</small>
+      </label>
+
+      <button id="createRoomBtn" class="primary create-primary" type="button">创建观战模式房间</button>
+      <p class="create-note">当前仅开放：/Volumes/DISK/programs/ccserver/drama_engine/core/presets/werewolf_v1_12p_guard.preset.yaml</p>
+    </section>
+
+    <section id="createdRoomPanel" class="create-panel create-result-panel hidden">
+      <p class="create-eyebrow">Room Created</p>
+      <h2>房间已创建</h2>
+      <div id="createdRoomSummary" class="created-room-summary"></div>
+      <div class="create-actions-row">
+        <button id="openHostBtn" class="primary dashboard-entry-btn" type="button">进入 Dashboard</button>
+      </div>
+      <h3>真人玩家链接</h3>
+      <div id="playerLinks" class="player-link-list"></div>
+    </section>
+  </main>
+
+  <script src="/frontend/create.js"></script>
+</body>
+</html>

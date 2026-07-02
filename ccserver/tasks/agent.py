@@ -169,19 +169,24 @@ class AgentTaskState:
     # ── 状态变更 ──────────────────────────────────────────────────────────
 
     def mark_running(self) -> None:
-        """标记为 running。"""
-        assert self.status == AgentTaskStatus.PENDING, (
-            f"mark_running: task {self.id} must be pending, but is {self.status}"
-        )
+        """标记为 running。非 pending 状态时记录警告但不崩溃（teammate 多任务场景）。"""
+        if self.status != AgentTaskStatus.PENDING:
+            logger.warning(
+                "mark_running: unexpected status | id={} status={} (expected pending)",
+                self.id, self.status,
+            )
+            # 非 pending 时仍允许进入 running，避免 teammate 多任务时崩溃
         self.status = AgentTaskStatus.RUNNING
         self.start_time = datetime.now(timezone.utc)
         logger.debug("AgentTask running | id={} agent_id={}", self.id, self.agent_id[:8])
 
     def mark_completed(self, result: str = "") -> None:
-        """标记为 completed（正常结束）。"""
-        assert self.status == AgentTaskStatus.RUNNING, (
-            f"mark_completed: task {self.id} must be running, but is {self.status}"
-        )
+        """标记为 completed（正常结束）。非 running 状态时记录警告但不崩溃。"""
+        if self.status != AgentTaskStatus.RUNNING:
+            logger.warning(
+                "mark_completed: unexpected status | id={} status={} (expected running)",
+                self.id, self.status,
+            )
         self.status = AgentTaskStatus.COMPLETED
         self.result = result
         self.end_time = datetime.now(timezone.utc)
@@ -191,10 +196,12 @@ class AgentTaskState:
         )
 
     def mark_failed(self, error: str) -> None:
-        """标记为 failed（异常结束）。"""
-        assert self.status == AgentTaskStatus.RUNNING, (
-            f"mark_failed: task {self.id} must be running, but is {self.status}"
-        )
+        """标记为 failed（异常结束）。非 running 状态时记录警告但不崩溃。"""
+        if self.status != AgentTaskStatus.RUNNING:
+            logger.warning(
+                "mark_failed: unexpected status | id={} status={} (expected running)",
+                self.id, self.status,
+            )
         self.status = AgentTaskStatus.FAILED
         self.error = error
         self.end_time = datetime.now(timezone.utc)
@@ -204,10 +211,12 @@ class AgentTaskState:
         )
 
     def mark_cancelled(self) -> None:
-        """标记为 cancelled（被 cancel() 主动终止）。"""
-        assert self.status == AgentTaskStatus.RUNNING, (
-            f"mark_cancelled: task {self.id} must be running, but is {self.status}"
-        )
+        """标记为 cancelled（被 cancel() 主动终止）。非 running 状态时记录警告但不崩溃。"""
+        if self.status != AgentTaskStatus.RUNNING:
+            logger.warning(
+                "mark_cancelled: unexpected status | id={} status={} (expected running)",
+                self.id, self.status,
+            )
         self.status = AgentTaskStatus.CANCELLED
         self.end_time = datetime.now(timezone.utc)
         logger.info("AgentTask cancelled | id={} agent_id={}", self.id, self.agent_id[:8])

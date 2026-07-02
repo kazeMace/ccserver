@@ -18,21 +18,18 @@ load_dotenv()
 
 from ccserver import (
     AgentRunner,
-    MODEL,
-    Session,
     SessionManager,
-    SESSIONS_BASE,
 )
-from ccserver.config import (
-    PROJECT_DIR, DB_PATH, INJECT_SYSTEM_FILE, APPEND_SYSTEM,
-    STORAGE_BACKEND, MONGO_URI, MONGO_DB, REDIS_URL, REDIS_CACHE_SIZE, REDIS_TTL,
-)
+from ccserver.configuration import get_process_config
 from ccserver.storage import build_storage
-from ccserver.emitters.tui import TUIEmitter, Spinner, RESET, BOLD, DIM, BLUE, CYAN, GREEN, YELLOW, RED, gradient_text, rainbow_text
+from ccserver.emitters.tui import TUIEmitter, Spinner, RESET, BOLD, DIM, CYAN, GREEN, YELLOW, RED, gradient_text, rainbow_text
 from ccserver.emitters import FilterEmitter
 from ccserver.log import setup_logging
 
 setup_logging()
+
+# 进程级配置（解析一次，TUI 与所有 Session 共享）
+_CFG = get_process_config()
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -160,11 +157,11 @@ async def tui_main(system: str | None = None, append_system: bool = False):
     print_logo()
 
     _storage = build_storage(
-        STORAGE_BACKEND, SESSIONS_BASE, DB_PATH,
-        mongo_uri=MONGO_URI, mongo_db=MONGO_DB,
-        redis_url=REDIS_URL, redis_cache_size=REDIS_CACHE_SIZE, redis_ttl=REDIS_TTL,
+        _CFG.infra.storage_backend, _CFG.infra.sessions_base, _CFG.infra.db_path,
+        mongo_uri=_CFG.infra.mongo_uri, mongo_db=_CFG.infra.mongo_db,
+        redis_url=_CFG.infra.redis_url, redis_cache_size=_CFG.infra.redis_cache_size, redis_ttl=_CFG.infra.redis_ttl,
     )
-    session_manager = SessionManager(SESSIONS_BASE, storage=_storage)
+    session_manager = SessionManager(storage=_storage, process_config=_CFG)
     runner = AgentRunner(system=system, append_system=append_system)
     session = session_manager.create()
     emitter = TUIEmitter()
@@ -210,10 +207,10 @@ async def tui_main(system: str | None = None, append_system: bool = False):
 
     print(
         f"{gradient_text('CCServer', _LOGO_START, _LOGO_END)} TUI{RESET}"
-        f" | {DIM}{MODEL} | "
+        f" | {DIM}{_CFG.model.model_id} | "
         f"session: {session.id[:8]}{RESET}\n"
         f"{DIM}workdir: {session.workdir}{RESET}\n"
-        f"{DIM}project: {PROJECT_DIR or '(none)'}{RESET}\n"
+        f"{DIM}project: {_CFG.infra.project_dir or '(none)'}{RESET}\n"
         f"{DIM}{_status_line()}{RESET}\n"
         f"Type {CYAN}/help{RESET} for commands.\n"
     )
@@ -315,7 +312,7 @@ async def tui_main(system: str | None = None, append_system: bool = False):
                 print(
                     f"{BOLD}Session:{RESET}     {DIM}{session.id}{RESET}\n"
                     f"{BOLD}Workdir:{RESET}     {DIM}{session.workdir}{RESET}\n"
-                    f"{BOLD}Model:{RESET}       {DIM}{MODEL}{RESET}\n"
+                    f"{BOLD}Model:{RESET}       {DIM}{_CFG.model.model_id}{RESET}\n"
                     f"{BOLD}Verbosity:{RESET}   {CYAN}{current_verbosity}{RESET}\n"
                     f"{BOLD}Stream:{RESET}      {CYAN}{'on' if current_stream else 'off'}{RESET}\n"
                     f"{BOLD}Interactive:{RESET} {CYAN}{'on' if current_interactive else 'off'}{RESET}"
@@ -369,8 +366,8 @@ def main():
     args = parser.parse_args()
 
     # 命令行参数优先，否则读环境变量（与 server.py 对齐）
-    system_path = args.system_file or INJECT_SYSTEM_FILE
-    append = args.append_system if args.append_system is not None else APPEND_SYSTEM
+    system_path = args.system_file or _CFG.agent.inject_system_file
+    append = args.append_system if args.append_system is not None else _CFG.agent.append_system
 
     try:
         system = _read_system_file(system_path)

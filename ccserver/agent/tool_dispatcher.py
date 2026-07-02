@@ -22,9 +22,7 @@ from datetime import datetime, timezone
 
 from loguru import logger
 
-from ..config import MAX_DEPTH
 from ..event_bus import AgentEvent, EventType, SenderType
-from ..utils import get_block_attr
 from ccserver.builtins.tools import ToolResult
 from ccserver.team.mailbox import TeamMailbox
 from ccserver.team.protocol import ChatMessage
@@ -43,10 +41,13 @@ class ToolDispatcher:
     def __init__(self, rt: AgentRuntime):
         self._rt = rt
 
-    async def handle(self, blocks) -> tuple[list[dict], bool]:
+    async def handle(self, tool_calls) -> tuple[list, bool]:
         """
-        执行响应中所有 tool_use 块。
-        返回 (用于 API 的 tool_result 列表, trigger_compact 标志)。
+        执行响应中所有工具调用（UnifiedToolCall 列表）。
+        返回 (tool_result 列表[ToolResultBlock], trigger_compact 标志)。
+
+        参数 / Args:
+            tool_calls: list[UnifiedToolCall] — LLM 返回的工具调用列表（UnifiedResponse.tool_calls）
 
         权限检查（在工具执行前）：
           如果工具名在 settings.ask_tools 中，则根据 run_mode 决定：
@@ -54,29 +55,21 @@ class ToolDispatcher:
             interactive — 推送 permission_request 事件等待用户批准；拒绝则同 auto
         """
         rt = self._rt
-        results: list[dict] = []
+        results: list = []
         trigger_compact = False
-        ask_tools = rt.session.settings.ask_tools
+        ask_tools = rt.session.config.permissions.ask_tools()
 
         # 扫描是否有多个 Agent 工具调用，决定是否启用并行模式
-        _agent_count = 0
-        for _block in blocks:
-            if get_block_attr(_block, "type") == "tool_use":
-                _name = get_block_attr(_block, "name") or ""
-                if _name == "Agent":
-                    _agent_count += 1
+        _agent_count = sum(1 for tc in tool_calls if tc.name == "Agent")
         parallel_agent_mode = _agent_count > 1
 
         # 收集 Agent 工具的异步调用信息（仅在并行模式下使用）
         agent_tasks: list[tuple[int, str, dict, str, datetime, asyncio.Task]] = []
 
-        for block in blocks:
-            if get_block_attr(block, "type") != "tool_use":
-                continue
-
-            name: str = get_block_attr(block, "name") or ""
-            input_: dict = get_block_attr(block, "input") or {}
-            block_id: str = get_block_attr(block, "id") or ""
+        for tc in tool_calls:
+            name: str = tc.name or ""
+            input_: dict = tc.input or {}
+            block_id: str = tc.id or ""
 
             # ── 运行时权限检查 ────────────────────────────────────────────────
             if name in ask_tools:
@@ -89,7 +82,7 @@ class ToolDispatcher:
                 if perm_hook.block:
                     logger.info("Hook blocked permission | agent={} tool={} reason={}", rt.aid_label, name, perm_hook.block_reason)
                     result = ToolResult.error(perm_hook.block_reason or f"Tool '{name}' blocked by permission hook.")
-                    results.append(result.to_api_dict(block_id))
+                    results.append(result.to_block(block_id))
                     continue
 
                 behavior = perm_hook.permission_behavior
@@ -98,7 +91,7 @@ class ToolDispatcher:
                 elif behavior in ("deny",):
                     logger.info("Hook denied permission | agent={} tool={}", rt.aid_label, name)
                     result = ToolResult.error(f"Tool '{name}' denied by permission hook.")
-                    results.append(result.to_api_dict(block_id))
+                    results.append(result.to_block(block_id))
                     continue
                 elif behavior in ("ask", "passthrough"):
                     if rt.run_mode == "interactive":
@@ -112,7 +105,7 @@ class ToolDispatcher:
                                 rt._build_hook_ctx(),
                             )
                             result = ToolResult.error(f"Tool '{name}' was denied by user.")
-                            results.append(result.to_api_dict(block_id))
+                            results.append(result.to_block(block_id))
                             continue
                         logger.info("Permission granted | agent={} tool={}", rt.aid_label, name)
                     else:
@@ -126,7 +119,7 @@ class ToolDispatcher:
                             f"Tool '{name}' requires user confirmation but run_mode is 'auto'. "
                             "Add it to permissions.ask and use interactive mode, or remove it from ask_tools."
                         )
-                        results.append(result.to_api_dict(block_id))
+                        results.append(result.to_block(block_id))
                         continue
 
             # hook: tool:call:before — 工具执行前（modifying，可阻断、可修改输入）
@@ -138,7 +131,7 @@ class ToolDispatcher:
             if tool_hook.block:
                 logger.info("Hook blocked tool | agent={} tool={} reason={}", rt.aid_label, name, tool_hook.block_reason)
                 result = ToolResult.error(tool_hook.block_reason or f"Tool '{name}' blocked by hook.")
-                results.append(result.to_api_dict(block_id))
+                results.append(result.to_block(block_id))
                 continue
             if tool_hook.updated_input is not None:
                 logger.debug("Hook updated tool input | agent={} tool={}", rt.aid_label, name)
@@ -237,7 +230,7 @@ class ToolDispatcher:
                 },
                 rt._build_hook_ctx(),
             )
-            results.append(result.to_api_dict(block_id))
+            results.append(result.to_block(block_id))
 
         # ── 并行等待所有 Agent 工具完成（仅当存在多个 Agent 调用时）──
         if agent_tasks:
@@ -293,7 +286,7 @@ class ToolDispatcher:
                         rt._build_hook_ctx(),
                     )
 
-                results[idx] = result.to_api_dict(bid)
+                results[idx] = result.to_block(bid)
 
         return results, trigger_compact
 
@@ -304,10 +297,9 @@ class ToolDispatcher:
         TRANSCRIBE 路径：将图像 tool_result 中的图像转换为文字描述。
 
         当主模型不支持图像或 endpoint 不支持图像 tool_result 时调用。
-        使用 VLMRouter 选择最佳视觉模型进行描述，VLM 不可用则返回占位文字。
+        使用 describe_image 自动选择最佳视觉模型进行描述，VLM 不可用则返回占位文字。
         """
-        from ccserver.model.routing.router import VLMRouter
-        from ccserver.model.media.describe import describe_image_with_model
+        from ccserver.builtins.tools.vision import describe_image
 
         rt = self._rt
         image_base64 = result.get_image_base64()
@@ -316,29 +308,13 @@ class ToolDispatcher:
             return ToolResult.ok(result.content_text or "[图像无法显示]")
 
         try:
-            router = VLMRouter(
+            logger.info("TRANSCRIBE 图像描述 | tool={}", tool_name)
+
+            description = await describe_image(
+                image_base64=image_base64,
+                max_tokens=1000,
                 main_model=rt.model,
                 main_adapter=rt.adapter,
-            )
-            route = await router.route()
-
-            if route.is_native:
-                vlm_adapter = route.adapter
-                vlm_model = route.model
-            else:
-                vlm_adapter = route.adapter
-                vlm_model = route.model
-
-            logger.info(
-                "TRANSCRIBE 图像描述 | tool={} vlm_model={} vlm_provider={}",
-                tool_name, vlm_model, route.provider_id,
-            )
-
-            description = await describe_image_with_model(
-                image_base64=image_base64,
-                adapter=vlm_adapter,
-                model=vlm_model,
-                max_tokens=1000,
             )
 
             existing_text = result.content_text
@@ -368,10 +344,11 @@ class ToolDispatcher:
         rt._spawn_teammate），保持调用链不变。
         """
         rt = self._rt
-        if rt.context.depth >= MAX_DEPTH:
+        _max_depth = rt.session.config.agent.max_depth
+        if rt.context.depth >= _max_depth:
             logger.warning("Max depth reached | agent={} depth={}", rt.aid_label, rt.context.depth)
             return ToolResult.error(
-                f"Max agent nesting depth ({MAX_DEPTH}) reached. "
+                f"Max agent nesting depth ({_max_depth}) reached. "
                 "Cannot spawn further subagents."
             )
         prompt = task_input.get("prompt", "")
@@ -404,7 +381,7 @@ class ToolDispatcher:
             is_persistent = False
 
         # ── Team 分支 ──
-        if team_name and teammate_name and rt.session.settings.user_agent_team:
+        if team_name and teammate_name and rt.session.config.tools.user_agent_team:
             if agent_def and not agent_def.is_team_capable:
                 return ToolResult.error(
                     f"Agent '{subagent_type}' is not team-capable. "
