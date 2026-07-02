@@ -1,6 +1,6 @@
 name: "9人标准局"
 description: "9人标准局，3狼2村1预1女1猎，纯AI，标准规则"
-script: core/scripts/werewolf_v1_guard.yaml
+script: fixed_flow/deduction/werewolf_v1_guard.yaml
 
 params:
   total_players: 9

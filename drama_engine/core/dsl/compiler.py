@@ -18,7 +18,7 @@ YamlCompiler — 把 YAML 剧本文件编译为 Script 对象。
 
 用法：
   compiler = YamlCompiler()
-  script = compiler.compile("core/scripts/werewolf_v1_guard.yaml", params={"total_players": 9})
+  script = compiler.compile("scripts/fixed_flow/deduction/werewolf_v1_guard.yaml", params={"total_players": 9})
 """
 
 import re

@@ -4,8 +4,8 @@ const AVAILABLE_SCRIPTS = {
   werewolf_v1_12p_guard: {
     label: "预女猎守局12人",
     gameId: "werewolf_v1_12p_guard",
-    presetPath: "drama_engine/core/presets/werewolf_v1_12p_guard.preset.yaml",
-    scriptPath: "drama_engine/core/scripts/werewolf_v1_guard.yaml",
+    presetPath: "drama_engine/scripts/presets/deduction/werewolf/werewolf_v1_12p_guard.preset.yaml",
+    scriptPath: "drama_engine/scripts/fixed_flow/deduction/werewolf_v1_guard.yaml",
     totalPlayers: 12,
     params: {total_players: 12, werewolf_count: 4, dry_run: false, use_runner: true}
   }

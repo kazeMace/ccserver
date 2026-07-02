@@ -26,7 +26,7 @@ async def test_registry_can_create_two_isolated_sessions() -> None:
 
     first = await registry.create_session(
         game_id="werewolf",
-        script_path="core/scripts/werewolf_v1_guard.yaml",
+        script_path="scripts/fixed_flow/deduction/werewolf_v1_guard.yaml",
         seat_ids=["Player_1", "Player_2"],
         human_seat_ids={"Player_1"},
         params={"use_runner": False},
@@ -68,14 +68,14 @@ async def test_same_seat_name_in_two_sessions_has_isolated_pending_actions() -> 
     registry = SessionRegistry()
     first = await registry.create_session(
         game_id="werewolf",
-        script_path="core/scripts/werewolf_v1_guard.yaml",
+        script_path="scripts/fixed_flow/deduction/werewolf_v1_guard.yaml",
         seat_ids=["Player_1"],
         human_seat_ids={"Player_1"},
         params={"use_runner": False},
     )
     second = await registry.create_session(
         game_id="werewolf",
-        script_path="core/scripts/werewolf_v1_guard.yaml",
+        script_path="scripts/fixed_flow/deduction/werewolf_v1_guard.yaml",
         seat_ids=["Player_1"],
         human_seat_ids={"Player_1"},
         params={"use_runner": False},
@@ -266,14 +266,14 @@ async def test_player_tokens_resolve_session_and_seat() -> None:
     registry = SessionRegistry()
     first = await registry.create_session(
         game_id="werewolf",
-        script_path="core/scripts/werewolf_v1_guard.yaml",
+        script_path="scripts/fixed_flow/deduction/werewolf_v1_guard.yaml",
         seat_ids=["Player_1"],
         human_seat_ids={"Player_1"},
         params={"use_runner": False},
     )
     second = await registry.create_session(
         game_id="werewolf",
-        script_path="core/scripts/werewolf_v1_guard.yaml",
+        script_path="scripts/fixed_flow/deduction/werewolf_v1_guard.yaml",
         seat_ids=["Player_1"],
         human_seat_ids={"Player_1"},
         params={"use_runner": False},
@@ -303,7 +303,7 @@ async def test_registry_uses_service_controls_for_seat_links() -> None:
     registry = SessionRegistry()
     runtime = await registry.create_session(
         game_id="werewolf",
-        script_path="core/scripts/werewolf_v1_guard.yaml",
+        script_path="scripts/fixed_flow/deduction/werewolf_v1_guard.yaml",
         seat_ids=["Player_1", "Player_2"],
         params={"use_runner": False},
     )
@@ -389,7 +389,7 @@ async def test_party_session_runtime_uses_summary_provider_for_runner_state() ->
     registry = SessionRegistry()
     runtime = await registry.create_session(
         game_id="group_chat",
-        script_path="drama_engine/core/scripts/group_chat_room_lite.yaml",
+        script_path="drama_engine/scripts/group_chat/chat/group_chat_room_lite.yaml",
         seat_ids=["Player_1", "Player_2"],
         params={"use_runner": True, "dry_run": True},
     )
@@ -410,8 +410,8 @@ async def test_specialized_runners_use_runtime_action_router_for_human_actors() 
     """GroupChat/DynamicStory human actors should receive runtime action router."""
     registry = SessionRegistry()
     scenarios = [
-        ("group_chat", "drama_engine/core/scripts/group_chat_room_lite.yaml", "GroupChatRunner"),
-        ("dynamic_story", "drama_engine/core/scripts/dynamic_story_runtime_lite.yaml", "DynamicStoryRunner"),
+        ("group_chat", "drama_engine/scripts/group_chat/chat/group_chat_room_lite.yaml", "GroupChatRunner"),
+        ("dynamic_story", "drama_engine/scripts/dynamic_story/story/dynamic_story_runtime_lite.yaml", "DynamicStoryRunner"),
     ]
     for game_id, script_path, runner_name in scenarios:
         runtime = await registry.create_session(

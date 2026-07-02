@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from drama_engine.application.script_library import SCRIPT_LIBRARY_ROOT, iter_builtin_script_paths
+
 
 @dataclass(frozen=True, slots=True)
 class GameDefinition:
@@ -20,15 +22,13 @@ class GameCatalog:
 
     def __init__(self, scripts_root: str | Path | None = None) -> None:
         if scripts_root is None:
-            scripts_root = Path(__file__).resolve().parents[1] / "core" / "scripts"
+            scripts_root = SCRIPT_LIBRARY_ROOT
         self.scripts_root = Path(scripts_root)
 
     def list_games(self) -> list[GameDefinition]:
         """列出 scripts_root 下的 YAML 游戏。"""
-        if not self.scripts_root.exists():
-            return []
         result = []
-        for path in sorted(self.scripts_root.glob("*.yaml")):
+        for path in iter_builtin_script_paths(self.scripts_root):
             game_id = path.stem
             result.append(GameDefinition(
                 game_id=game_id,

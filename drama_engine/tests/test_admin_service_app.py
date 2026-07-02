@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from drama_engine.admin_service.server.app import create_app
+from drama_engine.application.catalog import GameCatalog
 from drama_engine.application.script_repository import ScriptRepository
 
 
@@ -87,6 +88,19 @@ def test_admin_lists_builtin_scripts_and_serves_frontend(tmp_path: Path) -> None
     assert page.status_code == 200
     assert "Drama Engine 管理控制台" in page.text
     assert "自然语言创建" in page.text
+
+
+def test_builtin_script_catalog_reads_nested_script_library(tmp_path: Path) -> None:
+    """目录和管理仓库应递归读取新版 scripts 分类目录。"""
+    catalog = GameCatalog()
+    games = catalog.list_games()
+    repository = ScriptRepository(data_root=tmp_path / "admin_scripts")
+    records = repository.list_scripts(include_builtin=True)
+
+    assert any(game.game_id == "werewolf_v1_guard" for game in games)
+    assert any("scripts/fixed_flow/deduction/werewolf_v1_guard.yaml" in game.script_path for game in games)
+    assert any(record.script_id == "builtin_group_chat_room_lite" for record in records)
+    assert all(not record.path.endswith(".preset.yaml") for record in records if record.source == "builtin")
 
 
 def test_upload_validate_inspect_flow_and_playtest(tmp_path: Path) -> None:

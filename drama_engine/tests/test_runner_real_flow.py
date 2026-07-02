@@ -15,7 +15,7 @@ async def test_runner_can_assign_real_yaml_script() -> None:
     registry = SessionRegistry()
     runtime = await registry.create_session(
         game_id="werewolf_v1_guard",
-        script_path="drama_engine/core/scripts/werewolf_v1_guard.yaml",
+        script_path="drama_engine/scripts/fixed_flow/deduction/werewolf_v1_guard.yaml",
         seat_ids=[f"Player_{index}" for index in range(1, 13)],
         human_seat_ids=set(),
         params={"dry_run": True, "use_runner": True},
@@ -99,7 +99,7 @@ async def test_runner_can_start_and_finish_real_yaml_dry_run() -> None:
     registry = SessionRegistry()
     runtime = await registry.create_session(
         game_id="werewolf_v1_guard",
-        script_path="drama_engine/core/scripts/werewolf_v1_guard.yaml",
+        script_path="drama_engine/scripts/fixed_flow/deduction/werewolf_v1_guard.yaml",
         seat_ids=[f"Player_{index}" for index in range(1, 13)],
         human_seat_ids=set(),
         params={"dry_run": True, "use_runner": True},
@@ -122,7 +122,7 @@ async def test_runner_host_backlog_contains_dashboard_trace_events() -> None:
     registry = SessionRegistry()
     runtime = await registry.create_session(
         game_id="werewolf_v1_guard",
-        script_path="drama_engine/core/scripts/werewolf_v1_guard.yaml",
+        script_path="drama_engine/scripts/fixed_flow/deduction/werewolf_v1_guard.yaml",
         seat_ids=[f"Player_{index}" for index in range(1, 13)],
         human_seat_ids=set(),
         params={"dry_run": True, "use_runner": True},
@@ -153,7 +153,7 @@ def test_witch_poison_cue_distinguishes_current_night_from_history() -> None:
     from drama_engine.core.engine import State, StateWriter, SetAttr, _resolve_action_cue
 
     compiler = YamlCompiler()
-    script = compiler.compile("drama_engine/core/scripts/werewolf_v1_guard.yaml")
+    script = compiler.compile("drama_engine/scripts/fixed_flow/deduction/werewolf_v1_guard.yaml")
     poison_scene = next(scene for scene in script.flow.scenes if scene.name == "witch-poison")
 
     state = State(script.vocab)
@@ -177,7 +177,7 @@ async def test_runner_does_not_duplicate_human_actor_profile_in_private_timeline
     registry = SessionRegistry()
     runtime = await registry.create_session(
         game_id="werewolf_v1_guard",
-        script_path="drama_engine/core/scripts/werewolf_v1_guard.yaml",
+        script_path="drama_engine/scripts/fixed_flow/deduction/werewolf_v1_guard.yaml",
         seat_ids=[f"Player_{index}" for index in range(1, 13)],
         human_seat_ids={"Player_1"},
         params={"dry_run": True, "use_runner": True},
@@ -205,7 +205,7 @@ async def test_runner_human_pending_action_can_be_submitted() -> None:
     seat_ids = [f"Player_{index}" for index in range(1, 13)]
     runtime = await registry.create_session(
         game_id="werewolf_v1_guard",
-        script_path="drama_engine/core/scripts/werewolf_v1_guard.yaml",
+        script_path="drama_engine/scripts/fixed_flow/deduction/werewolf_v1_guard.yaml",
         seat_ids=seat_ids,
         human_seat_ids=set(seat_ids),
         params={"dry_run": True, "use_runner": True, "timeout_policy": {"default_seconds": 30}},
@@ -233,7 +233,7 @@ async def test_runner_human_input_blocks_without_timeout_until_player_submits() 
     seat_ids = [f"Player_{index}" for index in range(1, 13)]
     runtime = await registry.create_session(
         game_id="werewolf_v1_guard",
-        script_path="drama_engine/core/scripts/werewolf_v1_guard.yaml",
+        script_path="drama_engine/scripts/fixed_flow/deduction/werewolf_v1_guard.yaml",
         seat_ids=seat_ids,
         human_seat_ids=set(seat_ids),
         params={"dry_run": True, "use_runner": True},
@@ -276,14 +276,14 @@ async def test_two_runner_sessions_do_not_share_events_or_pending_actions() -> N
     human_seat_ids = set(seat_ids)
     first = await registry.create_session(
         game_id="werewolf_v1_guard",
-        script_path="drama_engine/core/scripts/werewolf_v1_guard.yaml",
+        script_path="drama_engine/scripts/fixed_flow/deduction/werewolf_v1_guard.yaml",
         seat_ids=seat_ids,
         human_seat_ids=human_seat_ids,
         params={"dry_run": True, "use_runner": True, "timeout_policy": {"default_seconds": 30}},
     )
     second = await registry.create_session(
         game_id="werewolf_v1_guard",
-        script_path="drama_engine/core/scripts/werewolf_v1_guard.yaml",
+        script_path="drama_engine/scripts/fixed_flow/deduction/werewolf_v1_guard.yaml",
         seat_ids=seat_ids,
         human_seat_ids=human_seat_ids,
         params={"dry_run": True, "use_runner": True, "timeout_policy": {"default_seconds": 30}},
@@ -411,7 +411,7 @@ async def test_runner_step_mode_blocks_until_step_api_releases() -> None:
     registry = SessionRegistry()
     runtime = await registry.create_session(
         game_id="werewolf_v1_guard",
-        script_path="drama_engine/core/scripts/werewolf_v1_guard.yaml",
+        script_path="drama_engine/scripts/fixed_flow/deduction/werewolf_v1_guard.yaml",
         seat_ids=[f"Player_{index}" for index in range(1, 13)],
         human_seat_ids=set(),
         params={"dry_run": True, "use_runner": True},

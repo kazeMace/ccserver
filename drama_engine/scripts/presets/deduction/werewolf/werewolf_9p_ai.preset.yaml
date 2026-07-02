@@ -1,6 +1,6 @@
 name: "9人纯AI局"
 description: "全AI局，用于测试和演示"
-script: core/scripts/werewolf_v1_guard.yaml
+script: fixed_flow/deduction/werewolf_v1_guard.yaml
 
 params:
   total_players: 9

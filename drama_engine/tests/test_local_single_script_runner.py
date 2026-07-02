@@ -24,9 +24,9 @@ def test_parse_cli_params_coerces_basic_values() -> None:
     }
 
 
-def test_resolve_script_path_accepts_core_script() -> None:
-    """本地入口应能解析新版 core/scripts 路径。"""
-    path = resolve_script_path("drama_engine/core/scripts/werewolf_v1_guard.yaml")
+def test_resolve_script_path_accepts_library_script() -> None:
+    """本地入口应能解析新版 scripts 分类路径。"""
+    path = resolve_script_path("drama_engine/scripts/fixed_flow/deduction/werewolf_v1_guard.yaml")
 
     assert path.name == "werewolf_v1_guard.yaml"
     assert path.exists()
@@ -34,7 +34,7 @@ def test_resolve_script_path_accepts_core_script() -> None:
 
 def test_parser_uses_dashboard_by_default() -> None:
     """默认应进入 dashboard 演示模式，而不是直接 headless 跑完。"""
-    parsed = build_parser().parse_args(["drama_engine/core/scripts/werewolf_v1_guard.yaml"])
+    parsed = build_parser().parse_args(["drama_engine/scripts/fixed_flow/deduction/werewolf_v1_guard.yaml"])
 
     assert parsed.headless is False
     assert parsed.host == "127.0.0.1"
@@ -46,7 +46,7 @@ def test_parser_uses_dashboard_by_default() -> None:
 async def test_headless_runner_can_finish_guard_dry_run() -> None:
     """显式 --headless 时，本地单脚本 runner 应复用真实 runner 并跑完 dry-run。"""
     exit_code = await run_local_script([
-        "drama_engine/core/scripts/werewolf_v1_guard.yaml",
+        "drama_engine/scripts/fixed_flow/deduction/werewolf_v1_guard.yaml",
         "--headless",
         "--dry-run",
         "--print-events",

@@ -16,6 +16,8 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from drama_engine.application.script_library import SCRIPT_LIBRARY_ROOT, iter_builtin_script_paths
+
 logger = logging.getLogger(__name__)
 
 SCRIPT_STATUS_DRAFT = "draft"
@@ -62,7 +64,7 @@ class ScriptRepository:
         if data_root is None:
             data_root = package_root / ".runtime" / "admin_scripts"
         if builtin_root is None:
-            builtin_root = package_root / "core" / "scripts"
+            builtin_root = SCRIPT_LIBRARY_ROOT
         self.data_root = Path(data_root)
         self.builtin_root = Path(builtin_root)
         self.drafts_dir = self.data_root / "drafts"
@@ -195,11 +197,9 @@ class ScriptRepository:
         logger.info("[ScriptRepository] deleted script: %s", script_id)
 
     def _builtin_records(self) -> list[ScriptRecord]:
-        """Expose scripts shipped with drama_engine/core/scripts as approved read-only records."""
-        if not self.builtin_root.exists():
-            return []
+        """Expose scripts shipped with drama_engine/scripts as approved read-only records."""
         records: list[ScriptRecord] = []
-        for path in sorted(self.builtin_root.glob("*.yaml")):
+        for path in iter_builtin_script_paths(self.builtin_root):
             script_id = f"builtin_{path.stem}"
             records.append(ScriptRecord(
                 script_id=script_id,

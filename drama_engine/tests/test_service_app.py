@@ -144,7 +144,7 @@ def test_api_assign_start_real_runner_dry_run() -> None:
             "/api/sessions",
             json={
                 "game_id": "werewolf_v1_guard",
-                "script_path": "drama_engine/core/scripts/werewolf_v1_guard.yaml",
+                "script_path": "drama_engine/scripts/fixed_flow/deduction/werewolf_v1_guard.yaml",
                 "seat_ids": [f"Player_{index}" for index in range(1, 13)],
                 "params": {"dry_run": True, "use_runner": True},
             },
@@ -257,12 +257,12 @@ def test_create_page_can_create_guard_preset_room_and_return_player_links() -> N
         "/api/sessions",
         json={
             "game_id": "werewolf_v1_12p_guard",
-            "script_path": "drama_engine/core/scripts/werewolf_v1_guard.yaml",
+            "script_path": "drama_engine/scripts/fixed_flow/deduction/werewolf_v1_guard.yaml",
             "seat_ids": [f"Player_{index}" for index in range(1, 13)],
             "human_seat_ids": ["Player_1", "Player_2", "Player_3"],
             "params": {"total_players": 12, "werewolf_count": 4, "dry_run": False, "use_runner": True},
             "metadata": {
-                "preset_path": "drama_engine/core/presets/werewolf_v1_12p_guard.preset.yaml",
+                "preset_path": "drama_engine/scripts/presets/deduction/werewolf/werewolf_v1_12p_guard.preset.yaml",
                 "preset_label": "预女猎守局12人",
             },
         },
@@ -411,7 +411,7 @@ async def test_player_input_api_submits_to_runner_action_service() -> None:
     registry = SessionRegistry()
     runtime = await registry.create_session(
         game_id="human_input_test",
-        script_path="drama_engine/core/scripts/werewolf_v1_guard.yaml",
+        script_path="drama_engine/scripts/fixed_flow/deduction/werewolf_v1_guard.yaml",
         seat_ids=["Player_1"],
         human_seat_ids={"Player_1"},
         params={"use_runner": False},

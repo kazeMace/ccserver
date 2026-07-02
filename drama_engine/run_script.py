@@ -9,10 +9,10 @@ compilation, role assignment, Director execution, event storage, dry-run, and
 real-LLM behavior stay aligned with the web server runtime.
 
 Usage examples:
-  conda run --no-capture-output -n ccserver python drama_engine/run_script.py drama_engine/core/scripts/avalon.yaml
-  conda run --no-capture-output -n ccserver python drama_engine/run_script.py drama_engine/core/scripts/avalon.yaml --no-open
-  conda run -n ccserver python drama_engine/run_script.py drama_engine/core/scripts/avalon.yaml --headless --dry-run
-  conda run --no-capture-output -n ccserver python drama_engine/run_script.py --preset drama_engine/core/presets/werewolf_v1_12p_guard.preset.yaml
+  conda run --no-capture-output -n ccserver python drama_engine/run_script.py drama_engine/scripts/fixed_flow/deduction/avalon.yaml
+  conda run --no-capture-output -n ccserver python drama_engine/run_script.py drama_engine/scripts/fixed_flow/deduction/avalon.yaml --no-open
+  conda run -n ccserver python drama_engine/run_script.py drama_engine/scripts/fixed_flow/deduction/avalon.yaml --headless --dry-run
+  conda run --no-capture-output -n ccserver python drama_engine/run_script.py --preset drama_engine/scripts/presets/deduction/werewolf/werewolf_v1_12p_guard.preset.yaml
 """
 
 from __future__ import annotations
@@ -44,6 +44,7 @@ from drama_engine.core.execution_models.fixed_flow import (
     _resolve_player_names,
     build_default_adapter_from_env,
 )
+from drama_engine.application.script_library import SCRIPT_LIBRARY_ROOT
 from drama_engine.service.server.app import create_app
 
 logger = logging.getLogger(__name__)
@@ -145,8 +146,8 @@ def resolve_script_path(script_ref: str, preset_path: str | None = None) -> Path
       1. 绝对路径直接使用。
       2. 相对当前 cwd。
       3. 相对 preset 所在目录。
-      4. 相对 preset 上一级目录（例如 core/presets -> core）。
-      5. 相对 drama_engine/core。
+      4. 相对 preset 上一级目录。
+      5. 相对 drama_engine/scripts。
       6. 相对新版 drama_engine 目录。
       7. 相对项目根目录。
     """
@@ -161,7 +162,7 @@ def resolve_script_path(script_ref: str, preset_path: str | None = None) -> Path
             preset_dir = Path(preset_path).resolve().parent
             candidates.append(preset_dir / raw_path)
             candidates.append(preset_dir.parent / raw_path)
-        candidates.append(_DRAMA_ROOT / "core" / raw_path)
+        candidates.append(SCRIPT_LIBRARY_ROOT / raw_path)
         candidates.append(_DRAMA_ROOT / raw_path)
         candidates.append(_PROJECT_ROOT / raw_path)
     for candidate in candidates:
