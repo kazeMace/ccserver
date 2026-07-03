@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from drama_engine.core.dsl.plugins import ViewContext
 from drama_engine.core.engine import SetAttr
 from drama_engine.core.runtime.interactive_session.actions.controller import ControllerActionExecutor
 from drama_engine.core.runtime.interactive_session.context import InteractiveExecutionContext
@@ -43,6 +44,8 @@ class SceneExecutor:
             "participants": participants,
         })
 
+        self._run_hooks(ctx, scene, "on_before_action")
+        schedule_patch_count = len(ctx.patch_journal.by_type("schedule_patch"))
         responses = await self._schedule.execute(
             ctx=ctx,
             schedule=scene.schedule,
@@ -52,23 +55,36 @@ class SceneExecutor:
             cue=cue,
         )
         ctx.last_responses = responses
+        self._run_schedule_hooks(ctx, scene, schedule_patch_count)
+        for response in responses:
+            self._run_hooks(ctx, scene, "on_message", event=response)
         result = self._check_referee_events(ctx, scene, "after_message", responses)
         if result is not None:
-            return result
+            return self._finish_scene(ctx, scene, responses, result)
         result = self._check_referee_events(ctx, scene, "after_round", [{"kind": "round_completed"}])
         if result is not None:
-            return result
+            return self._finish_scene(ctx, scene, responses, result)
         self._run_hooks(ctx, scene, "on_after_action")
         controller_result = await self._controller.execute(ctx, scene.controller_action)
         if isinstance(controller_result, dict) and controller_result.get("beat"):
             result = self._check_referee_events(ctx, scene, "after_generated_beat", [controller_result])
             if result is not None:
-                return result
+                return self._finish_scene(ctx, scene, responses, result)
         self._apply_resolution(ctx, scene, responses, controller_result)
         self._publish(ctx, scene)
         result = self._referee.check(ctx, scene.referee, "after_scene", scene=scene)
         if result is None:
             result = self._referee.check(ctx, ctx.script.referee, "after_scene", scene=scene)
+        return self._finish_scene(ctx, scene, responses, result)
+
+    def _finish_scene(
+        self,
+        ctx: InteractiveExecutionContext,
+        scene: SceneSpec,
+        responses: list[dict[str, Any]],
+        result: str | None,
+    ) -> str | None:
+        """Run exit lifecycle and emit scene completion."""
         self._run_hooks(ctx, scene, "on_exit")
         ctx.emit_public({
             "kind": "interactive_scene_completed",
@@ -88,6 +104,7 @@ class SceneExecutor:
     ) -> str | None:
         """Run scene and top-level referee for event-like lifecycle hooks."""
         for event in events:
+            self._run_hooks(ctx, scene, "on_referee_check", event=event)
             result = self._referee.check(ctx, scene.referee, hook, scene=scene, event=event)
             if result is not None:
                 return result
@@ -265,8 +282,55 @@ class SceneExecutor:
                 "audience": audience or scene.scope.id,
                 "text": self._render_cue(ctx, text),
             })
+        for item in publication.get("disclosures", []) or []:
+            if not isinstance(item, dict):
+                continue
+            audience = item.get("audience") or {}
+            audience_scope = audience.get("scope") if isinstance(audience, dict) else audience
+            text = item.get("text") or (item.get("content") or {}).get("text") or ""
+            event = {
+                "kind": "interactive_disclosure",
+                "runtime_type": "interactive_session",
+                "scene": scene.id,
+                "audience": audience_scope or scene.scope.id,
+                "text": self._render_cue(ctx, text),
+            }
+            if item.get("private", True):
+                ctx.emit_host(event)
+            else:
+                ctx.emit_public(event)
+        for view in publication.get("views", []) or []:
+            if not isinstance(view, dict):
+                continue
+            try:
+                audience = str(view.get("audience") or scene.scope.id)
+                view_event = ctx.plugin_registry.project_view(
+                    view,
+                    ViewContext(
+                        state=ctx.state,
+                        scene_name=scene.id,
+                        audience=audience,
+                        mutation_log=ctx.state.mutation_log(),
+                        script_extensions={},
+                    ),
+                )
+            except Exception as exc:  # noqa: BLE001 - publication failure should be visible.
+                ctx.emit_host({
+                    "kind": "interactive_session_warning",
+                    "message": f"publication.views 投影失败: {exc}",
+                    "scene": scene.id,
+                })
+                continue
+            if view_event:
+                ctx.emit_public(view_event)
 
-    def _run_hooks(self, ctx: InteractiveExecutionContext, scene: SceneSpec, hook_name: str) -> None:
+    def _run_hooks(
+        self,
+        ctx: InteractiveExecutionContext,
+        scene: SceneSpec,
+        hook_name: str,
+        event: dict[str, Any] | None = None,
+    ) -> None:
         """Run lifecycle hooks by reusing effects."""
         hook_items = scene.hooks.get(hook_name) or []
         if isinstance(hook_items, dict):
@@ -276,7 +340,13 @@ class SceneExecutor:
             if not isinstance(item, dict):
                 continue
             when = item.get("when")
-            if when and not ctx.condition_evaluator.evaluate(when, ctx.state, actor=None, extra=ctx.runtime_extra()):
+            if when and not ctx.condition_evaluator.evaluate(
+                when,
+                ctx.state,
+                actor=None,
+                responses=ctx.last_responses,
+                extra={**ctx.runtime_extra(), "event": event or {}},
+            ):
                 continue
             if "do" in item:
                 effects.extend(item.get("do") or [])
@@ -290,8 +360,23 @@ class SceneExecutor:
                 ctx.writer,
                 ctx.last_responses,
                 actor=None,
-                extra={**ctx.runtime_extra(), "scene_name": scene.id},
+                extra={**ctx.runtime_extra(), "scene_name": scene.id, "event": event or {}},
             )
+
+    def _run_schedule_hooks(
+        self,
+        ctx: InteractiveExecutionContext,
+        scene: SceneSpec,
+        start_count: int,
+    ) -> None:
+        """Run schedule push/pop hooks for patches created during this scene."""
+        records = ctx.patch_journal.by_type("schedule_patch")[start_count:]
+        for record in records:
+            event = {"kind": record.payload.get("type"), "patch": record.payload}
+            if record.payload.get("type") == "push_schedule":
+                self._run_hooks(ctx, scene, "on_schedule_push", event=event)
+            elif record.payload.get("type") == "pop_schedule":
+                self._run_hooks(ctx, scene, "on_schedule_pop", event=event)
 
     def _ensure_entity(self, ctx: InteractiveExecutionContext, entity: str) -> None:
         """Register an entity when missing."""

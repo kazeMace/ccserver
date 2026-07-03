@@ -7,6 +7,7 @@ from typing import Any
 from drama_engine.core.runtime.interactive_session.actions.free_input import FreeInputExecutor
 from drama_engine.core.runtime.interactive_session.context import InteractiveExecutionContext
 from drama_engine.core.runtime.interactive_session.models import ControllerActionSpec
+from drama_engine.core.runtime.interactive_session.services.runtime_services import RuntimeServiceCaller
 
 
 class ControllerActionExecutor:
@@ -15,6 +16,7 @@ class ControllerActionExecutor:
     def __init__(self) -> None:
         """Initialize executor."""
         self._free_input = FreeInputExecutor()
+        self._services = RuntimeServiceCaller()
 
     async def execute(
         self,
@@ -64,7 +66,7 @@ class ControllerActionExecutor:
                 response,
             )
         else:
-            selected = action.choices[0] if action.choices else {}
+            selected = self._selected_choice_from_response(action.choices, response)
             result = {
                 "kind": "choice",
                 "selected_choice": selected.get("id"),
@@ -112,15 +114,21 @@ class ControllerActionExecutor:
         controller_type = str(controller.get("type") or "none")
         if controller_type in {"human", "agent"}:
             actor_name = str(controller.get("agent_id") or controller.get("seat_id") or "")
-            if not actor_name and ctx.cast.all_names():
+            if not actor_name and controller_type == "agent" and ctx.cast.all_names():
                 actor_name = ctx.cast.all_names()[0]
             if actor_name in ctx.cast.all_names():
                 return await ctx.cast.get(actor_name).act(cue, None)
         if controller_type == "plugin":
+            service_result = self._services.call_sync(
+                ctx,
+                controller,
+                "controller",
+                {**ctx.full_context_payload(), "cue": cue},
+            )
             return {
                 "actor": str(controller.get("name") or "plugin"),
-                "text": f"(plugin controller {controller.get('name', 'unknown')})",
-                "data": None,
+                "text": str(service_result.get("text") or ""),
+                "data": service_result.get("data"),
             }
         return {"actor": controller_type, "text": "(system controller)", "data": None}
 
@@ -134,3 +142,27 @@ class ControllerActionExecutor:
         if not target:
             return
         ctx.session_metadata["interactive_next_target"] = str(target)
+
+    def _selected_choice_from_response(
+        self,
+        choices: list[dict[str, Any]],
+        response: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Select choice from structured response or text."""
+        if not choices:
+            return {}
+        data = response.get("data")
+        selected_id = None
+        if isinstance(data, dict):
+            selected_id = data.get("choose") or data.get("choice") or data.get("choice_id")
+        if selected_id is not None:
+            for choice in choices:
+                if str(choice.get("id")) == str(selected_id):
+                    return choice
+        text = str(response.get("text") or "").lower()
+        for choice in choices:
+            choice_id = str(choice.get("id") or "").lower()
+            choice_text = str(choice.get("text") or "").lower()
+            if text and (choice_id in text or choice_text in text):
+                return choice
+        return choices[0]

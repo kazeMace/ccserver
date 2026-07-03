@@ -23,6 +23,7 @@ class InteractiveExecutionContext:
     effect_executor: EffectExecutor
     candidate_resolver: CandidateResolver
     value_resolver: ValueResolver
+    plugin_registry: Any
     patch_journal: PatchJournal
     emit_public: Any
     emit_host: Any
@@ -41,4 +42,22 @@ class InteractiveExecutionContext:
             "current_scene": self.current_scene_id,
             "patch_journal": self.patch_journal.snapshot(),
             "metadata": self.session_metadata,
+        }
+
+    def full_context_payload(self) -> dict[str, Any]:
+        """Return a serializable runtime payload for external services.
+
+        Returns:
+            Dict containing state snapshot, current location, responses, patches,
+            players, and metadata. This is used when DSL omits explicit input.
+        """
+        return {
+            "runtime_type": "interactive_session",
+            "state": self.state.snapshot(),
+            "players": list(self.state.get_attr("GAME", "players", []) or []),
+            "current_state": self.current_state_id,
+            "current_scene": self.current_scene_id,
+            "last_responses": list(self.last_responses),
+            "patches": self.patch_journal.snapshot(),
+            "metadata": dict(self.session_metadata),
         }

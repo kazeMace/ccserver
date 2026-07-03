@@ -5,6 +5,9 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+from drama_engine.core.runtime.interactive_session.actions.candidate_validation import (
+    CandidateResponseValidator,
+)
 from drama_engine.core.runtime.interactive_session.actions.response_models import ResponseModelFactory
 from drama_engine.core.runtime.interactive_session.context import InteractiveExecutionContext
 from drama_engine.core.runtime.interactive_session.models import ParticipantActionSpec, ScopeSpec
@@ -14,10 +17,13 @@ from drama_engine.core.runtime.interactive_session.scene.scope import ScopeResol
 class ParticipantActionExecutor:
     """Collect actions from scheduled participants."""
 
+    MAX_COLLECT_RETRIES = 3
+
     def __init__(self, scope_resolver: ScopeResolver | None = None) -> None:
         """Initialize executor."""
         self._models = ResponseModelFactory()
         self._scope_resolver = scope_resolver or ScopeResolver()
+        self._candidate_validator = CandidateResponseValidator()
 
     async def collect_one(
         self,
@@ -37,11 +43,46 @@ class ParticipantActionExecutor:
             actor.set_scene_context(ctx.current_scene_id, ctx.current_scene_id)
         collect_model = self._models.build(action.kind, action.response, action.target)
         prompt = self._build_prompt(cue, action, candidates)
-        response = await actor.act(prompt, collect_model)
+        response = await self._act_with_validation(
+            actor=actor,
+            prompt=prompt,
+            collect_model=collect_model,
+            candidates=candidates,
+            scene_id=ctx.current_scene_id,
+        )
         response.setdefault("actor", actor_name)
         response.setdefault("data", None)
         await self._deliver_response(ctx, response, scope, participants)
         return response
+
+    async def _act_with_validation(
+        self,
+        actor: Any,
+        prompt: str,
+        collect_model: Any,
+        candidates: list[str],
+        scene_id: str,
+    ) -> dict[str, Any]:
+        """Collect one response and enforce candidate boundaries."""
+        current_prompt = prompt
+        last_error = ""
+        for attempt in range(self.MAX_COLLECT_RETRIES):
+            response = await actor.act(current_prompt, collect_model)
+            error = self._candidate_validator.validate(response, candidates, scene_id)
+            if not error:
+                return response
+            last_error = error
+            print(
+                f"[InteractiveCandidateValidation:{getattr(actor, 'name', '?')}] "
+                f"第 {attempt + 1} 次候选校验失败: {error}"
+            )
+            current_prompt = (
+                prompt
+                + "\n\n【上次输出无效】"
+                + error
+                + "请从候选项中重新选择，并保持输出格式不变。"
+            )
+        raise ValueError(last_error or "候选校验失败")
 
     async def collect_many(
         self,

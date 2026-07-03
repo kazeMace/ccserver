@@ -34,6 +34,7 @@ class FlowMaterializer:
             scene_id = str(scene.get("id") or scene.get("name") or "")
             if scene_id:
                 scenes[scene_id] = scene
+                self._insert_scene(flow, scene_id, str(patch.get("after") or ""), str(patch.get("state") or ""))
         elif patch_type == "add_transition":
             states = flow.setdefault("states", {})
             state = states.setdefault(str(patch.get("from")), {"scenes": [], "transitions": []})
@@ -41,3 +42,30 @@ class FlowMaterializer:
                 "to": patch.get("to"),
                 "when": patch.get("when"),
             })
+
+    def _insert_scene(
+        self,
+        flow: dict[str, Any],
+        scene_id: str,
+        after: str,
+        state_id: str,
+    ) -> None:
+        """Insert generated scene id into materialized flow."""
+        flow_type = str(flow.get("type") or "sequence")
+        if flow_type == "sequence":
+            scenes = flow.setdefault("scenes", [])
+            self._insert_after(scenes, scene_id, after)
+            return
+        states = flow.setdefault("states", {})
+        state_key = state_id or str(flow.get("initial") or next(iter(states), "main"))
+        state = states.setdefault(state_key, {"scenes": [], "transitions": []})
+        self._insert_after(state.setdefault("scenes", []), scene_id, after)
+
+    def _insert_after(self, items: list[Any], value: str, after: str) -> None:
+        """Insert value after another list item, or append."""
+        if value in items:
+            return
+        if after and after in items:
+            items.insert(items.index(after) + 1, value)
+            return
+        items.append(value)

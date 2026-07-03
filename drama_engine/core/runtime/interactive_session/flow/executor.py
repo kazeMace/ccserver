@@ -24,23 +24,44 @@ class FlowExecutor:
         while steps < self._max_steps:
             steps += 1
             ctx.current_state_id = current_state_id
-            state_spec = flow.states[current_state_id]
+            state_spec = ctx.script.flow.states[current_state_id]
             self._apply_state_effects(ctx, state_spec.entry_effects)
-            for scene_id in state_spec.scenes:
-                forced_target = ctx.session_metadata.pop("interactive_next_target", None)
-                if forced_target:
-                    if forced_target in ctx.script.scenes:
-                        scene_id = forced_target
-                    elif forced_target in flow.states:
-                        current_state_id = forced_target
-                        break
-                scene = ctx.script.scenes[scene_id]
-                result = await self._scene_executor.execute(ctx, scene)
+            index = 0
+            jump_state = None
+            while index < len(ctx.script.flow.states[current_state_id].scenes):
+                scene_ids = ctx.script.flow.states[current_state_id].scenes
+                scene_id = scene_ids[index]
+                index += 1
+                result = await self._execute_scene_id(ctx, scene_id)
                 if result:
                     ctx.ended = True
                     ctx.result = result
                     return result
+                forced_target = ctx.session_metadata.pop("interactive_next_target", None)
+                if forced_target:
+                    if forced_target in ctx.script.scenes:
+                        result = await self._execute_scene_id(ctx, forced_target)
+                        if result:
+                            ctx.ended = True
+                            ctx.result = result
+                            return result
+                        if forced_target in ctx.script.flow.states[current_state_id].scenes:
+                            index = ctx.script.flow.states[current_state_id].scenes.index(forced_target) + 1
+                    elif forced_target in ctx.script.flow.states:
+                        jump_state = forced_target
+                        break
+                    else:
+                        ctx.emit_host({
+                            "kind": "interactive_session_warning",
+                            "message": f"未知 flow target: {forced_target}",
+                            "scene": ctx.current_scene_id,
+                        })
             self._apply_state_effects(ctx, state_spec.exit_effects)
+            flow = ctx.script.flow
+            state_spec = flow.states[current_state_id]
+            if jump_state:
+                current_state_id = jump_state
+                continue
             if flow.type == "sequence" or state_spec.terminal:
                 break
             next_state_id = self._next_state(ctx, state_spec)
@@ -50,6 +71,11 @@ class FlowExecutor:
         if steps >= self._max_steps:
             result = "interactive_session_max_steps_reached"
         return result or "interactive_session_completed"
+
+    async def _execute_scene_id(self, ctx: InteractiveExecutionContext, scene_id: str) -> str | None:
+        """Execute one scene by id."""
+        scene = ctx.script.scenes[scene_id]
+        return await self._scene_executor.execute(ctx, scene)
 
     def _next_state(
         self,

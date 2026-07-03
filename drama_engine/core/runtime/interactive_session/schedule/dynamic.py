@@ -13,6 +13,7 @@ from drama_engine.core.runtime.interactive_session.models import (
     ScopeSpec,
 )
 from drama_engine.core.runtime.interactive_session.patch.validators import PatchValidator
+from drama_engine.core.runtime.interactive_session.services.runtime_services import RuntimeServiceCaller
 
 
 class DynamicScheduleExecutor:
@@ -22,6 +23,7 @@ class DynamicScheduleExecutor:
         """Initialize dynamic schedule executor."""
         self._participant_actions = participant_actions or ParticipantActionExecutor()
         self._validator = PatchValidator()
+        self._services = RuntimeServiceCaller()
 
     async def maybe_run(
         self,
@@ -48,7 +50,14 @@ class DynamicScheduleExecutor:
         if patch.get("type") == "pop_schedule":
             ctx.patch_journal.append("schedule_patch", patch, {"scene": ctx.current_scene_id})
             return []
-        return await self._run_child_schedule(ctx, patch, parent_action, parent_participants, source_response)
+        return await self._run_child_schedule(
+            ctx,
+            patch,
+            dynamic,
+            parent_action,
+            parent_participants,
+            source_response,
+        )
 
     def _detect_patch(
         self,
@@ -57,18 +66,26 @@ class DynamicScheduleExecutor:
         parent_participants: list[str],
         source_response: dict[str, Any],
     ) -> dict[str, Any] | None:
-        """Detect requested schedule patch.
-
-        当前支持两种来源：
-        1. detector 中直接声明 patch，方便测试和规则脚本。
-        2. source_response.data.schedule_patch，由 agent/plugin 结构化返回。
-        """
+        """Detect requested schedule patch through service or response data."""
         detector_patch = dynamic.detector.get("patch") if isinstance(dynamic.detector, dict) else None
         if isinstance(detector_patch, dict):
             return self._apply_allowed_defaults(detector_patch, dynamic, parent_participants)
         data = source_response.get("data")
         if isinstance(data, dict) and isinstance(data.get("schedule_patch"), dict):
             return self._apply_allowed_defaults(data["schedule_patch"], dynamic, parent_participants)
+        detector_result = self._services.call_sync(
+            ctx,
+            dynamic.detector or {"name": "detect_schedule_request"},
+            "schedule_detector",
+            {
+                **ctx.full_context_payload(),
+                "source_response": source_response,
+                "parent_participants": list(parent_participants),
+            },
+        )
+        result_patch = detector_result.get("patch")
+        if isinstance(result_patch, dict):
+            return self._apply_allowed_defaults(result_patch, dynamic, parent_participants)
         return None
 
     def _apply_allowed_defaults(
@@ -78,7 +95,8 @@ class DynamicScheduleExecutor:
         parent_participants: list[str],
     ) -> dict[str, Any]:
         """Apply defaults and allowed constraints to a patch."""
-        result = dict(patch)
+        result = dict(dynamic.patch or {})
+        result.update(dict(patch))
         result.setdefault("type", "push_schedule")
         result.setdefault("mode", "openchat")
         if "participants" not in result:
@@ -124,6 +142,7 @@ class DynamicScheduleExecutor:
         self,
         ctx: InteractiveExecutionContext,
         patch: dict[str, Any],
+        dynamic: DynamicScheduleSpec,
         parent_action: ParticipantActionSpec,
         parent_participants: list[str],
         source_response: dict[str, Any],
@@ -134,6 +153,12 @@ class DynamicScheduleExecutor:
             patch,
             {"scene": ctx.current_scene_id, "source_response": source_response},
         )
+        ctx.emit_public({
+            "kind": "interactive_schedule_pushed",
+            "runtime_type": "interactive_session",
+            "scene": ctx.current_scene_id,
+            "patch": patch,
+        })
         participants = [
             str(name)
             for name in patch.get("participants", [])
@@ -159,12 +184,18 @@ class DynamicScheduleExecutor:
                 action=parent_action,
                 scope=scope,
                 participants=participants,
-                mode="sequential",
+                mode=schedule.mode,
                 cue="临时子对话，请根据当前私密上下文发言。",
             ))
         pop_patch = {"type": "pop_schedule", "parent_scene": ctx.current_scene_id}
         ctx.patch_journal.append("schedule_patch", pop_patch, {"scene": ctx.current_scene_id})
-        merge_back = patch.get("merge_back")
+        ctx.emit_public({
+            "kind": "interactive_schedule_popped",
+            "runtime_type": "interactive_session",
+            "scene": ctx.current_scene_id,
+            "patch": pop_patch,
+        })
+        merge_back = patch.get("merge_back") or dynamic.merge_back
         if merge_back:
             ctx.emit_host({
                 "kind": "interactive_schedule_merge",

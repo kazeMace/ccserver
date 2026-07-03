@@ -91,6 +91,7 @@ class PluginRegistry:
         self._value_resolvers: dict[str, Callable[[str, Any], Any]] = {}
         self._view_projectors: dict[str, Callable[[dict, ViewContext], ViewEvent | dict | None]] = {}
         self._rule_set_handlers: dict[str, Callable[[RuleSetContext], dict | None]] = {}
+        self._runtime_services: dict[str, Callable[[dict], dict | None]] = {}
         self._validators: list[Callable[[dict], list[str]]] = []
 
     def register_effect(self, name: str, handler: Callable[[dict, EffectContext], None]) -> None:
@@ -148,6 +149,23 @@ class PluginRegistry:
     def has_value_resolver(self, prefix: str) -> bool:
         """检查是否存在指定值解析前缀。"""
         return prefix in self._value_resolvers
+
+    def register_runtime_service(self, name: str, handler: Callable[[dict], dict | None]) -> None:
+        """注册一个 runtime service handler。"""
+        assert name and isinstance(name, str), "runtime service 名称必须是非空字符串"
+        assert callable(handler), f"runtime service handler 不可调用: {name}"
+        self._runtime_services[name] = handler
+
+    def has_runtime_service(self, name: str) -> bool:
+        """检查是否存在指定 runtime service。"""
+        return name in self._runtime_services
+
+    def call_runtime_service(self, name: str, payload: dict) -> dict | None:
+        """执行 runtime service handler。"""
+        handler = self._runtime_services.get(name)
+        if handler is None:
+            raise ValueError(f"未知 runtime service: {name}")
+        return handler(payload)
 
     def register_view_projector(
         self,
@@ -229,6 +247,10 @@ class PluginApi:
     def register_value_resolver(self, prefix: str, resolver: Callable[[str, Any], Any]) -> None:
         """注册 value resolver。"""
         self._registry.register_value_resolver(prefix, resolver)
+
+    def register_runtime_service(self, name: str, handler: Callable[[dict], dict | None]) -> None:
+        """注册 runtime service。"""
+        self._registry.register_runtime_service(name, handler)
 
     def register_view_projector(
         self,

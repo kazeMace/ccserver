@@ -37,13 +37,38 @@ class ExternalConditionEvaluator:
     ) -> bool:
         """Evaluate an `evaluator: http` or `evaluator: llm` condition."""
         url = self._resolve_evaluator_url(cond)
+        if not url and cond.get("evaluator") == "llm" and str(cond.get("provider") or "inside") == "inside":
+            result = {
+                "result": bool(cond.get("fallback", False)),
+                "provider": "inside",
+                "input": self._default_input(state, actor, candidate, responses, extra, entity),
+            }
+            pass_when = cond.get("pass_when")
+            if isinstance(pass_when, dict):
+                return self._evaluate(
+                    pass_when,
+                    state=state,
+                    actor=actor,
+                    candidate=candidate,
+                    responses=responses,
+                    extra={**(extra or {}), "result": result},
+                    entity=entity,
+                )
+            return bool(result["result"])
         if not url:
             return bool(cond.get("fallback", False))
         payload = {
             "id": cond.get("id"),
             "endpoint": cond.get("endpoint"),
             "input": self._resolve_input_spec(
-                cond.get("input") or {},
+                cond["input"] if "input" in cond else self._default_input(
+                    state,
+                    actor,
+                    candidate,
+                    responses,
+                    extra,
+                    entity,
+                ),
                 state,
                 actor,
                 candidate,
@@ -161,6 +186,29 @@ class ExternalConditionEvaluator:
                 for item in input_spec
             ]
         return input_spec
+
+    def _default_input(
+        self,
+        state: State,
+        actor: str | None,
+        candidate: str | None,
+        responses: list | None,
+        extra: dict | None,
+        entity: str | None,
+    ) -> dict[str, Any]:
+        """Build default full evaluator input when DSL omits input."""
+        extra = extra or {}
+        return {
+            "state": state.snapshot(),
+            "actor": actor,
+            "candidate": candidate,
+            "entity": entity,
+            "responses": responses or [],
+            "current_state": extra.get("current_state"),
+            "current_scene": extra.get("current_scene"),
+            "patch_journal": extra.get("patch_journal") or [],
+            "metadata": extra.get("metadata") or {},
+        }
 
 
 __all__ = ["ExternalConditionEvaluator"]

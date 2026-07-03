@@ -74,6 +74,7 @@ class InteractiveSessionRunner(BasicGameRunner):
             effect_executor=EffectExecutor(evaluator, plugins),
             candidate_resolver=CandidateResolver(evaluator),
             value_resolver=ValueResolver(plugins),
+            plugin_registry=plugins,
             patch_journal=PatchJournal(),
             emit_public=self._emit_public,
             emit_host=self._emit_host,

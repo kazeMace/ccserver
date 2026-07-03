@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from drama_engine.core.engine import SetAttr
 from drama_engine.core.runtime.interactive_session.context import InteractiveExecutionContext
 from drama_engine.core.runtime.interactive_session.models import RefereeSpec, SceneSpec
 
@@ -61,9 +62,63 @@ class RefereeExecutor:
             if passed:
                 result = rule.get("result") or {}
                 if isinstance(result, dict):
-                    return str(result.get("end") or result.get("message") or "session_ended")
+                    return self._apply_result(ctx, result, scene, event)
                 return str(result or rule.get("message") or "session_ended")
         return None
+
+    def _apply_result(
+        self,
+        ctx: InteractiveExecutionContext,
+        result: dict[str, Any],
+        scene: SceneSpec | None,
+        event: dict[str, Any] | None,
+    ) -> str | None:
+        """Apply structured referee result and return terminal text if ended."""
+        effects = [self._normalize_effect(effect) for effect in result.get("effects", []) or []]
+        if effects:
+            ctx.effect_executor.execute_all(
+                effects,
+                ctx.state,
+                ctx.writer,
+                ctx.last_responses,
+                actor=None,
+                extra={**ctx.runtime_extra(), "scene_name": getattr(scene, "id", ""), "event": event or {}},
+            )
+        for item in result.get("set_state", []) or []:
+            if not isinstance(item, dict):
+                continue
+            path = item.get("path")
+            if not path or "." not in str(path):
+                continue
+            entity, attr = str(path).split(".", 1)
+            if not ctx.state.has_entity(entity):
+                ctx.state.register_entity(entity, {})
+            value = ctx.value_resolver.resolve(
+                item.get("value"),
+                state=ctx.state,
+                responses=ctx.last_responses,
+                extra=ctx.runtime_extra(),
+            )
+            ctx.writer.apply(SetAttr(entity, attr, value))
+        target = result.get("jump") or result.get("to")
+        if target:
+            ctx.session_metadata["interactive_next_target"] = str(target)
+        if result.get("end") is not None:
+            return str(result.get("end") or "session_ended")
+        if result.get("message") is not None:
+            return str(result["message"])
+        if result.get("end_session") is True:
+            return "session_ended"
+        return None
+
+    def _normalize_effect(self, effect: dict[str, Any]) -> dict[str, Any]:
+        """Normalize set_state.path shorthand."""
+        result = dict(effect)
+        if result.get("type") == "set_state" and "path" in result:
+            entity, attr = str(result.pop("path")).split(".", 1)
+            result["entity"] = entity
+            result["attr"] = attr
+        return result
 
     def _matches_include_exclude(
         self,
