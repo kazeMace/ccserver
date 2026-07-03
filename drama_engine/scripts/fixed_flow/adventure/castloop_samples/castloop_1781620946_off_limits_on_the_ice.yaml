@@ -1,0 +1,6024 @@
+meta:
+  id: castloop_1781620946
+  name: castloop_1781620946_off_limits_on_the_ice
+  title: Off Limits on the Ice
+  version: 0.1.0
+  author: castloop_import_sample
+  description: After a passionate night with hockey star Jake, freshman Mia is pulled into a whirlwind of campus rumors, his secret guilt, and a heavy family crisis.
+  tags:
+  - castloop
+  - branching_story
+  - import_sample
+  locale: en-US
+runtime:
+  type: game_session
+extensions:
+  story:
+    enabled: true
+    version: '0.1'
+    config:
+      source: castloop_product_package
+      script_id: '1781620946'
+      source_folder: stories/1781620946_off_limits_on_the_ice
+      page_url: https://www.castloop.ai/play/1781620946
+      cover_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1781620946/0/image/release/r_2fcb493f/cover/poster_c0867aa0-b4b6-4f3a-9fb5-f15d3249ce19.webp
+      nodes_count: 73
+      scenes_count: 4
+      roles_count: 7
+      paid_options_count: 90
+      mapping: one_castloop_node_to_one_state_machine_state
+concepts:
+  roles:
+    reader:
+      display_name: Reader
+      description: Single player who chooses the next branch.
+  factions:
+    solo:
+      display_name: Solo
+      description: Single-player story progression.
+  scopes:
+    public:
+      display_name: Story
+      description: Visible story text and branch options.
+  abilities:
+    choose_branch:
+      display_name: Choose branch
+      description: Select the next Castloop node.
+      prompt: Pick one target state from the options.
+roles:
+- name: reader
+  display_name: Reader
+  faction: solo
+  brief: You are reading an imported branching story and choosing the next node.
+  scopes:
+  - public
+  abilities:
+  - choose_branch
+players:
+  count: 1
+  initial_attrs:
+    alive: true
+  casting:
+    type: shuffle
+    distribution:
+      reader: 1
+scopes:
+- name: public
+  members: all
+flow:
+  type: state_machine
+  initial: node_001
+  states:
+    node_001:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_001
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Save the Secret
+      scenes:
+      - name: node_001_story
+        display_name: Save the Secret
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#1 Save the Secret]
+          Mia wakes up with junior hockey star Jake Shaw’s hoodie, breaking the strict 'No Freshman Rule.' Her roommate Sasha storms in, spots the hoodie, and demands answers. When a text from 'J' arrives inviting Mia to Shaw and Sons Auto Repair, Sasha lunges for the phone. Mia must choose to either grab her phone and hide it, or block Sasha's hand and demand privacy, determining how she protects her secret.
+        publication:
+          views:
+          - id: node_001_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#1 Save the Secret'
+              - label: 当前状态
+                value: node_001
+              - label: 音频数量
+                value: 7
+              - label: 可选目标
+                value: node_002, node_073
+      - name: node_001_choice
+        display_name: Save the Secret - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_002
+          - node_073
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_002: Grab the phone first and hide it behind your back.
+          - node_073: Block her hand and tell her to respect your privacy.
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_001_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_002
+                text: Grab the phone first and hide it behind your back.
+                price: null
+              - target: node_073
+                text: Block her hand and tell her to respect your privacy.
+                price: null
+      transitions: []
+    node_002:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_002
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Dressing for His World
+      scenes:
+      - name: node_002_story
+        display_name: Dressing for His World
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#2 Dressing for His World]
+          Mia successfully grabs her phone, raising Sasha's deep suspicions. Sasha warns her about Cole's upcoming party and leaves. Mia reads a text from Jake ('J') telling her to meet him at Shaw and Sons Auto Repair after class. Excited yet nervous, Mia must now decide what to wear to enter his world.
+        publication:
+          views:
+          - id: node_002_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#2 Dressing for His World'
+              - label: 当前状态
+                value: node_002
+              - label: 音频数量
+                value: 8
+              - label: 可选目标
+                value: node_003
+      - name: node_002_choice
+        display_name: Dressing for His World - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_003
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_003: Decide what to wear to meet Jake.
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_002_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_003
+                text: Decide what to wear to meet Jake.
+                price: null
+      transitions: []
+    node_003:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_003
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Dress to Impress
+      scenes:
+      - name: node_003_story
+        display_name: Dress to Impress
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#3 Dress to Impress]
+          After Sasha leaves to prepare for the party, Mia is left alone and reads Jake's text inviting her to Shaw and Sons Auto Repair. Sensing this step into his real, off-campus life is far more intimate than a typical college hookup, Mia stands at her closet. She must decide whether to wear a casual hoodie to keep the meeting low-key, or put on a nice outfit to make an impression and shield her guard.
+        publication:
+          views:
+          - id: node_003_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#3 Dress to Impress'
+              - label: 当前状态
+                value: node_003
+              - label: 音频数量
+                value: 3
+              - label: 可选目标
+                value: node_004, node_072
+      - name: node_003_choice
+        display_name: Dress to Impress - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_004
+          - node_072
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_004: Wear a casual hoodie to keep it low-key. | price=20
+          - node_072: Put on a nice outfit to make an impression. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_003_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_004
+                text: Wear a casual hoodie to keep it low-key.
+                price: 20
+              - target: node_072
+                text: Put on a nice outfit to make an impression.
+                price: 20
+      transitions: []
+    node_004:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_004
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Searching for Jake
+      scenes:
+      - name: node_004_story
+        display_name: Searching for Jake
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#4 Searching for Jake]
+          Mia wears a simple, oversized grey hoodie as armor to shield herself. She takes a bus to the industrial edge of town, arriving at the gritty, cold Shaw and Sons Auto Repair. Surrounded by the scent of motor oil and the hum of a generator, she prepares to search for Jake.
+        publication:
+          views:
+          - id: node_004_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#4 Searching for Jake'
+              - label: 当前状态
+                value: node_004
+              - label: 音频数量
+                value: 2
+              - label: 可选目标
+                value: node_005
+      - name: node_004_choice
+        display_name: Searching for Jake - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_005
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_005: Look for Jake. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_004_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_005
+                text: Look for Jake.
+                price: 20
+      transitions: []
+    node_005:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_005
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Help or Leave
+      scenes:
+      - name: node_005_story
+        display_name: Help or Leave
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#5 Help or Leave]
+          At Shaw and Sons Auto Repair, Mia finds a grease-covered Jake working under a truck. Their reunion is cut short by Jake's exhausted brother, Tyler, who bitterly notes they are 'drowning' in work. Tyler coldly demands to know if Mia is there to help or just taking up space. Mia must choose to offer her help or choose to leave.
+        publication:
+          views:
+          - id: node_005_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#5 Help or Leave'
+              - label: 当前状态
+                value: node_005
+              - label: 音频数量
+                value: 7
+              - label: 可选目标
+                value: node_006, node_071
+      - name: node_005_choice
+        display_name: Help or Leave - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_006
+          - node_071
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_006: I can help. Show me what to do. | price=20
+          - node_071: I won't get in your way. I'll leave. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_005_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_006
+                text: I can help. Show me what to do.
+                price: 20
+              - target: node_071
+                text: I won't get in your way. I'll leave.
+                price: 20
+      transitions: []
+    node_006:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_006
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Sparks Under the Hood
+      scenes:
+      - name: node_006_story
+        display_name: Sparks Under the Hood
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#6 Sparks Under the Hood]
+          Mia rolls up her sleeves, earning Tyler's reluctant respect. He tasks her with holding a flashlight while Jake works. Under the truck's hood, Mia and Jake share an intimate, tense moment in close proximity, deepening their connection as Jake thanks her. Tyler is soon drawn away by a phone call in the back office, leaving them alone. Mia chooses to keep holding the light.
+        publication:
+          views:
+          - id: node_006_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#6 Sparks Under the Hood'
+              - label: 当前状态
+                value: node_006
+              - label: 音频数量
+                value: 8
+              - label: 可选目标
+                value: node_007
+      - name: node_006_choice
+        display_name: Sparks Under the Hood - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_007
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_007: Keep holding the light. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_006_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_007
+                text: Keep holding the light.
+                price: 20
+      transitions: []
+    node_007:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_007
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: A Tender Touch
+      scenes:
+      - name: node_007_story
+        display_name: A Tender Touch
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#7 A Tender Touch]
+          Left alone in the garage, Jake confesses the shop is barely keeping its head above water due to debt, and that he must return after graduation to repay Tyler's sacrifice. Tracing Mia's jaw, Jake admits she makes him forget his troubles, but a text from Cole about a party at the Sig house interrupts them. Mia must decide whether to wrap her arms around Jake or wipe the grease off his cheek.
+        publication:
+          views:
+          - id: node_007_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#7 A Tender Touch'
+              - label: 当前状态
+                value: node_007
+              - label: 音频数量
+                value: 8
+              - label: 可选目标
+                value: node_008, node_070
+      - name: node_007_choice
+        display_name: A Tender Touch - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_008
+          - node_070
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_008: Wrap your arms around him. | price=20
+          - node_070: Wipe the grease off his cheek. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_007_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_008
+                text: Wrap your arms around him.
+                price: 20
+              - target: node_070
+                text: Wipe the grease off his cheek.
+                price: 20
+      transitions: []
+    node_008:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_008
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Stay In His Arms
+      scenes:
+      - name: node_008_story
+        display_name: Stay In His Arms
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#8 Stay In His Arms]
+          Mia hugs Jake, ignoring his buzzing phone. Surprised, Jake pulls her tightly against him, burying his face in her neck and desperately begging her not to let go. In this intimate embrace, the weight of Jake's reality briefly melts away. Mia chooses to stay in his arms, deepening their emotional connection.
+        publication:
+          views:
+          - id: node_008_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#8 Stay In His Arms'
+              - label: 当前状态
+                value: node_008
+              - label: 音频数量
+                value: 3
+              - label: 可选目标
+                value: node_009
+      - name: node_008_choice
+        display_name: Stay In His Arms - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_009
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_009: Stay in his arms. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_008_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_009
+                text: Stay in his arms.
+                price: 20
+      transitions: []
+    node_009:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_009
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Jake Shuts Me Out
+      scenes:
+      - name: node_009_story
+        display_name: Jake Shuts Me Out
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#9 Jake Shuts Me Out]
+          As Cole's text buzzes, Jake abruptly pulls away, insisting they arrive separately at the Sig house party to protect Mia from his messy life. Reeling from his sudden coldness, Mia must choose: demand the truth, forcing Jake to confront his family crisis and deepening their raw connection, or walk away to protect her boundaries, creating distance and a slow-burn tension as Jake struggles with guilt.
+        publication:
+          views:
+          - id: node_009_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#9 Jake Shuts Me Out'
+              - label: 当前状态
+                value: node_009
+              - label: 音频数量
+                value: 9
+              - label: 可选目标
+                value: node_010, node_040
+      - name: node_009_choice
+        display_name: Jake Shuts Me Out - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_010
+          - node_040
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_010: I'm not a secret, Jake. I'm leaving. | price=20
+          - node_040: Look at me and tell me the truth. | price=120
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_009_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_010
+                text: I'm not a secret, Jake. I'm leaving.
+                price: 20
+              - target: node_040
+                text: Look at me and tell me the truth.
+                price: 120
+      transitions: []
+    node_010:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_010
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Locked in His Gaze
+      scenes:
+      - name: node_010_story
+        display_name: Locked in His Gaze
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#10 Locked in His Gaze]
+          At the chaotic Sig House party, Mia tries to drown her frustration from the garage in a drink Sasha gives her. Across the strobe-lit room, Jake watches Mia intensely, his white-knuckled grip revealing his guilt and conflicted longing after pushing her away. Defying his own rules, Jake steps toward her. Mia must choose whether to hold his gaze with a cold smile and raise her cup, or turn away and disappear onto the dance floor, setting the boundary for their lingering tension.
+        publication:
+          views:
+          - id: node_010_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#10 Locked in His Gaze'
+              - label: 当前状态
+                value: node_010
+              - label: 音频数量
+                value: 5
+              - label: 可选目标
+                value: node_011, node_039
+      - name: node_010_choice
+        display_name: Locked in His Gaze - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_011
+          - node_039
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_011: Hold his gaze and raise my cup with a cold smile. | price=20
+          - node_039: Turn away and disappear into the center of the dance floor. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_010_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_011
+                text: Hold his gaze and raise my cup with a cold smile.
+                price: 20
+              - target: node_039
+                text: Turn away and disappear into the center of the dance floor.
+                price: 20
+      transitions: []
+    node_011:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_011
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Run or Face Him
+      scenes:
+      - name: node_011_story
+        display_name: Run or Face Him
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#11 Run or Face Him]
+          At the Sig House party, Mia mocks Jake with a cold toast and retreats into a quiet back hallway. Deeply shaken and desperate, Jake abandons his rules and pursues her through the crowd. Mia now must decide whether to stop and face him in the hallway.
+        publication:
+          views:
+          - id: node_011_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#11 Run or Face Him'
+              - label: 当前状态
+                value: node_011
+              - label: 音频数量
+                value: 2
+              - label: 可选目标
+                value: node_012
+      - name: node_011_choice
+        display_name: Run or Face Him - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_012
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_012: Stop and face him. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_011_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_012
+                text: Stop and face him.
+                price: 20
+      transitions: []
+    node_012:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_012
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Hide Together
+      scenes:
+      - name: node_012_story
+        display_name: Hide Together
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#12 Hide Together]
+          Cornered in a hallway, Jake desperately grabs Mia's wrist, admitting he couldn't breathe while she ignored him. As Sasha and Cole approach, threatening to expose them and break the 'No Freshman Rule,' Mia must choose to pull Jake into an empty bedroom to hide together, or push him away and face a public confrontation.
+        publication:
+          views:
+          - id: node_012_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#12 Hide Together'
+              - label: 当前状态
+                value: node_012
+              - label: 音频数量
+                value: 9
+              - label: 可选目标
+                value: node_013, node_038
+      - name: node_012_choice
+        display_name: Hide Together - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_013
+          - node_038
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_013: Pull Jake into the empty bedroom with you. | price=20
+          - node_038: Push him away and face Sasha and Cole. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_012_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_013
+                text: Pull Jake into the empty bedroom with you.
+                price: 20
+              - target: node_038
+                text: Push him away and face Sasha and Cole.
+                price: 20
+      transitions: []
+    node_013:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_013
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Forbidden Touch
+      scenes:
+      - name: node_013_story
+        display_name: Forbidden Touch
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#13 Forbidden Touch]
+          To evade Sasha and Cole, Mia pulls Jake into a dark bedroom. In the silence, their physical proximity and the lingering guilt from Jake's previous coldness amplify the tension. Despite his earlier determination to keep his distance, Jake confesses he cannot stop himself as he traces Mia's collarbone. Mia is left with the choice to look up at him in the dark, stepping deeper into their forbidden intimacy.
+        publication:
+          views:
+          - id: node_013_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#13 Forbidden Touch'
+              - label: 当前状态
+                value: node_013
+              - label: 音频数量
+                value: 8
+              - label: 可选目标
+                value: node_014
+      - name: node_013_choice
+        display_name: Forbidden Touch - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_014
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_014: Look up at him in the dark. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_013_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_014
+                text: Look up at him in the dark.
+                price: 20
+      transitions: []
+    node_014:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_014
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Decide Our Path
+      scenes:
+      - name: node_014_story
+        display_name: Decide Our Path
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#14 Decide Our Path]
+          In a private room at the Sig house, Jake's defensive barrier cracks. He confesses Tyler sacrificed his life for him, meaning Jake must return to the garage, but admits Mia is the only part of his life that doesn't feel like a chore. Fearing he will drag her into his 'wreckage,' he begs her to choose their path. Mia must choose to demand the absolute truth with no more lies, or protect her boundaries by asking for space.
+        publication:
+          views:
+          - id: node_014_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#14 Decide Our Path'
+              - label: 当前状态
+                value: node_014
+              - label: 音频数量
+                value: 9
+              - label: 可选目标
+                value: node_015, node_037
+      - name: node_014_choice
+        display_name: Decide Our Path - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_015
+          - node_037
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_015: Tell me everything, Jake. No more lies. | price=20
+          - node_037: I need space. I can't do this anymore. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_014_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_015
+                text: Tell me everything, Jake. No more lies.
+                price: 20
+              - target: node_037
+                text: I need space. I can't do this anymore.
+                price: 20
+      transitions: []
+    node_015:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_015
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Dark Confession
+      scenes:
+      - name: node_015_story
+        display_name: Dark Confession
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#15 Dark Confession]
+          Demanding absolute honesty, Mia forces Jake to confront his secrets. Locking them inside a private bedroom, Jake warns her there is no turning back. Overwhelmed by guilt, he confesses his struggles go beyond the garage and Tyler—he has done something terrible to someone he calls a brother. Mia must now ask what he did, poised to uncover the truth of his betrayal.
+        publication:
+          views:
+          - id: node_015_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#15 Dark Confession'
+              - label: 当前状态
+                value: node_015
+              - label: 音频数量
+                value: 6
+              - label: 可选目标
+                value: node_016
+      - name: node_015_choice
+        display_name: Dark Confession - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_016
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_016: What did you do? | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_015_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_016
+                text: What did you do?
+                price: 20
+      transitions: []
+    node_016:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_016
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Trapped With His Secret
+      scenes:
+      - name: node_016_story
+        display_name: Trapped With His Secret
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#16 Trapped With His Secret]
+          Locked in a private room, Jake confesses his agonizing secret: he is in love with Chloe, Dylan's girlfriend. Before Mia can process this shock, Dylan begins rattling the door. Mia must choose to unlock the door and walk away to protect her boundaries, exposing Jake to Dylan's rising suspicions, or pull Jake into the closet to hide, sharing his heavy burden and plunging into a high-stakes, intimate 'partners-in-crime' dynamic.
+        publication:
+          views:
+          - id: node_016_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#16 Trapped With His Secret'
+              - label: 当前状态
+                value: node_016
+              - label: 音频数量
+                value: 8
+              - label: 可选目标
+                value: node_017, node_027
+      - name: node_016_choice
+        display_name: Trapped With His Secret - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_017
+          - node_027
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_017: Pull the lock open and step out to face Dylan. | price=20
+          - node_027: Pull Jake into the closet and cover his mouth. | price=150
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_016_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_017
+                text: Pull the lock open and step out to face Dylan.
+                price: 20
+              - target: node_027
+                text: Pull Jake into the closet and cover his mouth.
+                price: 150
+      transitions: []
+    node_017:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_017
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Cornered by Sasha
+      scenes:
+      - name: node_017_story
+        display_name: Cornered by Sasha
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#17 Cornered by Sasha]
+          Mia exits the room, coldly telling Dylan she needed air and leaving Jake to face his friend's suspicions alone. Downstairs, an aggressive Sasha corners a pale Mia, demanding to know if she was upstairs with Jake. This reinforces Mia's self-preservation path, leaving Jake exposed. Players must choose to lie about looking for a bathroom or deflect by questioning Sasha's tracking.
+        publication:
+          views:
+          - id: node_017_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#17 Cornered by Sasha'
+              - label: 当前状态
+                value: node_017
+              - label: 音频数量
+                value: 6
+              - label: 可选目标
+                value: node_018, node_026
+      - name: node_017_choice
+        display_name: Cornered by Sasha - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_018
+          - node_026
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_018: Lie and say you were looking for a bathroom. | price=20
+          - node_026: Deflect by questioning why she is tracking you. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_017_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_018
+                text: Lie and say you were looking for a bathroom.
+                price: 20
+              - target: node_026
+                text: Deflect by questioning why she is tracking you.
+                price: 20
+      transitions: []
+    node_018:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_018
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Challenged to Play
+      scenes:
+      - name: node_018_story
+        display_name: Challenged to Play
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#18 Challenged to Play]
+          Mia defuses Sasha's suspicion about the upstairs rooms with a lie, but Cole's loud announcement of a 'varsity showdown' interrupts them. Sasha drags Mia to the table just as a grim Jake and Dylan descend the stairs. Cole spots Mia and publicly challenges her to join the game. Choosing to step up to the table, Mia must face the spotlight while maintaining her self-preservation path.
+        publication:
+          views:
+          - id: node_018_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#18 Challenged to Play'
+              - label: 当前状态
+                value: node_018
+              - label: 音频数量
+                value: 7
+              - label: 可选目标
+                value: node_019
+      - name: node_018_choice
+        display_name: Challenged to Play - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_019
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_019: Step up to the game table. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_018_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_019
+                text: Step up to the game table.
+                price: 20
+      transitions: []
+    node_019:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_019
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Play Or Hear Him
+      scenes:
+      - name: node_019_story
+        display_name: Play Or Hear Him
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#19 Play Or Hear Him]
+          At the Sig house beer pong table, Cole pits Mia against a shaken Jake, while a suspicious Dylan walks away. Desperate to explain the bedroom incident, Jake begs Mia for two minutes, touching her hand across the wet wood. Mia must choose whether to ignore him and play the game, or drop the ball and follow him to a quiet hallway to hear him out, deciding whether to maintain her cold boundaries or give him a chance.
+        publication:
+          views:
+          - id: node_019_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#19 Play Or Hear Him'
+              - label: 当前状态
+                value: node_019
+              - label: 音频数量
+                value: 7
+              - label: 可选目标
+                value: node_020, node_025
+      - name: node_019_choice
+        display_name: Play Or Hear Him - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_020
+          - node_025
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_020: Ignore him and throw the ball to start the game. | price=20
+          - node_025: Drop the ball and nod toward the quiet hallway. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_019_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_020
+                text: Ignore him and throw the ball to start the game.
+                price: 20
+              - target: node_025
+                text: Drop the ball and nod toward the quiet hallway.
+                price: 20
+      transitions: []
+    node_020:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_020
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Dragged Into the Hallway
+      scenes:
+      - name: node_020_story
+        display_name: Dragged Into the Hallway
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#20 Dragged Into the Hallway]
+          Maintaining her cold boundaries, Mia ignores Jake's plea, scoring the winning shot to wild cheers. Stung and desperate, Jake throws his turn and grabs her wrist, dragging her away from Cole and the crowd into a quiet corridor. Player's choice to face him in the hallway continues her guarded, self-preservation path while Jake remains desperate to explain.
+        publication:
+          views:
+          - id: node_020_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#20 Dragged Into the Hallway'
+              - label: 当前状态
+                value: node_020
+              - label: 音频数量
+                value: 4
+              - label: 可选目标
+                value: node_021
+      - name: node_020_choice
+        display_name: Dragged Into the Hallway - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_021
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_021: Face him in the dim hallway. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_020_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_021
+                text: Face him in the dim hallway.
+                price: 20
+      transitions: []
+    node_021:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_021
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Hide Or Get Caught
+      scenes:
+      - name: node_021_story
+        display_name: Hide Or Get Caught
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#21 Hide Or Get Caught]
+          Cornered in a hallway, Jake desperately begs Mia not to shut him out, calling his love for Chloe a curse and Mia his sanity. Despite Mia's self-preservation stance, Jake's raw confession heightens the tension just as Cole begins rattling the door. Mia must choose whether to push Jake back and open the door to the party, or pull him into the shadows with her.
+        publication:
+          views:
+          - id: node_021_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#21 Hide Or Get Caught'
+              - label: 当前状态
+                value: node_021
+              - label: 音频数量
+                value: 7
+              - label: 可选目标
+                value: node_022, node_024
+      - name: node_021_choice
+        display_name: Hide Or Get Caught - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_022
+          - node_024
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_022: Push him back and open the door. | price=20
+          - node_024: Pull him into the shadows. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_021_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_022
+                text: Push him back and open the door.
+                price: 20
+              - target: node_024
+                text: Pull him into the shadows.
+                price: 20
+      transitions: []
+    node_022:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_022
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Leaving Him Behind
+      scenes:
+      - name: node_022_story
+        display_name: Leaving Him Behind
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#22 Leaving Him Behind]
+          Pushing Jake away, Mia opens the door to a drunk Cole, who teases them about breaking rules. Defending her boundaries, Mia slips past Cole, choosing to walk away from Jake's mess. Cole restrains Jake for beer pong, leaving him trapped and pleading as Mia walks away. This solidifies Mia's self-preservation path, leaving Jake increasingly desperate and exposed.
+        publication:
+          views:
+          - id: node_022_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#22 Leaving Him Behind'
+              - label: 当前状态
+                value: node_022
+              - label: 音频数量
+                value: 7
+              - label: 可选目标
+                value: node_023
+      - name: node_022_choice
+        display_name: Leaving Him Behind - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_023
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_023: Walk away from his mess. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_022_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_023
+                text: Walk away from his mess.
+                price: 20
+      transitions: []
+    node_023:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_023
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Leaving His Chaos
+      scenes:
+      - name: node_023_story
+        display_name: Leaving His Chaos
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#23 Leaving His Chaos]
+          Cornered in the dim hallway, Mia rejects Jake's desperate plea to be his 'escape route' or 'hiding place' from his guilt over Chloe and his family's garage. Firmly choosing self-preservation over his chaos, she tells him to fix his own life first. Mia walks out of the Sig house into the cool night air, leaving a devastated Jake behind and reclaiming her independence.
+        publication:
+          views:
+          - id: node_023_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#23 Leaving His Chaos'
+              - label: 当前状态
+                value: node_023
+              - label: 音频数量
+                value: 8
+      transitions:
+      - to: end
+    node_024:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_024
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Leave His Mess Behind
+      scenes:
+      - name: node_024_story
+        display_name: Leave His Mess Behind
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#24 Leave His Mess Behind]
+          Mia pulls Jake into a laundry alcove to hide from Cole. Despite their intense physical proximity and Jake admitting he doesn't want to run from her, Mia maintains her self-preservation boundary, reminding him she only saved them to avoid a scene. The heavy burden of his Chloe confession still lingers between them. Mia is now faced with the choice to walk away from his mess.
+        publication:
+          views:
+          - id: node_024_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#24 Leave His Mess Behind'
+              - label: 当前状态
+                value: node_024
+              - label: 音频数量
+                value: 5
+              - label: 可选目标
+                value: node_023
+      - name: node_024_choice
+        display_name: Leave His Mess Behind - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_023
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_023: Walk away from his mess. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_024_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_023
+                text: Walk away from his mess.
+                price: 20
+      transitions: []
+    node_025:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_025
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Alone in the Hallway
+      scenes:
+      - name: node_025_story
+        display_name: Alone in the Hallway
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#25 Alone in the Hallway]
+          Mia forfeits the beer pong game by dropping the ball and signals Jake to follow her. Ignoring Cole’s protests, Jake immediately abandons the game and follows Mia into a quiet, dimly lit back hallway. Escaping the chaotic party, Jake closes the distance, desperate to explain himself. Mia prepares to face him in the corridor, momentarily softening her self-preservation boundaries as she waits to hear what he has to say.
+        publication:
+          views:
+          - id: node_025_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#25 Alone in the Hallway'
+              - label: 当前状态
+                value: node_025
+              - label: 音频数量
+                value: 3
+              - label: 可选目标
+                value: node_021
+      - name: node_025_choice
+        display_name: Alone in the Hallway - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_021
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_021: Face him in the dim hallway. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_025_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_021
+                text: Face him in the dim hallway.
+                price: 20
+      transitions: []
+    node_026:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_026
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Called Out to Play
+      scenes:
+      - name: node_026_story
+        display_name: Called Out to Play
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#26 Called Out to Play]
+          Mia asserts her independence, shutting down Sasha's grilling. Their confrontation is cut short when Cole Harrington announces a varsity drinking game. As a tense Jake and Dylan watch from the stairs, Cole publicly challenges Mia to play. Choosing to step up to the game table, Mia maintains her stance of self-preservation, refusing to hide or cower, keeping her distance from Jake while entering the spotlight.
+        publication:
+          views:
+          - id: node_026_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#26 Called Out to Play'
+              - label: 当前状态
+                value: node_026
+              - label: 音频数量
+                value: 6
+              - label: 可选目标
+                value: node_019
+      - name: node_026_choice
+        display_name: Called Out to Play - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_019
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_019: Step up to the game table. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_026_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_019
+                text: Step up to the game table.
+                price: 20
+      transitions: []
+    node_027:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_027
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Too Close to Breathe
+      scenes:
+      - name: node_027_story
+        display_name: Too Close to Breathe
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#27 Too Close to Breathe]
+          Mia drags Jake into a dark closet, covering his mouth to hide from Dylan. Pressed flush together, they share a breathless, tense intimacy. After Dylan leaves, Jake holds Mia close, admitting he is a mess but refusing to let go, cementing their high-stakes 'partners-in-crime' dynamic. Mia must choose whether to close the distance and kiss him, or push him away and open the door.
+        publication:
+          views:
+          - id: node_027_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#27 Too Close to Breathe'
+              - label: 当前状态
+                value: node_027
+              - label: 音频数量
+                value: 7
+              - label: 可选目标
+                value: node_028, node_036
+      - name: node_027_choice
+        display_name: Too Close to Breathe - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_028
+          - node_036
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_028: Close the distance and kiss him. | price=20
+          - node_036: Push him away and open the door. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_027_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_028
+                text: Close the distance and kiss him.
+                price: 20
+              - target: node_036
+                text: Push him away and open the door.
+                price: 20
+      transitions: []
+    node_028:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_028
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Stolen Closet Kiss
+      scenes:
+      - name: node_028_story
+        display_name: Stolen Closet Kiss
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#28 Stolen Closet Kiss]
+          Mia kisses Jake in the dark closet, breaking his restraint. They share a desperate, passionate kiss that cements their high-stakes 'partners-in-crime' dynamic. Fearing discovery, Jake abruptly stops and steps out of the closet, warning her they must leave. Mia's only choice is to follow him out.
+        publication:
+          views:
+          - id: node_028_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#28 Stolen Closet Kiss'
+              - label: 当前状态
+                value: node_028
+              - label: 音频数量
+                value: 5
+              - label: 可选目标
+                value: node_029
+      - name: node_028_choice
+        display_name: Stolen Closet Kiss - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_029
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_029: Follow him out of the closet. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_028_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_029
+                text: Follow him out of the closet.
+                price: 20
+      transitions: []
+    node_029:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_029
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Run or Stand Together
+      scenes:
+      - name: node_029_story
+        display_name: Run or Stand Together
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#29 Run or Stand Together]
+          Out of the closet, Jake calls his life a "train wreck" and begs Mia to let him distract Sasha so she can escape through the back hallway. Mia faces a choice: nod and slip out quietly to let him protect her, or grab his hand and face the crowd together, forcing a public confrontation with their social reality and their high-stakes secret bond.
+        publication:
+          views:
+          - id: node_029_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#29 Run or Stand Together'
+              - label: 当前状态
+                value: node_029
+              - label: 音频数量
+                value: 10
+              - label: 可选目标
+                value: node_030, node_035
+      - name: node_029_choice
+        display_name: Run or Stand Together - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_030
+          - node_035
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_030: Nod and slip out through the back door. | price=20
+          - node_035: Grab his hand and face them together. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_029_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_030
+                text: Nod and slip out through the back door.
+                price: 20
+              - target: node_035
+                text: Grab his hand and face them together.
+                price: 20
+      transitions: []
+    node_030:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_030
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Jake calls her back
+      scenes:
+      - name: node_030_story
+        display_name: Jake calls her back
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#30 Jake calls her back]
+          Mia slips out of the back exit into the biting cold after Jake successfully distracts Sasha. Carrying a heavy, hollow ache, Mia walks away, only for Jake to suddenly run out after her and call her back. Player's choice: Turn to face him.
+        publication:
+          views:
+          - id: node_030_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#30 Jake calls her back'
+              - label: 当前状态
+                value: node_030
+              - label: 音频数量
+                value: 4
+              - label: 可选目标
+                value: node_031
+      - name: node_030_choice
+        display_name: Jake calls her back - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_031
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_031: Turn to face him. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_030_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_031
+                text: Turn to face him.
+                price: 20
+      transitions: []
+    node_031:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_031
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Define Our Relationship
+      scenes:
+      - name: node_031_story
+        display_name: Define Our Relationship
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#31 Define Our Relationship]
+          Outside the Sig house, Jake catches up with Mia. He admits loving Chloe was a mistake, asserts his feelings for Mia are real, and refuses to live a double life while struggling with his duty to Tyler and loyalty to Dylan. He asks Mia what she wants. Mia must choose to demand they define their relationship right now, or ask for time to process everything.
+        publication:
+          views:
+          - id: node_031_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#31 Define Our Relationship'
+              - label: 当前状态
+                value: node_031
+              - label: 音频数量
+                value: 7
+              - label: 可选目标
+                value: node_032, node_034
+      - name: node_031_choice
+        display_name: Define Our Relationship - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_032
+          - node_034
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_032: Tell me what we are, right now. | price=20
+          - node_034: I need time to process all of this. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_031_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_032
+                text: Tell me what we are, right now.
+                price: 20
+              - target: node_034
+                text: I need time to process all of this.
+                price: 20
+      transitions: []
+    node_032:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_032
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: His Only Truth
+      scenes:
+      - name: node_032_story
+        display_name: His Only Truth
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#32 His Only Truth]
+          Demanding to know where she stands, Mia confronts Jake outside the Sig house. Shedding his defensive guard, Jake cups her face and passionately confesses that while his life is bound by debts and lies, she is his only truth. Mia challenges him to prove it, intensifying their high-stakes emotional connection.
+        publication:
+          views:
+          - id: node_032_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#32 His Only Truth'
+              - label: 当前状态
+                value: node_032
+              - label: 音频数量
+                value: 5
+              - label: 可选目标
+                value: node_033
+      - name: node_032_choice
+        display_name: His Only Truth - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_033
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_033: Then prove it. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_032_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_033
+                text: Then prove it.
+                price: 20
+      transitions: []
+    node_033:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_033
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Facing Them Together
+      scenes:
+      - name: node_033_story
+        display_name: Facing Them Together
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#33 Facing Them Together]
+          Under the streetlights, Jake commits to no longer letting fear run his life, promising Mia they will face Tyler and Dylan together with the truth. Solidifying their bond, Mia agrees to stand by him, and they share a deep, emotional kiss in the falling snow before stepping out of the shadows hand in hand to face the consequences.
+        publication:
+          views:
+          - id: node_033_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#33 Facing Them Together'
+              - label: 当前状态
+                value: node_033
+              - label: 音频数量
+                value: 6
+      transitions:
+      - to: end
+    node_034:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_034
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Call Him Back
+      scenes:
+      - name: node_034_story
+        display_name: Call Him Back
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#34 Call Him Back]
+          Overwhelmed by Jake's secrets involving Dylan, Chloe, and Tyler, Mia asks for space. A devastated Jake respects her boundary, wrapping his warm varsity jacket around her shivering shoulders and promising to wait. As he retreats, Mia must decide whether to call him back, testing their high-stakes tension.
+        publication:
+          views:
+          - id: node_034_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#34 Call Him Back'
+              - label: 当前状态
+                value: node_034
+              - label: 音频数量
+                value: 5
+              - label: 可选目标
+                value: node_033
+      - name: node_034_choice
+        display_name: Call Him Back - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_033
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_033: Jake, wait. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_034_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_033
+                text: Jake, wait.
+                price: 20
+      transitions: []
+    node_035:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_035
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: No More Hiding
+      scenes:
+      - name: node_035_story
+        display_name: No More Hiding
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#35 No More Hiding]
+          Refusing to hide, Mia grabs Jake's hand and opens the door, exposing their connection to Sasha and Cole. As whispers spread and Cole remarks on the 'golden boy' getting caught, Mia feels suffocated by the crowd, releases Jake's hand, and flees into the freezing night. Jake chases after her, leading to her decision of whether to turn and face him.
+        publication:
+          views:
+          - id: node_035_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#35 No More Hiding'
+              - label: 当前状态
+                value: node_035
+              - label: 音频数量
+                value: 7
+              - label: 可选目标
+                value: node_031
+      - name: node_035_choice
+        display_name: No More Hiding - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_031
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_031: Turn to face him. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_035_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_031
+                text: Turn to face him.
+                price: 20
+      transitions: []
+    node_036:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_036
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Almost Caught
+      scenes:
+      - name: node_036_story
+        display_name: Almost Caught
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#36 Almost Caught]
+          Mia pushes Jake away and steps out of the closet, demanding he stop using her as an escape. Jake respects her boundaries, but as Sasha's laughter approaches the bedroom, they must face reality and act quickly before they are caught.
+        publication:
+          views:
+          - id: node_036_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#36 Almost Caught'
+              - label: 当前状态
+                value: node_036
+              - label: 音频数量
+                value: 4
+              - label: 可选目标
+                value: node_029
+      - name: node_036_choice
+        display_name: Almost Caught - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_029
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_029: Face the reality. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_036_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_029
+                text: Face the reality.
+                price: 20
+      transitions: []
+    node_037:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_037
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Unforgivable Secret
+      scenes:
+      - name: node_037_story
+        display_name: Unforgivable Secret
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#37 Unforgivable Secret]
+          Mia demands space and tries to leave, but Jake locks the door in desperation. Stripped of his confidence, he confesses his self-disgust over doing something unforgivable to his best friend. Mia is given the option to ask what he did, pushing Jake to the brink of confessing his secret crush on Dylan's girlfriend, Chloe, as their emotional tension peaks.
+        publication:
+          views:
+          - id: node_037_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#37 Unforgivable Secret'
+              - label: 当前状态
+                value: node_037
+              - label: 音频数量
+                value: 9
+              - label: 可选目标
+                value: node_016
+      - name: node_037_choice
+        display_name: Unforgivable Secret - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_016
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_016: What did you do? | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_037_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_016
+                text: What did you do?
+                price: 20
+      transitions: []
+    node_038:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_038
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Done Hiding
+      scenes:
+      - name: node_038_story
+        display_name: Done Hiding
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#38 Done Hiding]
+          Mia pushes Jake away just as Sasha and Cole corner them. Jake quickly lies to cover for Mia, and though a suspicious Sasha questions them, Cole steers her away. Alone in the corridor, Jake bitterly notes Mia refused to hide with him. Asserting her boundaries, Mia declares she is done hiding to protect his pride, reinforcing her path of self-preservation. As Jake stands stung by her words, Mia prepares to look him in the eyes.
+        publication:
+          views:
+          - id: node_038_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#38 Done Hiding'
+              - label: 当前状态
+                value: node_038
+              - label: 音频数量
+                value: 9
+              - label: 可选目标
+                value: node_014
+      - name: node_038_choice
+        display_name: Done Hiding - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_014
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_014: Look him in the eyes. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_038_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_014
+                text: Look him in the eyes.
+                price: 20
+      transitions: []
+    node_039:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_039
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Cornered by Jake
+      scenes:
+      - name: node_039_story
+        display_name: Cornered by Jake
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#39 Cornered by Jake]
+          To escape Jake's gaze, Mia plunges into the crowded dance floor, but he pursues her like a predator. Overwhelmed, she retreats to a quiet side hallway, only for Jake to follow and corner her. With nowhere left to run, Mia must choose whether to face him, forcing a direct confrontation amid their lingering tension.
+        publication:
+          views:
+          - id: node_039_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#39 Cornered by Jake'
+              - label: 当前状态
+                value: node_039
+              - label: 音频数量
+                value: 4
+              - label: 可选目标
+                value: node_012
+      - name: node_039_choice
+        display_name: Cornered by Jake - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_012
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_012: Face him in the hallway. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_039_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_012
+                text: Face him in the hallway.
+                price: 20
+      transitions: []
+    node_040:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_040
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: His Hidden Truth
+      scenes:
+      - name: node_040_story
+        display_name: His Hidden Truth
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#40 His Hidden Truth]
+          Mia confronts Jake, seizing his wrench and demanding the truth. Shaken, Jake admits his family’s suffocating debt and duty to Tyler, claiming he has no future to offer. Despite his self-loathing, their electric attraction flares. Warning that fraternity rumors will ruin her, Jake begs to protect her. Mia must choose whether to face the Sig house party together openly, or arrive separately to protect his secret while keeping their raw connection alive.
+        publication:
+          views:
+          - id: node_040_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#40 His Hidden Truth'
+              - label: 当前状态
+                value: node_040
+              - label: 音频数量
+                value: 10
+              - label: 可选目标
+                value: node_041, node_069
+      - name: node_040_choice
+        display_name: His Hidden Truth - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_041
+          - node_069
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_041: Kiss him first, then agree to arrive separately. | price=20
+          - node_069: Tell him he owes you a dance inside. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_040_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_041
+                text: Kiss him first, then agree to arrive separately.
+                price: 20
+              - target: node_069
+                text: Tell him he owes you a dance inside.
+                price: 20
+      transitions: []
+    node_041:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_041
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Secret Passionate Kiss
+      scenes:
+      - name: node_041_story
+        display_name: Secret Passionate Kiss
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#41 Secret Passionate Kiss]
+          Mia pulls Jake into a fierce, passionate kiss, tasting of motor oil and quiet hunger, sealing their intense bond. Though she agrees to arrive separately at the Sig house party to avoid rumors, Mia warns him not to forget her. Deeply affected, Jake lets her walk out into the cool night air. Mia now heads to the party, carrying their raw, secret connection into the social spotlight.
+        publication:
+          views:
+          - id: node_041_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#41 Secret Passionate Kiss'
+              - label: 当前状态
+                value: node_041
+              - label: 音频数量
+                value: 4
+              - label: 可选目标
+                value: node_042
+      - name: node_041_choice
+        display_name: Secret Passionate Kiss - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_042
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_042: Head to the Sig house party. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_041_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_042
+                text: Head to the Sig house party.
+                price: 20
+      transitions: []
+    node_042:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_042
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Heartbreaker Warning
+      scenes:
+      - name: node_042_story
+        display_name: Heartbreaker Warning
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#42 Heartbreaker Warning]
+          Mia enters the chaotic Sig house party, where Sasha drags her toward Cole. Mia locks eyes with Jake, who looks aloof yet possessive. Sasha warns her that Cole calls Jake a heartbreaker who dumps freshmen. Mia must choose whether to defend Jake ('Maybe he just hasn't met the right girl') or deflect suspicion ('Don't worry, he's not my type anyway'), navigating the social minefield while harboring their secret connection.
+        publication:
+          views:
+          - id: node_042_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#42 Heartbreaker Warning'
+              - label: 当前状态
+                value: node_042
+              - label: 音频数量
+                value: 6
+              - label: 可选目标
+                value: node_043, node_068
+      - name: node_042_choice
+        display_name: Heartbreaker Warning - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_043
+          - node_068
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_043: Maybe he just hasn't met the right girl. | price=20
+          - node_068: Don't worry, he's not my type anyway. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_042_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_043
+                text: Maybe he just hasn't met the right girl.
+                price: 20
+              - target: node_068
+                text: Don't worry, he's not my type anyway.
+                price: 20
+      transitions: []
+    node_043:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_043
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Cole Intervenes
+      scenes:
+      - name: node_043_story
+        display_name: Cole Intervenes
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#43 Cole Intervenes]
+          Mia defends Jake at the party, raising Sasha's suspicion. Before Sasha can press for details, Cole Harrington interrupts, wrapping his arm around Sasha, who instantly melts against his side in distraction. Cole throws Mia a lazy, confident smirk, temporarily defusing the tension as she waits to see what he does next.
+        publication:
+          views:
+          - id: node_043_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#43 Cole Intervenes'
+              - label: 当前状态
+                value: node_043
+              - label: 音频数量
+                value: 6
+              - label: 可选目标
+                value: node_044
+      - name: node_043_choice
+        display_name: Cole Intervenes - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_044
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_044: See what Cole does | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_043_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_044
+                text: See what Cole does
+                price: 20
+      transitions: []
+    node_044:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_044
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Secret Touch
+      scenes:
+      - name: node_044_story
+        display_name: Secret Touch
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#44 Secret Touch]
+          Cole calls Jake over and teases his dark mood. Playing aloof under Sasha’s watchful eyes, Jake asks Mia to pass him a drink, deliberately dragging his thumb across her palm. This intoxicating, secret touch heightens the tension of their public pretense. Mia must choose whether to squeeze his fingers back to reciprocate the intimacy, or excuse herself to the bathroom to escape the suffocating pressure.
+        publication:
+          views:
+          - id: node_044_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#44 Secret Touch'
+              - label: 当前状态
+                value: node_044
+              - label: 音频数量
+                value: 6
+              - label: 可选目标
+                value: node_045, node_067
+      - name: node_044_choice
+        display_name: Secret Touch - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_045
+          - node_067
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_045: Squeeze his fingers back before letting go. | price=20
+          - node_067: Step back and excuse yourself to the bathroom. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_044_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_045
+                text: Squeeze his fingers back before letting go.
+                price: 20
+              - target: node_067
+                text: Step back and excuse yourself to the bathroom.
+                price: 20
+      transitions: []
+    node_045:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_045
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Cornered by Jacob
+      scenes:
+      - name: node_045_story
+        display_name: Cornered by Jacob
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#45 Cornered by Jacob]
+          Mia secretly squeezes Jake's hand, igniting a silent, intense reaction before he abruptly walks away. Seeking an escape from Sasha, Mia slips into a quiet back hallway, only to be cornered by Jake, who blocks her path with a tense jaw. Their raw connection and the pressure of their public pretense collide in the shadows. Mia must choose to look up at him, confronting their electric boundaries.
+        publication:
+          views:
+          - id: node_045_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#45 Cornered by Jacob'
+              - label: 当前状态
+                value: node_045
+              - label: 音频数量
+                value: 5
+              - label: 可选目标
+                value: node_046
+      - name: node_045_choice
+        display_name: Cornered by Jacob - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_046
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_046: Look up at him. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_045_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_046
+                text: Look up at him.
+                price: 20
+      transitions: []
+    node_046:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_046
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Hide or Confront
+      scenes:
+      - name: node_046_story
+        display_name: Hide or Confront
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#46 Hide or Confront]
+          In a narrow hallway, Jake corners Mia but freezes when they overhear Sasha and Cole gossiping about him abandoning the NHL draft due to family debts. Terrified of exposure, Jake begs Mia to hide. The player must choose whether to stay hidden in the dark to protect Mia's reputation, leaving Jake to bear his shame alone, or boldly step out to confront them and defend Jake's name, risking social ruin to become his emotional anchor.
+        publication:
+          views:
+          - id: node_046_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#46 Hide or Confront'
+              - label: 当前状态
+                value: node_046
+              - label: 音频数量
+                value: 6
+              - label: 可选目标
+                value: node_047, node_057
+      - name: node_046_choice
+        display_name: Hide or Confront - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_047
+          - node_057
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_047: Pull Jake deeper into the dark and stay hidden. | price=20
+          - node_057: Step out and confront them to defend Jake's name. | price=150
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_046_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_047
+                text: Pull Jake deeper into the dark and stay hidden.
+                price: 20
+              - target: node_057
+                text: Step out and confront them to defend Jake's name.
+                price: 150
+      transitions: []
+    node_047:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_047
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Hold Him Close
+      scenes:
+      - name: node_047_story
+        display_name: Hold Him Close
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#47 Hold Him Close]
+          As Sasha and Cole's footsteps fade, Jake is consumed by raw shame over his ruined reputation. Believing himself a ghost with nothing to offer, he tries to push Mia away to protect her from his mess. Mia refuses to run, leaving players to choose whether to wrap her arms around his waist or cup his face to confront his deep vulnerability.
+        publication:
+          views:
+          - id: node_047_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#47 Hold Him Close'
+              - label: 当前状态
+                value: node_047
+              - label: 音频数量
+                value: 6
+              - label: 可选目标
+                value: node_048, node_056
+      - name: node_047_choice
+        display_name: Hold Him Close - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_048
+          - node_056
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_048: Wrap your arms around his waist and hold him tight. | price=20
+          - node_056: Cup his face and look directly into his eyes. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_047_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_048
+                text: Wrap your arms around his waist and hold him tight.
+                price: 20
+              - target: node_056
+                text: Cup his face and look directly into his eyes.
+                price: 20
+      transitions: []
+    node_048:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_048
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Lean In Closer
+      scenes:
+      - name: node_048_story
+        display_name: Lean In Closer
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#48 Lean In Closer]
+          Mia hugs a shame-riddled Jake in the dark corridor, refusing to let him shut her out. Vulnerable, Jake clings to her, calling himself a 'sinking ship' but finding grounding in her embrace. As their physical tension peaks, Jake stares at her lips, prompting Mia to choose whether to lean in closer, cementing her role as his secret emotional anchor.
+        publication:
+          views:
+          - id: node_048_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#48 Lean In Closer'
+              - label: 当前状态
+                value: node_048
+              - label: 音频数量
+                value: 5
+              - label: 可选目标
+                value: node_049
+      - name: node_048_choice
+        display_name: Lean In Closer - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_049
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_049: Lean in closer. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_048_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_049
+                text: Lean in closer.
+                price: 20
+      transitions: []
+    node_049:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_049
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Almost Caught
+      scenes:
+      - name: node_049_story
+        display_name: Almost Caught
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#49 Almost Caught]
+          Overwhelmed, Jake gives in to his feelings, sharing a fierce, desperate kiss with Mia in the corridor. Their raw moment is shattered when Sasha's voice echoes nearby, and her footsteps draw closer. Panicked, Jake grips Mia's wrist as they face immediate discovery. Players must choose to pull Jake into a dark closet to stay hidden together, or push him away and act natural.
+        publication:
+          views:
+          - id: node_049_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#49 Almost Caught'
+              - label: 当前状态
+                value: node_049
+              - label: 音频数量
+                value: 4
+              - label: 可选目标
+                value: node_050, node_055
+      - name: node_049_choice
+        display_name: Almost Caught - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_050
+          - node_055
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_050: Pull him into the dark closet nearby. | price=20
+          - node_055: Push him away and act natural. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_049_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_050
+                text: Pull him into the dark closet nearby.
+                price: 20
+              - target: node_055
+                text: Push him away and act natural.
+                price: 20
+      transitions: []
+    node_050:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_050
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Breathless Closet Hiding
+      scenes:
+      - name: node_050_story
+        display_name: Breathless Closet Hiding
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#50 Breathless Closet Hiding]
+          To escape Sasha, Mia pulls Jake into a cramped broom closet. Pressed together in the pitch black, enveloped by the scent of his leather jacket and motor oil, they hold their breath as Sasha's shadow stops right outside. The suffocating closeness heightens their shared secrecy as Jake holds her tight, his heart racing. The player chooses to hold their breath and wait, keeping their hidden connection desperately concealed.
+        publication:
+          views:
+          - id: node_050_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#50 Breathless Closet Hiding'
+              - label: 当前状态
+                value: node_050
+              - label: 音频数量
+                value: 2
+              - label: 可选目标
+                value: node_051
+      - name: node_050_choice
+        display_name: Breathless Closet Hiding - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_051
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_051: Hold your breath and wait. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_050_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_051
+                text: Hold your breath and wait.
+                price: 20
+      transitions: []
+    node_051:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_051
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Escape Together Or Stay
+      scenes:
+      - name: node_051_story
+        display_name: Escape Together Or Stay
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#51 Escape Together Or Stay]
+          After narrowly avoiding discovery, Jake admits his life is chaotic but pulls Mia close, torn between his desire and the urge to protect her. Warning that staying is too risky, he offers an ultimatum. Players must choose to slip out of the party together to his truck, or stay behind and keep their distance.
+        publication:
+          views:
+          - id: node_051_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#51 Escape Together Or Stay'
+              - label: 当前状态
+                value: node_051
+              - label: 音频数量
+                value: 7
+              - label: 可选目标
+                value: node_052, node_054
+      - name: node_051_choice
+        display_name: Escape Together Or Stay - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_052
+          - node_054
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_052: Take my hand and lead me to your truck. | price=20
+          - node_054: I'll stay here. We need some space. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_051_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_052
+                text: Take my hand and lead me to your truck.
+                price: 20
+              - target: node_054
+                text: I'll stay here. We need some space.
+                price: 20
+      transitions: []
+    node_052:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_052
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Escape in the truck
+      scenes:
+      - name: node_052_story
+        display_name: Escape in the truck
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#52 Escape in the truck]
+          Mia takes Jake's hand, and he leads her through the fraternity's back exit, escaping the suffocating party. Stepping into the freezing New England night, they head to his black pickup truck parked under a flickering streetlamp. Jake opens the passenger door, offering her a refuge from the chaotic campus rumors. Mia must choose to climb in, solidifying their secret escape together.
+        publication:
+          views:
+          - id: node_052_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#52 Escape in the truck'
+              - label: 当前状态
+                value: node_052
+              - label: 音频数量
+                value: 7
+              - label: 可选目标
+                value: node_053
+      - name: node_052_choice
+        display_name: Escape in the truck - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_053
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_053: Climb into the truck. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_052_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_053
+                text: Climb into the truck.
+                price: 20
+      transitions: []
+    node_053:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_053
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: No Turning Back
+      scenes:
+      - name: node_053_story
+        display_name: No Turning Back
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#53 No Turning Back]
+          As the chaotic night ends, Mia clutches Jake's oversized hoodie, filled with his scent of motor oil and rain. Whether wrapped in his truck cabin or watching his taillights fade, she accepts that her freshman naivety is gone. Despite the looming campus rumors and his unresolved family burdens, their emotional bond is sealed, leaving her determined to face whatever comes next.
+        publication:
+          views:
+          - id: node_053_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#53 No Turning Back'
+              - label: 当前状态
+                value: node_053
+              - label: 音频数量
+                value: 3
+      transitions:
+      - to: end
+    node_054:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_054
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Watching Him Leave
+      scenes:
+      - name: node_054_story
+        display_name: Watching Him Leave
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#54 Watching Him Leave]
+          Refusing to leave with Jake, Mia pulls her hand away and stays behind. Hurt but understanding, Jake tells her to stay safe and slips out alone, leaving Mia in the quiet corridor clutching his hoodie as the weight of her choice sinks in. The player must now choose to look out the window.
+        publication:
+          views:
+          - id: node_054_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#54 Watching Him Leave'
+              - label: 当前状态
+                value: node_054
+              - label: 音频数量
+                value: 9
+              - label: 可选目标
+                value: node_053
+      - name: node_054_choice
+        display_name: Watching Him Leave - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_053
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_053: Look out the window. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_054_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_053
+                text: Look out the window.
+                price: 20
+      transitions: []
+    node_055:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_055
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Almost Caught
+      scenes:
+      - name: node_055_story
+        display_name: Almost Caught
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#55 Almost Caught]
+          Mia pushes Jake away to act natural just as Sasha catches them. Jake covers by pretending to direct her to the bathroom. Though highly suspicious of the star defenseman playing tour guide, Sasha is called downstairs by Cole. She leaves with a stern warning to Mia, leaving Mia to keep up the act and protect their hidden connection.
+        publication:
+          views:
+          - id: node_055_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#55 Almost Caught'
+              - label: 当前状态
+                value: node_055
+              - label: 音频数量
+                value: 9
+              - label: 可选目标
+                value: node_051
+      - name: node_055_choice
+        display_name: Almost Caught - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_051
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_051: Keep up the act. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_055_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_051
+                text: Keep up the act.
+                price: 20
+      transitions: []
+    node_056:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_056
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Lean In Closer
+      scenes:
+      - name: node_056_story
+        display_name: Lean In Closer
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#56 Lean In Closer]
+          In the dim hallway, Mia cups Jake’s face, forcing him to face her instead of retreating into his shame. Confessing he is a mess with only trouble to offer, Jake is deeply shaken by her refusal to run. When Mia promises to stand with him, their raw emotional connection intensifies, temporarily shutting out the party noise. Facing his vulnerability, she must choose whether to lean in closer, deepening their hidden, fragile intimacy.
+        publication:
+          views:
+          - id: node_056_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#56 Lean In Closer'
+              - label: 当前状态
+                value: node_056
+              - label: 音频数量
+                value: 6
+              - label: 可选目标
+                value: node_049
+      - name: node_056_choice
+        display_name: Lean In Closer - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_049
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_049: Lean in closer. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_056_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_049
+                text: Lean in closer.
+                price: 20
+      transitions: []
+    node_057:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_057
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Breaking His Rules
+      scenes:
+      - name: node_057_story
+        display_name: Breaking His Rules
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#57 Breaking His Rules]
+          Mia steps out to confront Cole and Sasha, fiercely defending Jake's dedication and silencing the rumors. Shaken, Sasha and Cole depart. An overwhelmed Jake drags Mia into a locked bedroom, his emotional defenses shattered by her loyalty. Confessing that no one has ever defended him like this, he admits she makes him want to break his self-imposed rules. Mia must choose whether to pull him down for a deep kiss or hold him tight with whisper reassurances, cementing her role as his anchor.
+        publication:
+          views:
+          - id: node_057_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#57 Breaking His Rules'
+              - label: 当前状态
+                value: node_057
+              - label: 音频数量
+                value: 11
+              - label: 可选目标
+                value: node_058, node_066
+      - name: node_057_choice
+        display_name: Breaking His Rules - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_058
+          - node_066
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_058: Pull him down for a deep kiss. | price=20
+          - node_066: Hold him tight and whisper reassurances. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_057_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_058
+                text: Pull him down for a deep kiss.
+                price: 20
+              - target: node_066
+                text: Hold him tight and whisper reassurances.
+                price: 20
+      transitions: []
+    node_058:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_058
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Behind Locked Doors
+      scenes:
+      - name: node_058_story
+        display_name: Behind Locked Doors
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#58 Behind Locked Doors]
+          Mia pulls Jake into a passionate kiss, shattering his defenses after her public defense. Overwhelmed with desire, Jake pins her against the locked door, admitting she drives him crazy and that he cannot let her go. They escape the weight of his reality in this raw, hidden intimacy. Mia chooses to cling to him as the party rages outside, solidifying her place as his emotional anchor.
+        publication:
+          views:
+          - id: node_058_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#58 Behind Locked Doors'
+              - label: 当前状态
+                value: node_058
+              - label: 音频数量
+                value: 3
+              - label: 可选目标
+                value: node_059
+      - name: node_058_choice
+        display_name: Behind Locked Doors - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_059
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_059: Cling to him as the party rages outside. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_058_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_059
+                text: Cling to him as the party rages outside.
+                price: 20
+      transitions: []
+    node_059:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_059
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Sasha At The Door
+      scenes:
+      - name: node_059_story
+        display_name: Sasha At The Door
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#59 Sasha At The Door]
+          Their intimate moment is shattered when a highly suspicious Sasha aggressively rattles the bedroom doorknob. With campus rumors threatening to explode after Mia’s public defense of Jake, exposure is highly risky. Mia must choose whether to push Jake into the bathroom and open the door, or pull him into the shadows to stay completely silent.
+        publication:
+          views:
+          - id: node_059_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#59 Sasha At The Door'
+              - label: 当前状态
+                value: node_059
+              - label: 音频数量
+                value: 6
+              - label: 可选目标
+                value: node_060, node_065
+      - name: node_059_choice
+        display_name: Sasha At The Door - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_060
+          - node_065
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_060: Push Jacob into the bathroom and open the door. | price=20
+          - node_065: Pull Jacob into the shadow and stay silent. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_059_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_060
+                text: Push Jacob into the bathroom and open the door.
+                price: 20
+              - target: node_065
+                text: Pull Jacob into the shadow and stay silent.
+                price: 20
+      transitions: []
+    node_060:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_060
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Escaping together
+      scenes:
+      - name: node_060_story
+        display_name: Escaping together
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#60 Escaping together]
+          Mia hides Jake in the bathroom and deflects a highly suspicious Sasha by claiming she was on the phone. After narrowly preventing Sasha from opening the bathroom door, Sasha leaves. Jake emerges, his adrenaline pumping, and takes Mia's hand to guide her out of the room so they can escape the party together.
+        publication:
+          views:
+          - id: node_060_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#60 Escaping together'
+              - label: 当前状态
+                value: node_060
+              - label: 音频数量
+                value: 9
+              - label: 可选目标
+                value: node_061
+      - name: node_060_choice
+        display_name: Escaping together - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_061
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_061: Follow him out into the hallway. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_060_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_061
+                text: Follow him out into the hallway.
+                price: 20
+      transitions: []
+    node_061:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_061
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Escape Together
+      scenes:
+      - name: node_061_story
+        display_name: Escape Together
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#61 Escape Together]
+          Escaping the room, Jake pulls Mia into the hallway but stops as Sasha and Cole block the main stairs. Deeply moved by Mia’s public defense of him but terrified of ruining her reputation, Jake desperately offers a choice: slip out the back fire exit together to escape to the alley, or descend the stairs separately to avoid suspicion.
+        publication:
+          views:
+          - id: node_061_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#61 Escape Together'
+              - label: 当前状态
+                value: node_061
+              - label: 音频数量
+                value: 9
+              - label: 可选目标
+                value: node_062, node_064
+      - name: node_061_choice
+        display_name: Escape Together - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_062
+          - node_064
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_062: Let's take the back stairs. I want to leave with you. | price=20
+          - node_064: Go down first. I'll wait and follow you later. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_061_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_062
+                text: Let's take the back stairs. I want to leave with you.
+                price: 20
+              - target: node_064
+                text: Go down first. I'll wait and follow you later.
+                price: 20
+      transitions: []
+    node_062:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_062
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Intimate Alley Escape
+      scenes:
+      - name: node_062_story
+        display_name: Intimate Alley Escape
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#62 Intimate Alley Escape]
+          Escaping the party, Mia and Jake slip down the fire escape into a chilly alleyway. Deeply affected by Mia’s public defense, Jake holds her hand tightly under a flickering streetlamp and smiles, calling her crazy for leaving with him. As their intimate bond deepens in the shadows, the player can choose to look up into his eyes.
+        publication:
+          views:
+          - id: node_062_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#62 Intimate Alley Escape'
+              - label: 当前状态
+                value: node_062
+              - label: 音频数量
+                value: 6
+              - label: 可选目标
+                value: node_063
+      - name: node_062_choice
+        display_name: Intimate Alley Escape - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_063
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_063: Look up into his eyes. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_062_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_063
+                text: Look up into his eyes.
+                price: 20
+      transitions: []
+    node_063:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_063
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: No Turning Back
+      scenes:
+      - name: node_063_story
+        display_name: No Turning Back
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#63 No Turning Back]
+          In a quiet outdoor space, Jake confronts Mia about publicly defending him, deeply moved that she 'took a hit' for him. Admitting his life is a wreck but he is tired of running, Jake drops his guard completely. Breaking his own rules, he confesses his desire and they share a fierce, passionate kiss, sealing their unspoken promise. Mia realizes there is no turning back from their intense, raw connection.
+        publication:
+          views:
+          - id: node_063_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#63 No Turning Back'
+              - label: 当前状态
+                value: node_063
+              - label: 音频数量
+                value: 8
+      transitions:
+      - to: end
+    node_064:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_064
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: A Promise Kept
+      scenes:
+      - name: node_064_story
+        display_name: A Promise Kept
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#64 A Promise Kept]
+          Jake squeezes Mia's hand before descending the stairs separately to avoid suspicion. Mia deflects Sasha's questions and slips out of the party into the cool night. She reunites with Jake, who is waiting in the shadows. Deeply bonded by her prior defense of him, Mia assures him she doesn't break her promises as he steps closer, the tension between them mounting.
+        publication:
+          views:
+          - id: node_064_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#64 A Promise Kept'
+              - label: 当前状态
+                value: node_064
+              - label: 音频数量
+                value: 5
+              - label: 可选目标
+                value: node_063
+      - name: node_064_choice
+        display_name: A Promise Kept - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_063
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_063: Look up into his eyes. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_064_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_063
+                text: Look up into his eyes.
+                price: 20
+      transitions: []
+    node_065:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_065
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Trapped in Closet
+      scenes:
+      - name: node_065_story
+        display_name: Trapped in Closet
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#65 Trapped in Closet]
+          To escape Sasha, Mia drags Jake into a dark closet. Pressed together in the intimate silence, they wait out Sasha's frustrated shouting until she leaves to find Cole. The close encounter deepens their raw connection, but Jake eventually opens the door and guides her out. Mia chooses to follow him back into the hallway, navigating the lingering tension of their hidden bond.
+        publication:
+          views:
+          - id: node_065_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#65 Trapped in Closet'
+              - label: 当前状态
+                value: node_065
+              - label: 音频数量
+                value: 7
+              - label: 可选目标
+                value: node_061
+      - name: node_065_choice
+        display_name: Trapped in Closet - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_061
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_061: Follow him out into the hallway. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_065_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_061
+                text: Follow him out into the hallway.
+                price: 20
+      transitions: []
+    node_066:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_066
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Safe in his arms
+      scenes:
+      - name: node_066_story
+        display_name: Safe in his arms
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#66 Safe in his arms]
+          In a locked bedroom at the Sig house, Mia embraces Jake, telling him he doesn't have to carry his heavy burdens alone. Jake stiffens but quickly melts into her arms, seeking comfort. He vulnerably confesses his struggle with everyone's expectations, and Mia reassures him that he is not alone. Intimate and deeply grateful, Jake admits he doesn't deserve her. Amidst the chaotic party noise outside, Mia remains his only grounding anchor. Mia chooses to linger in his arms, cementing their deep emotional bond.
+        publication:
+          views:
+          - id: node_066_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#66 Safe in his arms'
+              - label: 当前状态
+                value: node_066
+              - label: 音频数量
+                value: 8
+              - label: 可选目标
+                value: node_059
+      - name: node_066_choice
+        display_name: Safe in his arms - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_059
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_059: Linger in his arms for a moment longer. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_066_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_059
+                text: Linger in his arms for a moment longer.
+                price: 20
+      transitions: []
+    node_067:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_067
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Nowhere to Run
+      scenes:
+      - name: node_067_story
+        display_name: Nowhere to Run
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#67 Nowhere to Run]
+          Mia slips into the dim back hallway to escape the party's pressure. However, Jake follows her into the shadows, blocking her escape. In a low, raw voice, he accuses her of running away from him. Mia must now choose to look up at him, confronting the raw tension between them.
+        publication:
+          views:
+          - id: node_067_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#67 Nowhere to Run'
+              - label: 当前状态
+                value: node_067
+              - label: 音频数量
+                value: 3
+              - label: 可选目标
+                value: node_046
+      - name: node_067_choice
+        display_name: Nowhere to Run - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_046
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_046: Look up at him. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_067_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_046
+                text: Look up at him.
+                price: 20
+      transitions: []
+    node_068:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_068
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Cole Eyes You
+      scenes:
+      - name: node_068_story
+        display_name: Cole Eyes You
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#68 Cole Eyes You]
+          Mia deflects Sasha's suspicion by claiming Jake isn't her type and has too much drama. Sasha, relieved, calls Jake a walking red flag. Cole Harrington then swaggeringly joins them, wrapping his arm around Sasha. When Sasha introduces Mia, Cole gives Mia a curious, measuring look. Mia decides to see what Cole does next, hiding her deep, secret connection to Jake while navigating the fraternity social scene.
+        publication:
+          views:
+          - id: node_068_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#68 Cole Eyes You'
+              - label: 当前状态
+                value: node_068
+              - label: 音频数量
+                value: 9
+              - label: 可选目标
+                value: node_044
+      - name: node_068_choice
+        display_name: Cole Eyes You - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_044
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_044: See what Cole does | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_068_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_044
+                text: See what Cole does
+                price: 20
+      transitions: []
+    node_069:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_069
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: A Promised Dance
+      scenes:
+      - name: node_069_story
+        display_name: A Promised Dance
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#69 A Promised Dance]
+          Mia agrees to arrive separately at the Sig house party but demands a public dance as payment. Relieved, Jake accepts the challenge, telling her to find him in the crowd. Mia leaves the garage alone, heading to the party with their emotional connection intensified after confronting his family secrets.
+        publication:
+          views:
+          - id: node_069_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#69 A Promised Dance'
+              - label: 当前状态
+                value: node_069
+              - label: 音频数量
+                value: 8
+              - label: 可选目标
+                value: node_042
+      - name: node_069_choice
+        display_name: A Promised Dance - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_042
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_042: Head to the Sig house party. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_069_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_042
+                text: Head to the Sig house party.
+                price: 20
+      transitions: []
+    node_070:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_070
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Undeserving Touch
+      scenes:
+      - name: node_070_story
+        display_name: Undeserving Touch
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#70 Undeserving Touch]
+          Mia wipes soot from Jake's cheek, prompting a vulnerable Jake to catch her hand and warn her that he doesn't deserve her kindness. As a fragile, unspoken understanding settles between them, the player must choose to look into his eyes.
+        publication:
+          views:
+          - id: node_070_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#70 Undeserving Touch'
+              - label: 当前状态
+                value: node_070
+              - label: 音频数量
+                value: 4
+              - label: 可选目标
+                value: node_009
+      - name: node_070_choice
+        display_name: Undeserving Touch - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_009
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_009: Look into his eyes. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_070_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_009
+                text: Look into his eyes.
+                price: 20
+      transitions: []
+    node_071:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_071
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Just Five Minutes
+      scenes:
+      - name: node_071_story
+        display_name: Just Five Minutes
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#71 Just Five Minutes]
+          Mia apologizes and walks out to the gravel parking lot, but Jake chases her down, catches her wrist, and begs her to stay. Her resolve crumbles, and she agrees to give him five minutes. As Jake pulls her back into the garage, a phone rings loudly in the back office before Tyler can object further. Mia chooses to go back inside with him.
+        publication:
+          views:
+          - id: node_071_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#71 Just Five Minutes'
+              - label: 当前状态
+                value: node_071
+              - label: 音频数量
+                value: 8
+              - label: 可选目标
+                value: node_007
+      - name: node_071_choice
+        display_name: Just Five Minutes - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_007
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_007: Go back inside with him. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_071_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_007
+                text: Go back inside with him.
+                price: 20
+      transitions: []
+    node_072:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_072
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Overdressed
+      scenes:
+      - name: node_072_story
+        display_name: Overdressed
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#72 Overdressed]
+          Mia dresses up in a stylish fitted knit top and dark jeans to make an impression. Upon arriving at the gritty Shaw and Sons Auto Repair, she immediately feels self-conscious and heavily overdressed amidst the oil stains and smell of gasoline, feeling like a spotlight in the dark garage as she prepares to search for Jake.
+        publication:
+          views:
+          - id: node_072_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#72 Overdressed'
+              - label: 当前状态
+                value: node_072
+              - label: 音频数量
+                value: 3
+              - label: 可选目标
+                value: node_005
+      - name: node_072_choice
+        display_name: Overdressed - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_005
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_005: Look for Jake. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_072_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_005
+                text: Look for Jake.
+                price: 20
+      transitions: []
+    node_073:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_073
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Dress to Meet Jake
+      scenes:
+      - name: node_073_story
+        display_name: Dress to Meet Jake
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#73 Dress to Meet Jake]
+          Mia blocks Sasha's hand, demanding boundaries. Shocked, Sasha warns Mia about hockey players and leaves to prep for Cole's party. Alone, Mia reviews a text from 'J' inviting her to Shaw and Sons Auto Repair after class. Intrigued and anxious about entering his real life, Mia must decide what to wear to meet Jake.
+        publication:
+          views:
+          - id: node_073_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1781620946'
+              - label: 源节点
+                value: '#73 Dress to Meet Jake'
+              - label: 当前状态
+                value: node_073
+              - label: 音频数量
+                value: 8
+              - label: 可选目标
+                value: node_003
+      - name: node_073_choice
+        display_name: Dress to Meet Jake - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_003
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_003: Decide what to wear to meet Jake.
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_073_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_003
+                text: Decide what to wear to meet Jake.
+                price: null
+      transitions: []
+    end:
+      terminal: true
+      scenes: []
+      transitions: []
+referee:
+  win_conditions: []

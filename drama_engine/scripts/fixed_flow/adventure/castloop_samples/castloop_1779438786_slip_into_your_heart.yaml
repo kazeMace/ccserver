@@ -1,0 +1,2720 @@
+meta:
+  id: castloop_1779438786
+  name: castloop_1779438786_slip_into_your_heart
+  title: Slip Into Your Heart
+  version: 0.1.0
+  author: castloop_import_sample
+  description: A boy who has a supernatural ability spends one school festival day trying to stay invisible — and failing, one unstoppable consequence at a time, in front of the one girl he least wanted to notice.
+  tags:
+  - castloop
+  - branching_story
+  - import_sample
+  locale: en-US
+runtime:
+  type: game_session
+extensions:
+  story:
+    enabled: true
+    version: '0.1'
+    config:
+      source: castloop_product_package
+      script_id: '1779438786'
+      source_folder: stories/1779438786_slip_into_your_heart
+      page_url: https://www.castloop.ai/play/1779438786
+      cover_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1779438786/0/image/release/r_94bebad2a47e5e63/cover/poster_d91c31ef-5711-4ee4-b86a-2cea052b9800.webp
+      nodes_count: 32
+      scenes_count: 8
+      roles_count: 6
+      paid_options_count: 40
+      mapping: one_castloop_node_to_one_state_machine_state
+concepts:
+  roles:
+    reader:
+      display_name: Reader
+      description: Single player who chooses the next branch.
+  factions:
+    solo:
+      display_name: Solo
+      description: Single-player story progression.
+  scopes:
+    public:
+      display_name: Story
+      description: Visible story text and branch options.
+  abilities:
+    choose_branch:
+      display_name: Choose branch
+      description: Select the next Castloop node.
+      prompt: Pick one target state from the options.
+roles:
+- name: reader
+  display_name: Reader
+  faction: solo
+  brief: You are reading an imported branching story and choosing the next node.
+  scopes:
+  - public
+  abilities:
+  - choose_branch
+players:
+  count: 1
+  initial_attrs:
+    alive: true
+  casting:
+    type: shuffle
+    distribution:
+      reader: 1
+scopes:
+- name: public
+  members: all
+flow:
+  type: state_machine
+  initial: node_001
+  states:
+    node_001:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_001
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Curtain, Skin, Zero Friction
+      scenes:
+      - name: node_001_story
+        display_name: Curtain, Skin, Zero Friction
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#1 Curtain, Skin, Zero Friction]
+          The school festival is setting up around him, and Haruki wants no part of it. When a bucket of red paint flies toward Mizuki, he reverses it without thinking — and pays the price: friction vanishes beneath her feet, she pitches sideways, and she's falling straight at him. The morning has barely started.
+        publication:
+          views:
+          - id: node_001_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1779438786'
+              - label: 源节点
+                value: '#1 Curtain, Skin, Zero Friction'
+              - label: 当前状态
+                value: node_001
+              - label: 视频链接
+                value: https://assets.castloop.ai/xnarrator-game/editor-beta/1779438786/0/video/dialogue/15057/upload_28413e81-b010-47ac-886d-39a820bcc35e.mp4
+              - label: 音频数量
+                value: 13
+              - label: 可选目标
+                value: node_002, node_003
+      - name: node_001_choice
+        display_name: Curtain, Skin, Zero Friction - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_002
+          - node_003
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_002: Stand there frozen
+          - node_003: Reach out and catch her
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_001_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_002
+                text: Stand there frozen
+                price: null
+              - target: node_003
+                text: Reach out and catch her
+                price: null
+      transitions: []
+    node_002:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_002
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Frozen in Place
+      scenes:
+      - name: node_002_story
+        display_name: Frozen in Place
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#2 Frozen in Place]
+          Haruki freezes. Mizuki grabs his arm to catch herself, ends up pressed against his side, then stands up on her own and walks away with one remark about the paint on his pants. Sota grins. Nono beams. Haruki tries to shut the conversation down by bringing up what happened in the gymnasium yesterday — but Sota has no memory of shoving him in there, and no interest in the consequences.
+        publication:
+          views:
+          - id: node_002_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1779438786'
+              - label: 源节点
+                value: '#2 Frozen in Place'
+              - label: 当前状态
+                value: node_002
+              - label: 视频链接
+                value: https://assets.castloop.ai/xnarrator-game/editor-beta/1779438786/0/video/dialogue/98128/upload_ff48688b-8548-45a5-bbc9-2cfdd73f14f9.mp4
+              - label: 音频数量
+                value: 21
+              - label: 可选目标
+                value: node_004
+      - name: node_002_choice
+        display_name: Frozen in Place - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_004
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_004: Her hair brushes your cheek as she gets up.
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_002_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_004
+                text: Her hair brushes your cheek as she gets up.
+                price: null
+      transitions: []
+    node_003:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_003
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Heartbeat Distance
+      scenes:
+      - name: node_003_story
+        display_name: Heartbeat Distance
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#3 Heartbeat Distance]
+          Haruki catches her — but the momentum carries, and for a moment they're close enough to hear each other breathe. She says something near his ear, her hair brushes his face, and then she's gone. Sota is already grinning. Haruki tries to kill the conversation by mentioning what happened in the gymnasium yesterday, but Sota doesn't remember pushing him in there at all.
+        publication:
+          views:
+          - id: node_003_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1779438786'
+              - label: 源节点
+                value: '#3 Heartbeat Distance'
+              - label: 当前状态
+                value: node_003
+              - label: 视频链接
+                value: https://assets.castloop.ai/xnarrator-game/editor-beta/1779438786/0/video/dialogue/26528/upload_c314d720-e918-451a-b2ac-7c64ac9f1a2b.mp4
+              - label: 音频数量
+                value: 22
+              - label: 可选目标
+                value: node_004
+      - name: node_003_choice
+        display_name: Heartbeat Distance - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_004
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_004: Her hair brushes your cheek as she gets up.
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_003_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_004
+                text: Her hair brushes your cheek as she gets up.
+                price: null
+      transitions: []
+    node_004:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_004
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Behind the Fallen Curtain
+      scenes:
+      - name: node_004_story
+        display_name: Behind the Fallen Curtain
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#4 Behind the Fallen Curtain]
+          Rin gets up off Haruki, straightens her ribbon to exactly where it was, and tells Haruki she'll be watching him at the festival tomorrow. Today, he ends up alone in the auditorium backstage with a knotted string of lights — and then Mizuki walks in to change. A prop door starts to tilt. He stops it. The cost calculates where it's going to land, and of course it lands there. The curtain drops without a sound. From the hallway: a knock.
+        publication:
+          views:
+          - id: node_004_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1779438786'
+              - label: 源节点
+                value: '#4 Behind the Fallen Curtain'
+              - label: 当前状态
+                value: node_004
+              - label: 视频链接
+                value: https://assets.castloop.ai/xnarrator-game/editor-beta/1779438786/0/video/dialogue/82074/upload_47a49dd4-5513-44bd-887f-9eb0a3a5a891.mp4
+              - label: 音频数量
+                value: 13
+              - label: 可选目标
+                value: node_005, node_006
+      - name: node_004_choice
+        display_name: Behind the Fallen Curtain - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_005
+          - node_006
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_005: Close my eyes and turn away | price=20
+          - node_006: Step in and cover Mizuki | price=100
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_004_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_005
+                text: Close my eyes and turn away
+                price: 20
+              - target: node_006
+                text: Step in and cover Mizuki
+                price: 100
+      transitions: []
+    node_005:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_005
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: See No Evil
+      scenes:
+      - name: node_005_story
+        display_name: See No Evil
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#5 See No Evil]
+          Haruki's first instinct is to step behind the prop door. His feet are still visible. Rin walks in, glances down at them, and tells him to come out — she already knew it would be him. Mizuki changes and leaves without a word, without a look back. Rin opens her record book and waits for his explanation. Haruki watches the door and says nothing. He can't stop wondering whether she hates him now.
+        publication:
+          views:
+          - id: node_005_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1779438786'
+              - label: 源节点
+                value: '#5 See No Evil'
+              - label: 当前状态
+                value: node_005
+              - label: 视频链接
+                value: https://assets.castloop.ai/xnarrator-game/editor-beta/1779438786/0/video/dialogue/14357/upload_a5ffb097-57cd-4857-af65-bf7544aa78a1.mp4
+              - label: 音频数量
+                value: 7
+              - label: 可选目标
+                value: node_007
+      - name: node_005_choice
+        display_name: See No Evil - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_007
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_007: Wait for Rin's verdict | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_005_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_007
+                text: Wait for Rin's verdict
+                price: 20
+      transitions: []
+    node_006:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_006
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: An Unexpected Ally
+      scenes:
+      - name: node_006_story
+        display_name: An Unexpected Ally
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#6 An Unexpected Ally]
+          Haruki picks up the curtain, turns his back to Mizuki, and holds it up between her and the door — both arms raised, face red. When Rin walks in, he tells her whatever this looks like, it's on him. Mizuki comes out in her ceremony uniform, pauses beside Rin, and without looking at Haruki says: the curtain fell on its own. Rin closes her record book, unconvinced. Haruki watches the door, and can't work out why Mizuki said that.
+        publication:
+          views:
+          - id: node_006_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1779438786'
+              - label: 源节点
+                value: '#6 An Unexpected Ally'
+              - label: 当前状态
+                value: node_006
+              - label: 视频链接
+                value: https://assets.castloop.ai/xnarrator-game/editor-beta/1779438786/0/video/dialogue/24946/upload_549b5b2b-9491-48de-a280-190bfba4ebfc.mp4
+              - label: 音频数量
+                value: 9
+              - label: 可选目标
+                value: node_007
+      - name: node_006_choice
+        display_name: An Unexpected Ally - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_007
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_007: Wait for Rin's verdict | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_006_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_007
+                text: Wait for Rin's verdict
+                price: 20
+      transitions: []
+    node_007:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_007
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: The Prop List Crisis
+      scenes:
+      - name: node_007_story
+        display_name: The Prop List Crisis
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#7 The Prop List Crisis]
+          Sota and Nono come to the backstage to regroup with Haruki. Sota brings the prop delivery list for the day. Nono brings a can of soda — which sprays all over Haruki, and which Nono instinctively grabs the nearest piece of paper to wipe up. That piece of paper is the list. The three of them figure out they can sort the props by looking at them. Then Sota mentions, almost as an afterthought, that Mizuki is currently at the first destination.
+        publication:
+          views:
+          - id: node_007_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1779438786'
+              - label: 源节点
+                value: '#7 The Prop List Crisis'
+              - label: 当前状态
+                value: node_007
+              - label: 视频链接
+                value: https://assets.castloop.ai/xnarrator-game/editor-beta/1779438786/0/video/dialogue/60748/upload_93cba24d-2652-45b9-983b-5650aba84a14.mp4
+              - label: 音频数量
+                value: 16
+              - label: 可选目标
+                value: node_008
+      - name: node_007_choice
+        display_name: The Prop List Crisis - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_008
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_008: Head to the maid café | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_007_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_008
+                text: Head to the maid café
+                price: 20
+      transitions: []
+    node_008:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_008
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: The Maid Café
+      scenes:
+      - name: node_008_story
+        display_name: The Maid Café
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#8 The Maid Café]
+          The three arrive at the maid café with the first batch of props. Sota is gone the moment he steps through the door, drawn helplessly toward the maids. Haruki notices Mizuki is already here — but she has her back to him, and he doesn't approach. Once the props are placed, Nono spots the freshly prepared coffees on the counter and volunteers to carry them over. The spring mechanism hidden in the tray's base fires. Three cups launch into the air. Haruki intervenes and stops them — and the cost lands on the wheels of a serving cart near the entrance. The cart begins sliding silently toward Mizuki. Her back is to it. She has no idea.
+        publication:
+          views:
+          - id: node_008_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1779438786'
+              - label: 源节点
+                value: '#8 The Maid Café'
+              - label: 当前状态
+                value: node_008
+              - label: 视频链接
+                value: https://assets.castloop.ai/xnarrator-game/editor-beta/1779438786/0/video/dialogue/18760/upload_fb10648f-853e-4bfa-9669-c9de27100734.mp4
+              - label: 音频数量
+                value: 8
+              - label: 可选目标
+                value: node_009, node_010
+      - name: node_008_choice
+        display_name: The Maid Café - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_009
+          - node_010
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_009: Shout a warning | price=20
+          - node_010: Rush to Mizuki's side | price=150
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_008_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_009
+                text: Shout a warning
+                price: 20
+              - target: node_010
+                text: Rush to Mizuki's side
+                price: 150
+      transitions: []
+    node_009:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_009
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: I Need to Ask You
+      scenes:
+      - name: node_009_story
+        display_name: I Need to Ask You
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#9 I Need to Ask You]
+          Haruki warns Mizuki out loud as a runaway cart heads toward her. She stops it herself, but a dessert falls and shatters. The commotion draws everyone's attention. Mizuki walks over to Haruki, addresses him by name, and tells him she has something to ask — leaving him dreading that she's about to confront him about his ability.
+        publication:
+          views:
+          - id: node_009_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1779438786'
+              - label: 源节点
+                value: '#9 I Need to Ask You'
+              - label: 当前状态
+                value: node_009
+              - label: 视频链接
+                value: https://assets.castloop.ai/xnarrator-game/editor-beta/1779438786/0/video/dialogue/54640/upload_d69e13d4-87ba-4829-909a-de813457f68c.mp4
+              - label: 音频数量
+                value: 9
+              - label: 可选目标
+                value: node_011
+      - name: node_009_choice
+        display_name: I Need to Ask You - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_011
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_011: See what Mizuki says next | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_009_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_011
+                text: See what Mizuki says next
+                price: 20
+      transitions: []
+    node_010:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_010
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: You Caught My Attention
+      scenes:
+      - name: node_010_story
+        display_name: You Caught My Attention
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#10 You Caught My Attention]
+          Haruki rushes in and stops the cart himself, ending up face to face with Mizuki as a dessert shatters between them. Mizuki responds with warmth and a wink, calling him her hero — and then uses his name, catching him off guard. When he asks if she knows who he is, she tells him he caught her attention, leaving him flustered and unsettled in a way he can't quite explain.
+        publication:
+          views:
+          - id: node_010_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1779438786'
+              - label: 源节点
+                value: '#10 You Caught My Attention'
+              - label: 当前状态
+                value: node_010
+              - label: 视频链接
+                value: https://assets.castloop.ai/xnarrator-game/editor-beta/1779438786/0/video/dialogue/72930/upload_dacb7bb1-a42f-4407-b122-c3212abb6e61.mp4
+              - label: 音频数量
+                value: 8
+              - label: 可选目标
+                value: node_011
+      - name: node_010_choice
+        display_name: You Caught My Attention - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_011
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_011: See what Mizuki says next | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_010_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_011
+                text: See what Mizuki says next
+                price: 20
+      transitions: []
+    node_011:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_011
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: The Cost Lasts Too Long
+      scenes:
+      - name: node_011_story
+        display_name: The Cost Lasts Too Long
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#11 The Cost Lasts Too Long]
+          Mizuki drops the subject without pushing further, thanks Haruki, and invites him to get coffee — her treat. Haruki hasn't quite caught up yet, but he follows. The two of them are walking toward the counter when the door opens, something snaps, and Rin lands hard on the floor. The friction on the entryway tiles hasn't recovered. Rin can't stand up. She looks around the room, finds Haruki, and doesn't look away.
+        publication:
+          views:
+          - id: node_011_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1779438786'
+              - label: 源节点
+                value: '#11 The Cost Lasts Too Long'
+              - label: 当前状态
+                value: node_011
+              - label: 视频链接
+                value: https://assets.castloop.ai/xnarrator-game/editor-beta/1779438786/0/video/dialogue/43377/upload_b12bd7b6-2d60-4fbd-80de-b7757fffdb1e.mp4
+              - label: 音频数量
+                value: 11
+              - label: 可选目标
+                value: node_012, node_013
+      - name: node_011_choice
+        display_name: The Cost Lasts Too Long - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_012
+          - node_013
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_012: Stay where you are | price=20
+          - node_013: Walk over and offer your hand | price=150
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_011_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_012
+                text: Stay where you are
+                price: 20
+              - target: node_013
+                text: Walk over and offer your hand
+                price: 150
+      transitions: []
+    node_012:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_012
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Keep Your Distance
+      scenes:
+      - name: node_012_story
+        display_name: Keep Your Distance
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#12 Keep Your Distance]
+          Rin picks herself up off the floor without help, confronts Haruki, and orders him to leave the festival grounds. Before he can respond, Nono and Sota appear and vouch for him, buying him a reprieve. Rin backs down with a warning and leaves. Sota immediately steers Haruki toward market street deliveries, and the three of them file out together — leaving Mizuki standing at the counter holding two cups of coffee, watching them go. The moment settles quietly on her face.
+        publication:
+          views:
+          - id: node_012_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1779438786'
+              - label: 源节点
+                value: '#12 Keep Your Distance'
+              - label: 当前状态
+                value: node_012
+              - label: 视频链接
+                value: https://assets.castloop.ai/xnarrator-game/editor-beta/1779438786/0/video/dialogue/38020/upload_52223731-302c-4560-91e6-d3a889425ef8.mp4
+              - label: 音频数量
+                value: 11
+              - label: 可选目标
+                value: node_014
+      - name: node_012_choice
+        display_name: Keep Your Distance - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_014
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_014: The dart is already in the air. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_012_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_014
+                text: The dart is already in the air.
+                price: 20
+      transitions: []
+    node_013:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_013
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Offer Your Hand
+      scenes:
+      - name: node_013_story
+        display_name: Offer Your Hand
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#13 Offer Your Hand]
+          Haruki walks over and helps Rin up, handing back her record book and telling her to go ahead and write him up. Rin, visibly flustered, admits it wasn't his fault and leaves without recording anything. Sota and Nono appear behind him, and Sota teases that Rin clearly has a soft spot for Haruki — which Haruki shuts down immediately. The three of them head out to market street, leaving Mizuki at the counter with two cups of coffee and an unfinished expression.
+        publication:
+          views:
+          - id: node_013_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1779438786'
+              - label: 源节点
+                value: '#13 Offer Your Hand'
+              - label: 当前状态
+                value: node_013
+              - label: 视频链接
+                value: https://assets.castloop.ai/xnarrator-game/editor-beta/1779438786/0/video/dialogue/37013/upload_41224db9-4941-4b86-8698-b94d93c05e7d.mp4
+              - label: 音频数量
+                value: 12
+              - label: 可选目标
+                value: node_014
+      - name: node_013_choice
+        display_name: Offer Your Hand - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_014
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_014: The dart is already in the air. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_013_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_014
+                text: The dart is already in the air.
+                price: 20
+      transitions: []
+    node_014:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_014
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: The Market Street
+      scenes:
+      - name: node_014_story
+        display_name: The Market Street
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#14 The Market Street]
+          Haruki intervenes, the dart pivots in midair and hits the bullseye. Sota claims the achievement entirely as his own; the stall keeper plays along. While Sota is absorbed in picking a prize, Haruki quietly runs the perception scan — sweeps the whole area, finds nothing. The scan ends. Then his trousers start sliding down. He clamps a hand over his waistband and realizes the cost has landed on his own zipper. He looks for a direction with fewer people — and locks eyes with Mizuki, who is already walking toward him, a grilled skewer in her hand.
+        publication:
+          views:
+          - id: node_014_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1779438786'
+              - label: 源节点
+                value: '#14 The Market Street'
+              - label: 当前状态
+                value: node_014
+              - label: 视频链接
+                value: https://assets.castloop.ai/xnarrator-game/editor-beta/1779438786/0/video/dialogue/54788/upload_c27a84f9-f1e7-47a7-b430-626a5861e8de.mp4
+              - label: 音频数量
+                value: 7
+              - label: 可选目标
+                value: node_015
+      - name: node_014_choice
+        display_name: The Market Street - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_015
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_015: ...Just pray Mizuki won't see it. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_014_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_015
+                text: '...Just pray Mizuki won''t see it.'
+                price: 20
+      transitions: []
+    node_015:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_015
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: The Dangerous Skewer
+      scenes:
+      - name: node_015_story
+        display_name: The Dangerous Skewer
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#15 The Dangerous Skewer]
+          Mizuki walks over and catches Haruki mid-cover-up. He gets teased about looking at pretty girls, and before he can stop himself: "No — you're prettier." He claps a hand over his mouth, face red. Mizuki smiles, doesn't acknowledge it, and holds out a grilled skewer dripping with dark sauce — a substitute for the coffee she never got to buy him. Their fingertips meet on the bamboo skewer. Then Nono's voice cuts through the crowd and pulls Haruki's attention away. He lets go of the skewer before he's properly taken it. Mizuki draws her hand back and holds the skewer against her chest. Nono reports the wrong support beam. She hasn't finished before the grilled skewer stall behind them starts tilting. Haruki stops it. The perception scan finds the cost on Mizuki's hand — the hand holding the skewer, directly above her ceremonial dress. The skewer begins to slip. The choice screen appears.
+        publication:
+          views:
+          - id: node_015_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1779438786'
+              - label: 源节点
+                value: '#15 The Dangerous Skewer'
+              - label: 当前状态
+                value: node_015
+              - label: 视频链接
+                value: https://assets.castloop.ai/xnarrator-game/editor-beta/1779438786/0/video/dialogue/40/upload_eb27a101-52ee-4931-a241-edcfee60bb26.mp4
+              - label: 音频数量
+                value: 9
+              - label: 可选目标
+                value: node_016, node_017
+      - name: node_015_choice
+        display_name: The Dangerous Skewer - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_016
+          - node_017
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_016: Watch it fall | price=20
+          - node_017: Intercept at her chest | price=150
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_015_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_016
+                text: Watch it fall
+                price: 20
+              - target: node_017
+                text: Intercept at her chest
+                price: 150
+      transitions: []
+    node_016:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_016
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Let It Fall
+      scenes:
+      - name: node_016_story
+        display_name: Let It Fall
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#16 Let It Fall]
+          The skewer slips and grazes Mizuki's dress, leaving a small sauce stain. She excuses herself quietly and disappears into the crowd to deal with it, leaving Haruki standing alone looking at the skewer on the ground. The moment between them is gone. Afterward, Nono rounds Haruki up for the final prop delivery, abandoning a distracted Sota at a nearby stall. At the haunted house, Nono climbs a ladder to hang a prop corpse while Haruki steadies it below. When the ceiling hook begins to deform, Nono reaches for the rope on instinct, throwing her weight forward — then the ladder lurches and sends her pitching backward off it.
+        publication:
+          views:
+          - id: node_016_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1779438786'
+              - label: 源节点
+                value: '#16 Let It Fall'
+              - label: 当前状态
+                value: node_016
+              - label: 视频链接
+                value: https://assets.castloop.ai/xnarrator-game/editor-beta/1779438786/0/video/dialogue/70363/upload_c67a54e5-2368-490c-a0d5-e72b31425c91.mp4
+              - label: 音频数量
+                value: 9
+              - label: 可选目标
+                value: node_018
+      - name: node_016_choice
+        display_name: Let It Fall - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_018
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_018: She's going to fall! | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_016_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_018
+                text: She's going to fall!
+                price: 20
+      transitions: []
+    node_017:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_017
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Intercept at Her Chest
+      scenes:
+      - name: node_017_story
+        display_name: Intercept at Her Chest
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#17 Intercept at Her Chest]
+          Haruki reaches in and catches the skewer before it touches Mizuki's dress, burning his hand in the process. Mizuki, flustered, takes his hand and blows gently across his palm — then invites him to watch her performance that afternoon before slipping away into the crowd. Haruki stands looking at his own palm for a long moment. Afterward, Nono rounds him up for the final prop delivery, abandoning a distracted Sota at a nearby stall. At the haunted house, Nono climbs a ladder to hang a prop corpse while Haruki steadies it below. When the ceiling hook begins to deform, Nono reaches for the rope on instinct, throwing her weight forward — then the ladder lurches and sends her pitching backward off it.
+        publication:
+          views:
+          - id: node_017_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1779438786'
+              - label: 源节点
+                value: '#17 Intercept at Her Chest'
+              - label: 当前状态
+                value: node_017
+              - label: 视频链接
+                value: https://assets.castloop.ai/xnarrator-game/editor-beta/1779438786/0/video/dialogue/47916/upload_2539e6f7-acb3-48a8-97d1-474eea8fd554.mp4
+              - label: 音频数量
+                value: 12
+              - label: 可选目标
+                value: node_018
+      - name: node_017_choice
+        display_name: Intercept at Her Chest - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_018
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_018: She's going to fall! | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_017_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_018
+                text: She's going to fall!
+                price: 20
+      transitions: []
+    node_018:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_018
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: The Haunted House
+      scenes:
+      - name: node_018_story
+        display_name: The Haunted House
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#18 The Haunted House]
+          The freeze releases. Haruki whistles, the ladder steadies, and the prop drifts down to the floor without hitting anyone. Nono climbs down, checks the fallen prop, and finds the hook — wrong size. She installed the wrong hook. Haruki runs the perception scan on the corridor and comes up empty. The cost isn't here. He follows the corridor to the other end and pushes open a half-open door.
+          Inside: a hospital-themed room with sheeted beds, a dim yellow light, and Rin moving through it with her record book, running her safety check alone. Before Haruki can decide what to do, the bed nearest to Rin begins sliding — slow, even, inevitable. Rin notices it coming and steps back. The bed hits the wall. The sheeted corpse prop launches off the mattress and lands at her feet, face up. Rin looks down. She goes to her knees, face drained, record book sliding out of her hand.
+          Haruki is standing in the doorway. He's seen everything. Rin hasn't noticed him yet.
+        publication:
+          views:
+          - id: node_018_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1779438786'
+              - label: 源节点
+                value: '#18 The Haunted House'
+              - label: 当前状态
+                value: node_018
+              - label: 视频链接
+                value: https://assets.castloop.ai/xnarrator-game/editor-beta/1779438786/0/video/dialogue/58602/upload_b6352675-2b4b-4f3b-9775-6f243efad0a0.mp4
+              - label: 音频数量
+                value: 12
+              - label: 可选目标
+                value: node_019, node_020
+      - name: node_018_choice
+        display_name: The Haunted House - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_019
+          - node_020
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_019: Pretend you didn't see anything | price=20
+          - node_020: Walk over and comfort her | price=150
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_018_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_019
+                text: Pretend you didn't see anything
+                price: 20
+              - target: node_020
+                text: Walk over and comfort her
+                price: 150
+      transitions: []
+    node_019:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_019
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Pretend You Saw Nothing
+      scenes:
+      - name: node_019_story
+        display_name: Pretend You Saw Nothing
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#19 Pretend You Saw Nothing]
+          Haruki: (I didn't see anything.) Nono: Haruki-senpai! I fixed the prop! Haruki: Shh—— Nono: Senpai? Rin: …Haruki. How long have you been there? Haruki: …Uh—— Rin: Come in. Rin: There's a serious safety issue in this haunted house. I need to hear your explanation. Haruki: Hold on, Rin — I wasn't—— Nono: Haruki-senpai was with me the whole time moving props. This has nothing to do with him. Sota: Haruki, Nono — I've been looking everywhere for you. Nono: We're the ones who couldn't find you. Sota: Alright, alright. The performance is about to start. We need to go. Sota: Mizuki's piece is first, by the way. Rin: Haruki. Rin: Don't let me catch you doing anything to anyone again. Rin: …Especiall
+        publication:
+          views:
+          - id: node_019_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1779438786'
+              - label: 源节点
+                value: '#19 Pretend You Saw Nothing'
+              - label: 当前状态
+                value: node_019
+              - label: 视频链接
+                value: https://assets.castloop.ai/xnarrator-game/editor-beta/1779438786/0/video/dialogue/45369/upload_9f589261-d46d-4a3d-85f3-8fd50c81d7d0.mp4
+              - label: 音频数量
+                value: 17
+              - label: 可选目标
+                value: node_032, node_021
+      - name: node_019_choice
+        display_name: Pretend You Saw Nothing - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_032
+          - node_021
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_032: Leave the haunted house | price=20
+          - node_021: Leave the haunted house | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_019_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_032
+                text: Leave the haunted house
+                price: 20
+              - target: node_021
+                text: Leave the haunted house
+                price: 20
+      transitions: []
+    node_020:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_020
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Comfort Rin
+      scenes:
+      - name: node_020_story
+        display_name: Comfort Rin
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#20 Comfort Rin]
+          Rin: …Don't go. Rin: What just happened — not a word to anyone. Haruki: You have my word. Nono: Haruki-senpai, the prop's fixed—— Nono: …Rin-senpai? What are you two…doing? Haruki: We were—— Rin: We were—— Sota: Haruki, Nono — I've been looking everywhere for you. Nono: We're the ones who couldn't find you. Sota: Alright, alright. The performance is about to start. We need to go. Sota: Mizuki's piece is first, by the way. Rin: Haruki. Rin: Don't let me catch you doing anything to anyone again. Rin: …Especially Mizuki.
+        publication:
+          views:
+          - id: node_020_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1779438786'
+              - label: 源节点
+                value: '#20 Comfort Rin'
+              - label: 当前状态
+                value: node_020
+              - label: 视频链接
+                value: https://assets.castloop.ai/xnarrator-game/editor-beta/1779438786/0/video/dialogue/49170/upload_f033d550-4705-493c-a43e-b5bd02a1a53f.mp4
+              - label: 音频数量
+                value: 14
+              - label: 可选目标
+                value: node_032, node_021
+      - name: node_020_choice
+        display_name: Comfort Rin - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_032
+          - node_021
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_032: Leave the haunted house | price=20
+          - node_021: Leave the haunted house | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_020_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_032
+                text: Leave the haunted house
+                price: 20
+              - target: node_021
+                text: Leave the haunted house
+                price: 20
+      transitions: []
+    node_021:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_021
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: The Dress, No Problem?
+      scenes:
+      - name: node_021_story
+        display_name: The Dress, No Problem?
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#21 The Dress, No Problem?]
+          Haruki, Sota, and Nono arrive backstage before the performance. Haruki stops at Mizuki's mirror to check on the dress stain from earlier — she reassures him it's fine, and they part on easy terms. During the prop check, Nono discovers she hung the wrong backdrop — the heavier full moon instead of the crescent Mizuki is supposed to perform in front of. With only ten minutes to curtain and no time to swap it, Haruki tells the others not to panic, but privately knows the rigging may not hold. He heads toward the wings to warn Mizuki before she goes on.
+        publication:
+          views:
+          - id: node_021_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1779438786'
+              - label: 源节点
+                value: '#21 The Dress, No Problem?'
+              - label: 当前状态
+                value: node_021
+              - label: 视频链接
+                value: https://assets.castloop.ai/xnarrator-game/editor-beta/1779438786/0/video/dialogue/51426/upload_9f5c7918-81ab-40c8-9264-c982fd3f74e9.mp4
+              - label: 音频数量
+                value: 19
+              - label: 可选目标
+                value: node_022
+      - name: node_021_choice
+        display_name: The Dress, No Problem? - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_022
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_022: Meet Mizuki at the side stage | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_021_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_022
+                text: Meet Mizuki at the side stage
+                price: 20
+      transitions: []
+    node_022:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_022
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Serious Violation
+      scenes:
+      - name: node_022_story
+        display_name: Serious Violation
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#22 Serious Violation]
+          Haruki walks into the wings and finds Mizuki making her final preparations before going on. He lowers his voice and tells her to watch out if anything on stage starts moving or the floor gets slippery. The warning lands — Mizuki nods, no questions. Haruki exhales and starts to turn. Then Rin comes in on her rounds, sees the two of them close together, speaking quietly, and stops. It's been less than an hour since her warning in the Haunted House: "Don't let me catch you doing anything to anyone again… Especially Mizuki". So she walks over, cites a violation, and opens the record book. Haruki stands between Rin and Mizuki, find it really hard to explain. The frame freezes on the open record book.
+        publication:
+          views:
+          - id: node_022_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1779438786'
+              - label: 源节点
+                value: '#22 Serious Violation'
+              - label: 当前状态
+                value: node_022
+              - label: 视频链接
+                value: https://assets.castloop.ai/xnarrator-game/editor-beta/1779438786/0/video/dialogue/88277/upload_fc87f38c-ab17-48bd-80f3-1900b7599145.mp4
+              - label: 音频数量
+                value: 11
+              - label: 可选目标
+                value: node_023, node_024, node_025
+      - name: node_022_choice
+        display_name: Serious Violation - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_023
+          - node_024
+          - node_025
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_023: Back down | price=20
+          - node_024: Declare Mizuki as your girlfriend | price=200
+          - node_025: Use the incident to ask Rin out | price=200
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_022_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_023
+                text: Back down
+                price: 20
+              - target: node_024
+                text: Declare Mizuki as your girlfriend
+                price: 200
+              - target: node_025
+                text: Use the incident to ask Rin out
+                price: 200
+      transitions: []
+    node_023:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_023
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Back Down
+      scenes:
+      - name: node_023_story
+        display_name: Back Down
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#23 Back Down]
+          Haruki tries to talk his way out of Rin's reprimand, but she's unmoved — she closes the record book and orders him off the side stage. Mizuki quietly defuses the situation by pointing out she's about to go on, and Rin leaves with a warning that there will be consequences in the morning. Haruki watches her go, deflated. Mizuki says nothing to him — she simply turns back to face the curtain. The announcer's voice signals the start of the performance. Mizuki looks at Haruki one last time, no words, and walks through into the light.
+        publication:
+          views:
+          - id: node_023_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1779438786'
+              - label: 源节点
+                value: '#23 Back Down'
+              - label: 当前状态
+                value: node_023
+              - label: 视频链接
+                value: https://assets.castloop.ai/xnarrator-game/editor-beta/1779438786/0/video/dialogue/36387/upload_58952f8e-e43b-455a-b0e4-eb36285c1574.mp4
+              - label: 音频数量
+                value: 9
+              - label: 可选目标
+                value: node_026
+      - name: node_023_choice
+        display_name: Back Down - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_026
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_026: Watch Mizuki going on stage | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_023_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_026
+                text: Watch Mizuki going on stage
+                price: 20
+      transitions: []
+    node_024:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_024
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Mizuki ”Is“ Your Girlfriend
+      scenes:
+      - name: node_024_story
+        display_name: Mizuki ”Is“ Your Girlfriend
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#24 Mizuki ”Is“ Your Girlfriend]
+          With Rin's pen already on the page, Haruki makes a split-second decision — he puts his arm around Mizuki and tells Rin she's his girlfriend. Rin freezes and looks to Mizuki for a denial. Mizuki gives her none — just a calm smile that says everything. Rin closes the record book and leaves, unsatisfied but without grounds to act. In the silence that follows, Haruki starts to apologize to Mizuki — she stops him with a finger to his lips and tells him she already knows, with a smile that sees straight through him. The announcer's voice signals the start of the performance. Mizuki looks at Haruki one last time, no words, and walks through into the light.
+        publication:
+          views:
+          - id: node_024_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1779438786'
+              - label: 源节点
+                value: '#24 Mizuki ”Is“ Your Girlfriend'
+              - label: 当前状态
+                value: node_024
+              - label: 视频链接
+                value: https://assets.castloop.ai/xnarrator-game/editor-beta/1779438786/0/video/dialogue/28334/upload_0c956136-d109-4ad8-bb39-418d1a64b523.mp4
+              - label: 音频数量
+                value: 9
+              - label: 可选目标
+                value: node_026
+      - name: node_024_choice
+        display_name: Mizuki ”Is“ Your Girlfriend - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_026
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_026: Watch Mizuki going on stage | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_024_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_026
+                text: Watch Mizuki going on stage
+                price: 20
+      transitions: []
+    node_025:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_025
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Ask Rin Out
+      scenes:
+      - name: node_025_story
+        display_name: Ask Rin Out
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#25 Ask Rin Out]
+          Rather than backing down, Haruki turns the situation around — he steps toward Rin, puts a hand on the wall behind her, and tells her that if she wants the truth, she should come have ramen with him after the show. He guesses she likes ramen; her flustered reaction confirms it before she can stop herself. She realizes what she's given away, goes red, and retreats fast. Mizuki, watching from behind, asks Haruki how he knew about the ramen. He tells her he guessed. She doesn't look entirely convinced. The announcer's voice signals the start of the performance. Mizuki looks at Haruki one last time, no words, and walks through into the light.
+        publication:
+          views:
+          - id: node_025_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1779438786'
+              - label: 源节点
+                value: '#25 Ask Rin Out'
+              - label: 当前状态
+                value: node_025
+              - label: 视频链接
+                value: https://assets.castloop.ai/xnarrator-game/editor-beta/1779438786/0/video/dialogue/17769/upload_7b8168c5-9604-4003-a61b-cf1ef8311c94.mp4
+              - label: 音频数量
+                value: 9
+              - label: 可选目标
+                value: node_026
+      - name: node_025_choice
+        display_name: Ask Rin Out - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_026
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_026: Watch Mizuki going on stage | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_025_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_026
+                text: Watch Mizuki going on stage
+                price: 20
+      transitions: []
+    node_026:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_026
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Shadow Over the Stage
+      scenes:
+      - name: node_026_story
+        display_name: Shadow Over the Stage
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#26 Shadow Over the Stage]
+          The performance begins without incident — until Haruki spots the rigging on the full moon backdrop starting to give way, directly above Mizuki. When the rope snaps, he uses his ability to redirect the falling backdrop in a smooth arc off the stage, making it look almost intentional to the audience. Sota and Nono watch in stunned silence.
+          But the cost lands immediately and at scale. The friction disappears from the entire stage floor — every board, spreading even into the front rows of the audience. Mizuki's feet find nothing beneath her next step. She can't fall gracefully or correct herself; each instinctive adjustment only slides her further toward the edge of the stage. The audience still hasn't realized anything is wrong — to them, it looks like part of the act. In the wings, Haruki watches through the curtain gap as she drifts toward the drop, his hand tightening around the curtain.
+        publication:
+          views:
+          - id: node_026_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1779438786'
+              - label: 源节点
+                value: '#26 Shadow Over the Stage'
+              - label: 当前状态
+                value: node_026
+              - label: 视频链接
+                value: https://assets.castloop.ai/xnarrator-game/editor-beta/1779438786/0/video/dialogue/3821/upload_a4776a14-e332-4cc7-8128-9530f4dc6ca3.mp4
+              - label: 音频数量
+                value: 9
+              - label: 可选目标
+                value: node_027, node_028
+      - name: node_026_choice
+        display_name: Shadow Over the Stage - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_027
+          - node_028
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_027: Watch and do nothing | price=20
+          - node_028: Get to her | price=150
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_026_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_027
+                text: Watch and do nothing
+                price: 20
+              - target: node_028
+                text: Get to her
+                price: 150
+      transitions: []
+    node_027:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_027
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: A Solo on Ice
+      scenes:
+      - name: node_027_story
+        display_name: A Solo on Ice
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#27 A Solo on Ice]
+          Haruki stays in the wings and watches as Mizuki loses her footing on the frictionless stage. Rather than panicking, she reads the surface and adapts — turning the slide into movement, her arms opening for balance, her feet finding a rhythm until she is no longer fighting the stage but dancing on it. The audience has no idea anything went wrong. Sota and Nono watch in stunned silence. When Mizuki completes her performance and bows, the applause breaks — and Haruki, still in the wings, claps with the crowd. As evening falls and the festival winds down, Haruki leans against an empty stall frame and exhales. Rin appears in front of him with something unresolved in her expression.
+        publication:
+          views:
+          - id: node_027_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1779438786'
+              - label: 源节点
+                value: '#27 A Solo on Ice'
+              - label: 当前状态
+                value: node_027
+              - label: 视频链接
+                value: https://assets.castloop.ai/xnarrator-game/editor-beta/1779438786/0/video/dialogue/19361/upload_bed976fb-3260-493f-b00b-daa032972bed.mp4
+              - label: 音频数量
+                value: 2
+              - label: 可选目标
+                value: node_029, node_030, node_031
+      - name: node_027_choice
+        display_name: A Solo on Ice - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_029
+          - node_030
+          - node_031
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_029: Rin is here. Why? | price=20
+          - node_030: Rin is here. Why? | price=20
+          - node_031: Rin is here. Why? | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_027_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_029
+                text: Rin is here. Why?
+                price: 20
+              - target: node_030
+                text: Rin is here. Why?
+                price: 20
+              - target: node_031
+                text: Rin is here. Why?
+                price: 20
+      transitions: []
+    node_028:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_028
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: The Unplanned Waltz
+      scenes:
+      - name: node_028_story
+        display_name: The Unplanned Waltz
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#28 The Unplanned Waltz]
+          Haruki pushes through the curtain and runs onto the stage — straight into the frictionless surface. He can't stop. Mizuki turns and reaches out, and their hands collide at center stage. Rather than going down, Haruki uses the momentum to pull her into a spin, his arm going around her waist as Mizuki takes the lead and guides them into something that looks like a waltz on ice. The audience is transfixed, convinced it was always part of the show. When friction returns and the music ends, they bow together to the loudest applause of the day. Sota and Nono are beside themselves in the wings. As evening falls and the festival winds down, Haruki leans against an empty stall frame and exhales. Rin appears in front of him with something unresolved in her expression.
+        publication:
+          views:
+          - id: node_028_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1779438786'
+              - label: 源节点
+                value: '#28 The Unplanned Waltz'
+              - label: 当前状态
+                value: node_028
+              - label: 视频链接
+                value: https://assets.castloop.ai/xnarrator-game/editor-beta/1779438786/0/video/dialogue/46863/upload_be8fd4e9-02a2-4ebc-8e70-ccdc75350947.mp4
+              - label: 音频数量
+                value: 9
+              - label: 可选目标
+                value: node_029, node_030, node_031
+      - name: node_028_choice
+        display_name: The Unplanned Waltz - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_029
+          - node_030
+          - node_031
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_029: Rin is here. Why? | price=20
+          - node_030: Rin is here. Why? | price=20
+          - node_031: Rin is here. Why? | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_028_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_029
+                text: Rin is here. Why?
+                price: 20
+              - target: node_030
+                text: Rin is here. Why?
+                price: 20
+              - target: node_031
+                text: Rin is here. Why?
+                price: 20
+      transitions: []
+    node_029:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_029
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Mizuki's Promise
+      scenes:
+      - name: node_029_story
+        display_name: Mizuki's Promise
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#29 Mizuki's Promise]
+          Rin delivers her verdict — everything is on record, a school-wide announcement would be warranted by the rules — but the festival ended without incident, and Nono and Sota have been asking on Haruki's behalf, so she lets it go. She leaves without another word. Haruki leans against a stall frame looking at the sky. Mizuki appears beside him, shoulder lightly touching his, back in her school uniform. She tells him she heard the rigging snap on stage — and that it didn't fall. She asks how much he wants to tell her, and when he doesn't answer, says she won't push. Then she leans in close and tells him that all his reluctance, all his trying not to show it, and still always being quietly there — that's what makes him so cute. Haruki, ears red, looks at her directly and says he'll keep doing it. Mizuki smiles, takes his hand, fingers interlaced, and tells him she'll hold him to that. The camera pulls back slowly into the evening light.
+        publication:
+          views:
+          - id: node_029_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1779438786'
+              - label: 源节点
+                value: '#29 Mizuki''s Promise'
+              - label: 当前状态
+                value: node_029
+              - label: 视频链接
+                value: https://assets.castloop.ai/xnarrator-game/editor-beta/1779438786/0/video/dialogue/40330/upload_c6dc36b3-1766-43e2-a75b-c4776372e0d1.mp4
+              - label: 音频数量
+                value: 14
+      transitions:
+      - to: end
+    node_030:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_030
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Rin's Exception
+      scenes:
+      - name: node_030_story
+        display_name: Rin's Exception
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#30 Rin's Exception]
+          Rin finds Haruki on the boulevard and tells him she's decided not to file a report — framing it as a matter of professional satisfaction rather than anything personal. When Haruki quietly brings up the ramen, she insists she was holding him to it all along. He takes the record book out of her hands and tells her to leave the official business behind for the evening. She goes still, face red, and agrees in a voice barely above a whisper. They walk into the evening light together. From the shade of a nearby tree, Mizuki watches their backs, smiles quietly to herself, and turns to walk the other way.
+        publication:
+          views:
+          - id: node_030_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1779438786'
+              - label: 源节点
+                value: '#30 Rin''s Exception'
+              - label: 当前状态
+                value: node_030
+              - label: 视频链接
+                value: https://assets.castloop.ai/xnarrator-game/editor-beta/1779438786/0/video/dialogue/31610/upload_a0b4925a-5fa5-4c24-b1d2-c8b5c7633dcd.mp4
+              - label: 音频数量
+                value: 15
+      transitions:
+      - to: end
+    node_031:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_031
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Sota's Treat
+      scenes:
+      - name: node_031_story
+        display_name: Sota's Treat
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#31 Sota's Treat]
+          Rin delivers her verdict — everything is on record, a school-wide announcement would be warranted by the rules — but the festival ended without incident, and Nono and Sota have been asking on Haruki's behalf, so she lets it go. She leaves. Haruki leans against the stall frame looking at the sky. Sota and Nono find him there — Sota claps him on the shoulder and offers to pay for dinner, Nono apologizes quietly for all the trouble she caused. Haruki reassures her with a smile, she tears up, and Sota is already moving before either of them finishes talking. The three of them walk into the evening light together.
+        publication:
+          views:
+          - id: node_031_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1779438786'
+              - label: 源节点
+                value: '#31 Sota''s Treat'
+              - label: 当前状态
+                value: node_031
+              - label: 视频链接
+                value: https://assets.castloop.ai/xnarrator-game/editor-beta/1779438786/0/video/dialogue/46805/upload_401c3d96-6bf7-4422-906d-a4fdf20c6220.mp4
+              - label: 音频数量
+                value: 13
+      transitions:
+      - to: end
+    node_032:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_032
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: You Actually Came
+      scenes:
+      - name: node_032_story
+        display_name: You Actually Came
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#32 You Actually Came]
+          Haruki, Sota, and Nono arrive backstage before the performance. Mizuki spots Haruki in the mirror and smiles — she's glad he kept his promise to come. They exchange a quiet, warm moment before she heads to the wings. During the prop check, Nono discovers she hung the wrong backdrop — the heavier full moon instead of the crescent Mizuki needs. With only ten minutes to curtain and no time to swap it, Haruki tells the others not to panic, but privately knows the rigging may not hold. He heads toward the wings to warn Mizuki before she goes on.
+        publication:
+          views:
+          - id: node_032_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1779438786'
+              - label: 源节点
+                value: '#32 You Actually Came'
+              - label: 当前状态
+                value: node_032
+              - label: 视频链接
+                value: https://assets.castloop.ai/xnarrator-game/editor-beta/1779438786/0/video/dialogue/51426/upload_5abef67c-6e49-4fc6-a266-90bf3165eb10.mp4
+              - label: 音频数量
+                value: 18
+              - label: 可选目标
+                value: node_022
+      - name: node_032_choice
+        display_name: You Actually Came - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_022
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_022: Meet Mizuki at the side stage | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_032_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_022
+                text: Meet Mizuki at the side stage
+                price: 20
+      transitions: []
+    end:
+      terminal: true
+      scenes: []
+      transitions: []
+referee:
+  win_conditions: []

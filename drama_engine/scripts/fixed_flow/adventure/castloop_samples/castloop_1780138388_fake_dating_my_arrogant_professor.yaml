@@ -1,0 +1,5773 @@
+meta:
+  id: castloop_1780138388
+  name: castloop_1780138388_fake_dating_my_arrogant_professor
+  title: Fake Dating My Arrogant Professor
+  version: 0.1.0
+  author: castloop_import_sample
+  description: To save her funding, PhD student Lily Carter enters a fake dating contract with her arrogant professor. But real chemistry soon threatens their secret deal.
+  tags:
+  - castloop
+  - branching_story
+  - import_sample
+  locale: en-US
+runtime:
+  type: game_session
+extensions:
+  story:
+    enabled: true
+    version: '0.1'
+    config:
+      source: castloop_product_package
+      script_id: '1780138388'
+      source_folder: stories/1780138388_fake_dating_my_arrogant_professor
+      page_url: https://www.castloop.ai/play/1780138388
+      cover_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780138388/0/image/release/r_4d6f3328/cover/poster_eeed77fd-c443-42fa-9206-bf5f231e9086.webp
+      nodes_count: 70
+      scenes_count: 10
+      roles_count: 6
+      paid_options_count: 86
+      mapping: one_castloop_node_to_one_state_machine_state
+concepts:
+  roles:
+    reader:
+      display_name: Reader
+      description: Single player who chooses the next branch.
+  factions:
+    solo:
+      display_name: Solo
+      description: Single-player story progression.
+  scopes:
+    public:
+      display_name: Story
+      description: Visible story text and branch options.
+  abilities:
+    choose_branch:
+      display_name: Choose branch
+      description: Select the next Castloop node.
+      prompt: Pick one target state from the options.
+roles:
+- name: reader
+  display_name: Reader
+  faction: solo
+  brief: You are reading an imported branching story and choosing the next node.
+  scopes:
+  - public
+  abilities:
+  - choose_branch
+players:
+  count: 1
+  initial_attrs:
+    alive: true
+  casting:
+    type: shuffle
+    distribution:
+      reader: 1
+scopes:
+- name: public
+  members: all
+flow:
+  type: state_machine
+  initial: node_001
+  states:
+    node_001:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_001
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Fake Dating Contract
+      scenes:
+      - name: node_001_story
+        display_name: Fake Dating Contract
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#1 Fake Dating Contract]
+          To save her frozen pancreatic cancer research, Lily sneaks into Professor Ethan Vale's restricted lab. Caught by the department chair, her friend Linh lies that Lily is Ethan's secret girlfriend, leading Lily to impulsively kiss Ethan to maintain the cover. Trapped in Ethan's office, Lily explains her desperate funding crisis. Instead of suspending her, Ethan proposes a fake dating contract: he needs a stable relationship image to secure a joint project with Ben Miller from Eastern University, and in exchange, he will unfreeze Lily's research funding. He presents her with a contract, forcing her to choose between agreeing while demanding to keep things strictly professional, or negotiating for immediate full funding.
+        publication:
+          views:
+          - id: node_001_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#1 Fake Dating Contract'
+              - label: 当前状态
+                value: node_001
+              - label: 音频数量
+                value: 11
+              - label: 可选目标
+                value: node_002, node_070
+      - name: node_001_choice
+        display_name: Fake Dating Contract - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_002
+          - node_070
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_002: I'll do it, but we keep this strictly professional.
+          - node_070: If I'm playing your girlfriend, I want full funding immediately.
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_001_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_002
+                text: I'll do it, but we keep this strictly professional.
+                price: null
+              - target: node_070
+                text: If I'm playing your girlfriend, I want full funding immediately.
+                price: null
+      transitions: []
+    node_002:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_002
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: The Show Begins
+      scenes:
+      - name: node_002_story
+        display_name: The Show Begins
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#2 The Show Begins]
+          Lily signs the contract under the condition of strict professionalism. Ethan accepts with a dry smile, reminding her that convincing acting will still require believable public displays of affection.
+        publication:
+          views:
+          - id: node_002_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#2 The Show Begins'
+              - label: 当前状态
+                value: node_002
+              - label: 音频数量
+                value: 6
+              - label: 可选目标
+                value: node_003
+      - name: node_002_choice
+        display_name: The Show Begins - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_003
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_003: What do you mean right now?
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_002_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_003
+                text: What do you mean right now?
+                price: null
+      transitions: []
+    node_003:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_003
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Fake Love Begins
+      scenes:
+      - name: node_003_story
+        display_name: Fake Love Begins
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#3 Fake Love Begins]
+          With the contract finalized, Ethan reveals their first test is happening in nine minutes at the department coffee break. Both Lily's friend Linh and Ben Miller—who holds the power over Lily's funding—will be present, with gossip already gathering outside the office door. Ethan extends his arm, prompting Lily to improvise their fake relationship on the spot. Lily must decide how they will present themselves as they step out, with options to either interlock her fingers with his or shyly loop her arm through his.
+        publication:
+          views:
+          - id: node_003_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#3 Fake Love Begins'
+              - label: 当前状态
+                value: node_003
+              - label: 音频数量
+                value: 7
+              - label: 可选目标
+                value: node_004, node_069
+      - name: node_003_choice
+        display_name: Fake Love Begins - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_004
+          - node_069
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_004: Hold his hand tightly. | price=20
+          - node_069: Hold his arm closely. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_003_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_004
+                text: Hold his hand tightly.
+                price: 20
+              - target: node_069
+                text: Hold his arm closely.
+                price: 20
+      transitions: []
+    node_004:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_004
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Holding Hands in Public
+      scenes:
+      - name: node_004_story
+        display_name: Holding Hands in Public
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#4 Holding Hands in Public]
+          Lily intertwines her fingers with Ethan's, her sweaty palm pressing against his cool skin. This bold move draws immediate gasps from nearby students in the hallway, while Ethan's grip tightens in a surprising, reassuring show of support as they step forward.
+        publication:
+          views:
+          - id: node_004_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#4 Holding Hands in Public'
+              - label: 当前状态
+                value: node_004
+              - label: 音频数量
+                value: 3
+              - label: 可选目标
+                value: node_005
+      - name: node_004_choice
+        display_name: Holding Hands in Public - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_005
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_005: Walk into the lounge. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_004_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_005
+                text: Walk into the lounge.
+                price: 20
+      transitions: []
+    node_005:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_005
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Prove the Chemistry
+      scenes:
+      - name: node_005_story
+        display_name: Prove the Chemistry
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#5 Prove the Chemistry]
+          Stepping into the Common Room, Lily and Ethan face a shocked Linh Tran and a highly skeptical Ben Miller. After Ethan introduces Lily as his girlfriend, Ben questions the boundaries of their relationship and how they separate scientific logic from romance. With Linh demanding answers in the background and Ethan pressuring her to handle it, Lily must choose between keeping things professional by stating they keep their work strictly in the lab, or demonstrating their chemistry by kissing Ethan's cheek.
+        publication:
+          views:
+          - id: node_005_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#5 Prove the Chemistry'
+              - label: 当前状态
+                value: node_005
+              - label: 音频数量
+                value: 5
+              - label: 可选目标
+                value: node_006, node_036
+      - name: node_005_choice
+        display_name: Prove the Chemistry - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_006
+          - node_036
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_006: We keep our work strictly in the lab. | price=20
+          - node_036: Kiss Ethan's cheek to prove the chemistry. | price=150
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_005_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_006
+                text: We keep our work strictly in the lab.
+                price: 20
+              - target: node_036
+                text: Kiss Ethan's cheek to prove the chemistry.
+                price: 150
+      transitions: []
+    node_006:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_006
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Embrace or Expose
+      scenes:
+      - name: node_006_story
+        display_name: Embrace or Expose
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#6 Embrace or Expose]
+          Ben Miller expresses deep skepticism, stating that a passionless couple will not convince the conservative funding board. To save the deal, Ethan pulls Lily close and fabricates a romantic story about falling in love over late-night cell cultures. Challenging them to prove their chemistry, Ben invites them to an exclusive department dinner tonight. Meanwhile, a highly suspicious and protective Linh Tran steps in, offering Lily a chance to reveal the truth. Lily is faced with a critical choice: either lean into Ethan's warm embrace to maintain the fake relationship for Ben, or pull back toward Linh and risk exposing the facade.
+        publication:
+          views:
+          - id: node_006_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#6 Embrace or Expose'
+              - label: 当前状态
+                value: node_006
+              - label: 音频数量
+                value: 8
+              - label: 可选目标
+                value: node_007, node_035
+      - name: node_006_choice
+        display_name: Embrace or Expose - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_007
+          - node_035
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_007: Lean into Ethan's warm embrace. | price=20
+          - node_035: Pull back toward Linh. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_006_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_007
+                text: Lean into Ethan's warm embrace.
+                price: 20
+              - target: node_035
+                text: Pull back toward Linh.
+                price: 20
+      transitions: []
+    node_007:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_007
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: His Warm Embrace
+      scenes:
+      - name: node_007_story
+        display_name: His Warm Embrace
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#7 His Warm Embrace]
+          Lily leans into Ethan’s warm, firm chest. Ethan naturally wraps his arm around her waist, smoothly reassuring Ben Miller about their intense romantic chemistry. Ben is delighted and accepts them, while Linh looks on in stunned betrayal and frustration, forced to step back for now.
+        publication:
+          views:
+          - id: node_007_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#7 His Warm Embrace'
+              - label: 当前状态
+                value: node_007
+              - label: 音频数量
+                value: 5
+              - label: 可选目标
+                value: node_008
+      - name: node_007_choice
+        display_name: His Warm Embrace - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_008
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_008: Agree to the dinner. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_007_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_008
+                text: Agree to the dinner.
+                price: 20
+      transitions: []
+    node_008:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_008
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Lie Or Confess
+      scenes:
+      - name: node_008_story
+        display_name: Lie Or Confess
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#8 Lie Or Confess]
+          After Ben Miller invites them to a high-stakes department dinner at seven o'clock at The Ivory Bistro, Ethan warns Lily not to be late and steps away. Linh Tran immediately corners Lily in a quiet corner of the Common Room. Driven by protective worry, Linh demands the absolute truth about the kiss, asking if Ethan is blackmailing Lily or if they are sleeping together. Lily must choose between lying to her best friend by claiming they have been secretly dating, or revealing the truth about the fake relationship contract.
+        publication:
+          views:
+          - id: node_008_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#8 Lie Or Confess'
+              - label: 当前状态
+                value: node_008
+              - label: 音频数量
+                value: 6
+              - label: 可选目标
+                value: node_009, node_022
+      - name: node_008_choice
+        display_name: Lie Or Confess - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_009
+          - node_022
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_009: It's real. We've been secretly dating. | price=20
+          - node_022: It's fake! We signed a contract. | price=150
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_008_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_009
+                text: It's real. We've been secretly dating.
+                price: 20
+              - target: node_022
+                text: It's fake! We signed a contract.
+                price: 150
+      transitions: []
+    node_009:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_009
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Makeover or Rebel
+      scenes:
+      - name: node_009_story
+        display_name: Makeover or Rebel
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#9 Makeover or Rebel]
+          Linh Tran is shocked but reluctantly accepts Lily's lie about secretly dating Ethan, warning her that he is a ruthless careerist. To prepare Lily for the high-stakes department dinner at the snobbish French restaurant, The Ivory Bistro, Linh drags her to Lily's apartment for a makeover. While there, Lily receives a demanding text from Ethan setting strict rules for the night, including no lab talk, elegant dress, and a pickup at 6:45. Lily faces a choice: let Linh style her to look breathtaking, or text Ethan back to push back against his control and set her own boundaries.
+        publication:
+          views:
+          - id: node_009_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#9 Makeover or Rebel'
+              - label: 当前状态
+                value: node_009
+              - label: 音频数量
+                value: 7
+              - label: 可选目标
+                value: node_010, node_021
+      - name: node_009_choice
+        display_name: Makeover or Rebel - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_010
+          - node_021
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_010: Let Linh style me. | price=20
+          - node_021: Text Ethan off. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_009_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_010
+                text: Let Linh style me.
+                price: 20
+              - target: node_021
+                text: Text Ethan off.
+                price: 20
+      transitions: []
+    node_010:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_010
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Stunning Transformation
+      scenes:
+      - name: node_010_story
+        display_name: Stunning Transformation
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#10 Stunning Transformation]
+          Linh eagerly takes charge of Lily's makeover, transforming her from a messy lab-dweller into a breathtaking, elegant woman. Lily feels a mix of shock and emerging confidence, while Linh jokes about making the arrogant Professor Vale drool.
+        publication:
+          views:
+          - id: node_010_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#10 Stunning Transformation'
+              - label: 当前状态
+                value: node_010
+              - label: 音频数量
+                value: 6
+              - label: 可选目标
+                value: node_011
+      - name: node_010_choice
+        display_name: Stunning Transformation - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_011
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_011: Open the door. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_010_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_011
+                text: Open the door.
+                price: 20
+      transitions: []
+    node_011:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_011
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Make It Real
+      scenes:
+      - name: node_011_story
+        display_name: Make It Real
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#11 Make It Real]
+          Ethan arrives at Lily's apartment and is visibly stunned by her elegant transformation, calling it "scientifically illogical." After Linh leaves them with a mischievous warning, Ethan drives Lily to The Ivory Bistro, a high-end French restaurant filled with wealthy donors where their funding is at stake. Upon spotting Ben Miller waiting expectantly by the hostess stand, a rare trace of nervousness shows in Ethan's eyes. He extends his arm to Lily and instructs her to "make it look real," forcing her to choose between holding his arm tightly and leaning in close, or intertwining her fingers with his and smiling.
+        publication:
+          views:
+          - id: node_011_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#11 Make It Real'
+              - label: 当前状态
+                value: node_011
+              - label: 音频数量
+                value: 7
+              - label: 可选目标
+                value: node_012, node_020
+      - name: node_011_choice
+        display_name: Make It Real - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_012
+          - node_020
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_012: Hold his arm tightly and lean in close. | price=20
+          - node_020: Intertwine your fingers with his and smile. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_011_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_012
+                text: Hold his arm tightly and lean in close.
+                price: 20
+              - target: node_020
+                text: Intertwine your fingers with his and smile.
+                price: 20
+      transitions: []
+    node_012:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_012
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Too Close Professor
+      scenes:
+      - name: node_012_story
+        display_name: Too Close Professor
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#12 Too Close Professor]
+          Lily tightly loops her arm through Ethan's and leans close, catching the scent of his expensive cedarwood cologne. Ethan stiffens momentarily at the sudden intimacy, his chest rising, but he quickly recovers, whispering a teasing remark before guiding her forward.
+        publication:
+          views:
+          - id: node_012_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#12 Too Close Professor'
+              - label: 当前状态
+                value: node_012
+              - label: 音频数量
+                value: 4
+              - label: 可选目标
+                value: node_013
+      - name: node_012_choice
+        display_name: Too Close Professor - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_013
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_013: Take a seat next to Ethan. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_012_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_013
+                text: Take a seat next to Ethan.
+                price: 20
+      transitions: []
+    node_013:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_013
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Under Table Secret
+      scenes:
+      - name: node_013_story
+        display_name: Under Table Secret
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#13 Under Table Secret]
+          At The Ivory Bistro, Lily sits next to Ethan, feeling his shoulder brush against hers. Ben Miller admits seeing them together dispels the rumors, but tests them by asking how their relationship survives the brutal stress of academic competition. Under the tablecloth, Ethan squeezes and gently brushes Lily's knee to prompt her response. Lily must choose whether to jump in with a witty, scientific defense of their compatibility ('Our chemistry is scientifically proven, Ben.') or lean in close and let Ethan take charge of the answer.
+        publication:
+          views:
+          - id: node_013_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#13 Under Table Secret'
+              - label: 当前状态
+                value: node_013
+              - label: 音频数量
+                value: 4
+              - label: 可选目标
+                value: node_014, node_019
+      - name: node_013_choice
+        display_name: Under Table Secret - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_014
+          - node_019
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_014: "Our chemistry is scientifically proven, Ben." | price=20
+          - node_019: Lean close and let Ethan take charge. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_013_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_014
+                text: '"Our chemistry is scientifically proven, Ben."'
+                price: 20
+              - target: node_019
+                text: Lean close and let Ethan take charge.
+                price: 20
+      transitions: []
+    node_014:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_014
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Perfect Chemistry
+      scenes:
+      - name: node_014_story
+        display_name: Perfect Chemistry
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#14 Perfect Chemistry]
+          Lily confidently uses a witty scientific analogy to defend their compatibility. Ben is highly amused and impressed by her sharp mind, while Ethan looks at her with a mix of surprise and subtle, genuine admiration, realizing she is more than capable of holding her own.
+        publication:
+          views:
+          - id: node_014_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#14 Perfect Chemistry'
+              - label: 当前状态
+                value: node_014
+              - label: 音频数量
+                value: 6
+              - label: 可选目标
+                value: node_015
+      - name: node_014_choice
+        display_name: Perfect Chemistry - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_015
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_015: What kind of test? | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_014_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_015
+                text: What kind of test?
+                price: 20
+      transitions: []
+    node_015:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_015
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Twelve Hour Challenge
+      scenes:
+      - name: node_015_story
+        display_name: Twelve Hour Challenge
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#15 Twelve Hour Challenge]
+          At The Ivory Bistro, Ben Miller issues a sudden challenge: to officially secure the research funding, Lily and Ethan must co-present their joint proposal at the department's prestigious seminar tomorrow morning at nine o'clock. Realizing this leaves them with less than twelve hours to prepare together in close quarters, Lily is put on the spot while Ethan watches for her reaction. Lily must choose whether to confidently accept the challenge by declaring their research is flawless, or cautiously suggest they might need more time to perfect it, letting Ethan handle the negotiation.
+        publication:
+          views:
+          - id: node_015_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#15 Twelve Hour Challenge'
+              - label: 当前状态
+                value: node_015
+              - label: 音频数量
+                value: 2
+              - label: 可选目标
+                value: node_016, node_018
+      - name: node_015_choice
+        display_name: Twelve Hour Challenge - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_016
+          - node_018
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_016: We'll do it. Our research is absolutely flawless. | price=20
+          - node_018: We might need more time to perfect it. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_015_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_016
+                text: We'll do it. Our research is absolutely flawless.
+                price: 20
+              - target: node_018
+                text: We might need more time to perfect it.
+                price: 20
+      transitions: []
+    node_016:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_016
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: His Warm Embrace
+      scenes:
+      - name: node_016_story
+        display_name: His Warm Embrace
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#16 His Warm Embrace]
+          Lily confidently accepts the challenge. Ben is highly impressed by her boldness. Ethan looks at Lily with a mix of surprise and silent pride, wrapping an arm around her shoulder to show their unified front as Ben raises his glass to toast them.
+        publication:
+          views:
+          - id: node_016_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#16 His Warm Embrace'
+              - label: 当前状态
+                value: node_016
+              - label: 音频数量
+                value: 5
+              - label: 可选目标
+                value: node_017
+      - name: node_016_choice
+        display_name: His Warm Embrace - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_017
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_017: Let's finish this dinner. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_016_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_017
+                text: Let's finish this dinner.
+                price: 20
+      transitions: []
+    node_017:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_017
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Kiss Under Starlight
+      scenes:
+      - name: node_017_story
+        display_name: Kiss Under Starlight
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#17 Kiss Under Starlight]
+          Following the dinner at The Ivory Bistro, Ben Miller bids them a warm farewell, expressing high expectations for their joint presentation tomorrow. Moving to the Campus Parking Area, Ethan drapes his suit jacket over Lily's shoulders. With the joint venture secured and Lily's research funding saved, Ethan admits that their contract is fulfilled but their chemistry is not fake. He removes his glasses, confesses his feelings, and kisses Lily passionately under the starlight.
+        publication:
+          views:
+          - id: node_017_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#17 Kiss Under Starlight'
+              - label: 当前状态
+                value: node_017
+              - label: 音频数量
+                value: 8
+      transitions:
+      - to: end
+    node_018:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_018
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Secret Touch Under Table
+      scenes:
+      - name: node_018_story
+        display_name: Secret Touch Under Table
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#18 Secret Touch Under Table]
+          Lily hesitates, choosing academic caution. Ethan smoothly steps in, squeezing her hand to reassure Ben that Lily's perfectionism is their greatest asset. Ben is deeply impressed by their intellectual synergy and agrees to the morning presentation.
+        publication:
+          views:
+          - id: node_018_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#18 Secret Touch Under Table'
+              - label: 当前状态
+                value: node_018
+              - label: 音频数量
+                value: 6
+              - label: 可选目标
+                value: node_017
+      - name: node_018_choice
+        display_name: Secret Touch Under Table - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_017
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_017: Let's finish this dinner. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_018_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_017
+                text: Let's finish this dinner.
+                price: 20
+      transitions: []
+    node_019:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_019
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Intimate Trust Tested
+      scenes:
+      - name: node_019_story
+        display_name: Intimate Trust Tested
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#19 Intimate Trust Tested]
+          Lily leans close to Ethan, letting him take the lead. Ethan smoothly delivers a charismatic, romantic response. Feeling his warmth and heartbeat up close makes Lily's heart flutter, while Ben smiles, seemingly convinced by this display of physical intimacy and trust.
+        publication:
+          views:
+          - id: node_019_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#19 Intimate Trust Tested'
+              - label: 当前状态
+                value: node_019
+              - label: 音频数量
+                value: 4
+              - label: 可选目标
+                value: node_015
+      - name: node_019_choice
+        display_name: Intimate Trust Tested - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_015
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_015: What kind of test? | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_019_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_015
+                text: What kind of test?
+                price: 20
+      transitions: []
+    node_020:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_020
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Holding His Hand
+      scenes:
+      - name: node_020_story
+        display_name: Holding His Hand
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#20 Holding His Hand]
+          Lily slips her fingers between Ethan's, squeezing gently with a bright smile. Ethan is momentarily taken aback by the hand-holding, his hand tightening around hers in response as he adjusts his glasses and matches her radiant, fake-dating expression.
+        publication:
+          views:
+          - id: node_020_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#20 Holding His Hand'
+              - label: 当前状态
+                value: node_020
+              - label: 音频数量
+                value: 5
+              - label: 可选目标
+                value: node_013
+      - name: node_020_choice
+        display_name: Holding His Hand - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_013
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_013: Take a seat next to Ethan. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_020_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_013
+                text: Take a seat next to Ethan.
+                price: 20
+      transitions: []
+    node_021:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_021
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Stunning the Boss
+      scenes:
+      - name: node_021_story
+        display_name: Stunning the Boss
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#21 Stunning the Boss]
+          Lily fires back a sharp text to Ethan, refusing to let him micromanage her. Ethan surprises her by replying with a rare, amused surrender, acknowledging her fire and setting a more playful, equal tone for their upcoming date.
+        publication:
+          views:
+          - id: node_021_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#21 Stunning the Boss'
+              - label: 当前状态
+                value: node_021
+              - label: 音频数量
+                value: 5
+              - label: 可选目标
+                value: node_011
+      - name: node_021_choice
+        display_name: Stunning the Boss - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_011
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_011: Open the door. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_021_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_011
+                text: Open the door.
+                price: 20
+      transitions: []
+    node_022:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_022
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Silk Dress or Blazer
+      scenes:
+      - name: node_022_story
+        display_name: Silk Dress or Blazer
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#22 Silk Dress or Blazer]
+          Upon learning about the fake contract, Linh Tran is shocked but quickly supports Lily's plan to save her pancreatic cancer research. Dragging Lily to the Department Locker Room, Linh insists that Lily cannot attend the dinner at The Ivory Bistro—an upscale French restaurant—in her wrinkled lab coat. Linh offers her emergency emerald silk dress, arguing that Lily needs to look like a partner, not a student, to convince Ben Miller. Lily is faced with a choice on how to dress for the dinner: wear the stunning emerald silk dress to sell the lie, or stick to her neat academic blazer to maintain strict professional boundaries.
+        publication:
+          views:
+          - id: node_022_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#22 Silk Dress or Blazer'
+              - label: 当前状态
+                value: node_022
+              - label: 音频数量
+                value: 8
+              - label: 可选目标
+                value: node_023, node_034
+      - name: node_022_choice
+        display_name: Silk Dress or Blazer - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_023
+          - node_034
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_023: Wear the stunning emerald silk dress. | price=20
+          - node_034: Stick to my neat academic blazer. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_022_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_023
+                text: Wear the stunning emerald silk dress.
+                price: 20
+              - target: node_034
+                text: Stick to my neat academic blazer.
+                price: 20
+      transitions: []
+    node_023:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_023
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Stunning Emerald Dress
+      scenes:
+      - name: node_023_story
+        display_name: Stunning Emerald Dress
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#23 Stunning Emerald Dress]
+          Lily slips into the stunning emerald silk dress. It fits perfectly, revealing a sophisticated side of her she rarely sees. Linh cheers in excitement, but Lily can't help but worry if it is too intimate or dramatic for a fake date with Ethan.
+        publication:
+          views:
+          - id: node_023_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#23 Stunning Emerald Dress'
+              - label: 当前状态
+                value: node_023
+              - label: 音频数量
+                value: 4
+              - label: 可选目标
+                value: node_024
+      - name: node_023_choice
+        display_name: Stunning Emerald Dress - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_024
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_024: Meet Ethan at the restaurant. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_023_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_024
+                text: Meet Ethan at the restaurant.
+                price: 20
+      transitions: []
+    node_024:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_024
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Madly In Love
+      scenes:
+      - name: node_024_story
+        display_name: Madly In Love
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#24 Madly In Love]
+          Lily arrives at The Ivory Bistro, where a sharply-dressed Ethan is waiting. Surprised and distracted by her outfit, Ethan steps into her personal space to gently adjust her collar, whispering a warning that they must act madly in love and that she shouldn't flinch when he touches her. Before going inside to face Ben Miller, Lily must choose whether to slip her hand through his arm to initiate physical intimacy, or confidently challenge him to keep up with her.
+        publication:
+          views:
+          - id: node_024_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#24 Madly In Love'
+              - label: 当前状态
+                value: node_024
+              - label: 音频数量
+                value: 6
+              - label: 可选目标
+                value: node_025, node_033
+      - name: node_024_choice
+        display_name: Madly In Love - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_025
+          - node_033
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_025: Slip your hand through his arm. | price=20
+          - node_033: "Then try your best to keep up, Professor." | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_024_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_025
+                text: Slip your hand through his arm.
+                price: 20
+              - target: node_033
+                text: '"Then try your best to keep up, Professor."'
+                price: 20
+      transitions: []
+    node_025:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_025
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Playing the Part
+      scenes:
+      - name: node_025_story
+        display_name: Playing the Part
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#25 Playing the Part]
+          Lily slips her hand through Ethan's arm. He tenses at the sudden intimacy, his heart beating slightly faster, but quickly covers it with a warm, possessive smile. Together, they step into the elegant restaurant, perfectly projecting the image of a deeply infatuated couple.
+        publication:
+          views:
+          - id: node_025_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#25 Playing the Part'
+              - label: 当前状态
+                value: node_025
+              - label: 音频数量
+                value: 3
+              - label: 可选目标
+                value: node_026
+      - name: node_025_choice
+        display_name: Playing the Part - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_026
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_026: Smile and greet Ben. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_025_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_026
+                text: Smile and greet Ben.
+                price: 20
+      transitions: []
+    node_026:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_026
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Who Made First Move
+      scenes:
+      - name: node_026_story
+        display_name: Who Made First Move
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#26 Who Made First Move]
+          At The Ivory Bistro, Lily and Ethan join Ben Miller at his table. Under the table, Ethan secretly squeezes Lily's knee to maintain their cover. When Ben puts them on the spot by asking about their first date, they quickly improvise a playful story about a chaotic coffee spill involving Ethan's laptop and Lily's lab results. Highly observant, Ben then asks who made the first move after the spill. As Lily steps on Ethan's foot under the table, she must decide whether to say Ethan begged for her number or that she kissed him right then and there.
+        publication:
+          views:
+          - id: node_026_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#26 Who Made First Move'
+              - label: 当前状态
+                value: node_026
+              - label: 音频数量
+                value: 8
+              - label: 可选目标
+                value: node_027, node_032
+      - name: node_026_choice
+        display_name: Who Made First Move - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_027
+          - node_032
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_027: Ethan did. He begged for my number. | price=20
+          - node_032: I did. I kissed him right there. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_026_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_027
+                text: Ethan did. He begged for my number.
+                price: 20
+              - target: node_032
+                text: I did. I kissed him right there.
+                price: 20
+      transitions: []
+    node_027:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_027
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Begging For My Number
+      scenes:
+      - name: node_027_story
+        display_name: Begging For My Number
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#27 Begging For My Number]
+          Lily claims Ethan begged for her number. Ethan, though inwardly shocked and annoyed by this blow to his pride, forces a tight, charming smile and plays along, adding a witty detail about his desperation, which highly amuses Ben.
+        publication:
+          views:
+          - id: node_027_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#27 Begging For My Number'
+              - label: 当前状态
+                value: node_027
+              - label: 音频数量
+                value: 5
+              - label: 可选目标
+                value: node_028
+      - name: node_027_choice
+        display_name: Begging For My Number - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_028
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_028: Bask in your tiny victory. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_027_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_028
+                text: Bask in your tiny victory.
+                price: 20
+      transitions: []
+    node_028:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_028
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Fake Turns Real
+      scenes:
+      - name: node_028_story
+        display_name: Fake Turns Real
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#28 Fake Turns Real]
+          Delighted by the story, Ben Miller excuses himself to take an urgent call. Left alone, the teasing tension between Lily and Ethan peaks. Despite Ben's absence, Ethan keeps his hand on Lily's knee, pressing firmer, and teasingly refuses to let go. Leaning in close until their faces are inches apart, he praises her vivid imagination regarding the coffee spill story and admits that playing her devoted lover is starting to feel far too natural. With the line between fake and real blurring, Lily must choose whether to hold his gaze and lean in closer, or gently place her hand on his chest.
+        publication:
+          views:
+          - id: node_028_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#28 Fake Turns Real'
+              - label: 当前状态
+                value: node_028
+              - label: 音频数量
+                value: 6
+              - label: 可选目标
+                value: node_029, node_031
+      - name: node_028_choice
+        display_name: Fake Turns Real - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_029
+          - node_031
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_029: Hold his gaze and lean in closer. | price=20
+          - node_031: Gently place your hand on his chest. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_028_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_029
+                text: Hold his gaze and lean in closer.
+                price: 20
+              - target: node_031
+                text: Gently place your hand on his chest.
+                price: 20
+      transitions: []
+    node_029:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_029
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Almost Kissed
+      scenes:
+      - name: node_029_story
+        display_name: Almost Kissed
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#29 Almost Kissed]
+          Lily leans in closer, matching Ethan's intense gaze. The space between them vanishes, and his breathing stutters. Under the warm chandelier, his hand slides up to cup her jaw, completely blurring the contract's boundaries.
+        publication:
+          views:
+          - id: node_029_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#29 Almost Kissed'
+              - label: 当前状态
+                value: node_029
+              - label: 音频数量
+                value: 3
+              - label: 可选目标
+                value: node_030
+      - name: node_029_choice
+        display_name: Almost Kissed - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_030
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_030: Freeze as Ben walks back. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_029_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_030
+                text: Freeze as Ben walks back.
+                price: 20
+      transitions: []
+    node_030:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_030
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: No More Pretending
+      scenes:
+      - name: node_030_story
+        display_name: No More Pretending
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#30 No More Pretending]
+          Ben Miller returns to the table at The Ivory Bistro, catching Lily and Ethan in an intimate moment. Highly impressed by their genuine chemistry, Ben officially approves the Eastern University joint project and unfreezes Lily's pancreatic cancer research funding. During the celebratory toast, Ethan interlocks his fingers with Lily's under the table and declares that they no longer need to pretend, marking the official end of their fake contract and the beginning of their real love story.
+        publication:
+          views:
+          - id: node_030_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#30 No More Pretending'
+              - label: 当前状态
+                value: node_030
+              - label: 音频数量
+                value: 8
+      transitions:
+      - to: end
+    node_031:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_031
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: His Racing Heart
+      scenes:
+      - name: node_031_story
+        display_name: His Racing Heart
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#31 His Racing Heart]
+          Lily places her hand against Ethan's chest to steady herself, only to feel his heart hammering rapidly beneath his neat shirt. Ethan freezes, then covers her hand with his own, silently admitting his composure is a facade.
+        publication:
+          views:
+          - id: node_031_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#31 His Racing Heart'
+              - label: 当前状态
+                value: node_031
+              - label: 音频数量
+                value: 3
+              - label: 可选目标
+                value: node_030
+      - name: node_031_choice
+        display_name: His Racing Heart - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_030
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_030: Look up as Ben walks back. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_031_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_030
+                text: Look up as Ben walks back.
+                price: 20
+      transitions: []
+    node_032:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_032
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Claiming the Kiss
+      scenes:
+      - name: node_032_story
+        display_name: Claiming the Kiss
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#32 Claiming the Kiss]
+          Lily boldly claims she kissed Ethan right then and there. Ethan is momentarily stunned by her audacity but quickly recovers, gazing at her with a mix of surprise and intense, faux-romantic tenderness that makes Ben chuckle warmly at their passion.
+        publication:
+          views:
+          - id: node_032_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#32 Claiming the Kiss'
+              - label: 当前状态
+                value: node_032
+              - label: 音频数量
+                value: 5
+              - label: 可选目标
+                value: node_028
+      - name: node_032_choice
+        display_name: Claiming the Kiss - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_028
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_028: Hold his gaze. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_032_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_028
+                text: Hold his gaze.
+                price: 20
+      transitions: []
+    node_033:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_033
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Electric Touch
+      scenes:
+      - name: node_033_story
+        display_name: Electric Touch
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#33 Electric Touch]
+          Lily delivers her challenge with a smirk and walks ahead. Surprised and amused, Ethan chuckles, quickly catching up to guide her with a light, warm touch on her lower back. They enter the bistro exuding a playful, dynamic chemistry that turns heads.
+        publication:
+          views:
+          - id: node_033_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#33 Electric Touch'
+              - label: 当前状态
+                value: node_033
+              - label: 音频数量
+                value: 3
+              - label: 可选目标
+                value: node_026
+      - name: node_033_choice
+        display_name: Electric Touch - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_026
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_026: Smile and greet Ben. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_033_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_026
+                text: Smile and greet Ben.
+                price: 20
+      transitions: []
+    node_034:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_034
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Choosing My Armor
+      scenes:
+      - name: node_034_story
+        display_name: Choosing My Armor
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#34 Choosing My Armor]
+          Lily declines the dress and smooths down her neat academic blazer. Linh sighs but respects her boundary, helping her style her hair and adjust her collar so she looks sharp, professional, and ready to stand her ground.
+        publication:
+          views:
+          - id: node_034_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#34 Choosing My Armor'
+              - label: 当前状态
+                value: node_034
+              - label: 音频数量
+                value: 5
+              - label: 可选目标
+                value: node_024
+      - name: node_034_choice
+        display_name: Choosing My Armor - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_024
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_024: Meet Ethan at the restaurant. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_034_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_024
+                text: Meet Ethan at the restaurant.
+                price: 20
+      transitions: []
+    node_035:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_035
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Dinner Trap
+      scenes:
+      - name: node_035_story
+        display_name: Dinner Trap
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#35 Dinner Trap]
+          Lily pulls back toward Linh, who immediately steps in to shield her. Ben’s suspicion spikes instantly. Sensing danger to his funding, Ethan quickly laughs it off, claiming Lily is just incredibly shy under public pressure, temporarily smoothing things over while Linh remains highly skeptical.
+        publication:
+          views:
+          - id: node_035_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#35 Dinner Trap'
+              - label: 当前状态
+                value: node_035
+              - label: 音频数量
+                value: 7
+              - label: 可选目标
+                value: node_008
+      - name: node_035_choice
+        display_name: Dinner Trap - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_008
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_008: Agree to the dinner. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_035_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_008
+                text: Agree to the dinner.
+                price: 20
+      transitions: []
+    node_036:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_036
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Love or Contract
+      scenes:
+      - name: node_036_story
+        display_name: Love or Contract
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#36 Love or Contract]
+          Lily's bold cheek-kiss stuns Ethan, who finds it surprisingly pleasant, and successfully convinces Ben Miller, who promises to fast-track their project collaboration. However, the display of affection alarms Linh Tran. Dragging Lily to a quiet corner, Linh accuses Ethan of manipulating Lily through his academic power and threatens to report him to the Ethics Committee. To defuse the situation, Lily faces a critical choice: either insist that her love for Ethan is completely real, or confess the existence of their fake dating contract to Linh.
+        publication:
+          views:
+          - id: node_036_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#36 Love or Contract'
+              - label: 当前状态
+                value: node_036
+              - label: 音频数量
+                value: 9
+              - label: 可选目标
+                value: node_037, node_053
+      - name: node_036_choice
+        display_name: Love or Contract - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_037
+          - node_053
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_037: Insist that our love is completely real. | price=20
+          - node_053: Confess the fake dating contract to Linh. | price=140
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_036_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_037
+                text: Insist that our love is completely real.
+                price: 20
+              - target: node_053
+                text: Confess the fake dating contract to Linh.
+                price: 140
+      transitions: []
+    node_037:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_037
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Caught Confessing Love
+      scenes:
+      - name: node_037_story
+        display_name: Caught Confessing Love
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#37 Caught Confessing Love]
+          To stop Linh from reporting Ethan to the Ethics Committee, Lily passionately claims she is genuinely in love with him, praising his brilliant mind and sharp focus. Although skeptical, Linh reluctantly backs off but warns she will be watching him closely. Once Linh leaves, Ethan steps out from the shadows, having overheard Lily's entire 'confession.' Amused, he teases her about her words and steps closer, trapping her against the hallway wall. Offering her a cup of coffee to calm her down, he forces Lily to choose between taking a bold sip and smirking, or blushing and playfully pushing him away.
+        publication:
+          views:
+          - id: node_037_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#37 Caught Confessing Love'
+              - label: 当前状态
+                value: node_037
+              - label: 音频数量
+                value: 7
+              - label: 可选目标
+                value: node_038, node_052
+      - name: node_037_choice
+        display_name: Caught Confessing Love - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_038
+          - node_052
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_038: Take a bold sip and smirk. | price=20
+          - node_052: Blush and playfully push him. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_037_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_038
+                text: Take a bold sip and smirk.
+                price: 20
+              - target: node_052
+                text: Blush and playfully push him.
+                price: 20
+      transitions: []
+    node_038:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_038
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Stealing His Drink
+      scenes:
+      - name: node_038_story
+        display_name: Stealing His Drink
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#38 Stealing His Drink]
+          Lily boldly grabs the coffee cup from Ethan's hand, takes a slow, defiant sip while locking eyes with him, and smirks. Ethan is momentarily stunned, a rare spark of genuine amusement and attraction flashing in his eyes as he realizes she won't be easily intimidated.
+        publication:
+          views:
+          - id: node_038_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#38 Stealing His Drink'
+              - label: 当前状态
+                value: node_038
+              - label: 音频数量
+                value: 3
+              - label: 可选目标
+                value: node_039
+      - name: node_038_choice
+        display_name: Stealing His Drink - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_039
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_039: Turn around to see the noise. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_038_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_039
+                text: Turn around to see the noise.
+                price: 20
+      transitions: []
+    node_039:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_039
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Exposed by Viral Meme
+      scenes:
+      - name: node_039_story
+        display_name: Exposed by Viral Meme
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#39 Exposed by Viral Meme]
+          Before their tension can escalate further, Lily's dramatic roommate Theo bursts into the hallway showing them a viral, photoshopped meme of Lily and Ethan with cartoon hearts captioned 'Professor Vale's new favorite research subject' on the biology department's group chat. While Lily panics over her academic reputation, Ethan remains calm and suggests they leverage the high engagement of the post. Lily must now choose whether to play along to make the relationship look real, or to push for immediate damage control.
+        publication:
+          views:
+          - id: node_039_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#39 Exposed by Viral Meme'
+              - label: 当前状态
+                value: node_039
+              - label: 音频数量
+                value: 7
+              - label: 可选目标
+                value: node_040, node_051
+      - name: node_039_choice
+        display_name: Exposed by Viral Meme - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_040
+          - node_051
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_040: "We play along. Let's make it look real." | price=20
+          - node_051: "We need immediate damage control." | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_039_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_040
+                text: '"We play along. Let''s make it look real."'
+                price: 20
+              - target: node_051
+                text: '"We need immediate damage control."'
+                price: 20
+      transitions: []
+    node_040:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_040
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Flirty online banter
+      scenes:
+      - name: node_040_story
+        display_name: Flirty online banter
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#40 Flirty online banter]
+          Lily decides to play along, posting a witty, flirty comment under the meme. Ethan smoothly joins in, leaving Theo squealing in delight at their apparent chemistry.
+        publication:
+          views:
+          - id: node_040_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#40 Flirty online banter'
+              - label: 当前状态
+                value: node_040
+              - label: 音频数量
+                value: 7
+              - label: 可选目标
+                value: node_041
+      - name: node_040_choice
+        display_name: Flirty online banter - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_041
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_041: Hurry to the seminar. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_040_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_041
+                text: Hurry to the seminar.
+                price: 20
+      transitions: []
+    node_041:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_041
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Too Close to Him
+      scenes:
+      - name: node_041_story
+        display_name: Too Close to Him
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#41 Too Close to Him]
+          Arriving late to Ben Miller's key research seminar in the crowded Academic Lecture Hall, Lily and Ethan find only two adjacent seats left in the front row, right under Linh Tran's highly suspicious, watchful gaze. Squeezed into the cramped seats, Lily faces intense physical proximity as Ethan's shoulder and thigh press against hers, and his fingers lightly graze her wrist on the shared armrest. As Ethan softly teases her, Lily must choose whether to lean in closer and whisper a challenge, or to gently squeeze his hand on the armrest.
+        publication:
+          views:
+          - id: node_041_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#41 Too Close to Him'
+              - label: 当前状态
+                value: node_041
+              - label: 音频数量
+                value: 4
+              - label: 可选目标
+                value: node_042, node_050
+      - name: node_041_choice
+        display_name: Too Close to Him - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_042
+          - node_050
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_042: Lean in closer and whisper a challenge. | price=20
+          - node_050: Gently squeeze his hand on the armrest. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_041_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_042
+                text: Lean in closer and whisper a challenge.
+                price: 20
+              - target: node_050
+                text: Gently squeeze his hand on the armrest.
+                price: 20
+      transitions: []
+    node_042:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_042
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Teasing the Professor
+      scenes:
+      - name: node_042_story
+        display_name: Teasing the Professor
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#42 Teasing the Professor]
+          Lily leans in, her warm breath brushing Ethan's ear as she whispers a playful challenge about his composure. Ethan's breath hitches, his smirk faltering as he tightens his grip on his notebook, visibly affected by her sudden boldness.
+        publication:
+          views:
+          - id: node_042_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#42 Teasing the Professor'
+              - label: 当前状态
+                value: node_042
+              - label: 音频数量
+                value: 4
+              - label: 可选目标
+                value: node_043
+      - name: node_042_choice
+        display_name: Teasing the Professor - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_043
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_043: Focus on the stage. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_042_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_043
+                text: Focus on the stage.
+                price: 20
+      transitions: []
+    node_043:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_043
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Secret Key and Spotlight
+      scenes:
+      - name: node_043_story
+        display_name: Secret Key and Spotlight
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#43 Secret Key and Spotlight]
+          During Ben Miller's research seminar in the Academic Lecture Hall, Ben publicly praises Lily and Ethan as a "power duo" for their joint research potential, drawing murmurs from the crowd and a sharp stare from Linh Tran. Under the desk, Ethan secretly slides his private lab keycard to Lily, instructing her to meet him there tonight. When Ben unexpectedly invites Lily to the stage to share her thoughts on the research data, Lily is faced with a critical choice: either confidently step up to the podium to present the latest findings, or politely decline and defer to Professor Vale to explain it.
+        publication:
+          views:
+          - id: node_043_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#43 Secret Key and Spotlight'
+              - label: 当前状态
+                value: node_043
+              - label: 音频数量
+                value: 7
+              - label: 可选目标
+                value: node_044, node_049
+      - name: node_043_choice
+        display_name: Secret Key and Spotlight - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_044
+          - node_049
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_044: I'll gladly share our latest findings. | price=20
+          - node_049: Actually, Professor Vale explains it much better. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_043_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_044
+                text: I'll gladly share our latest findings.
+                price: 20
+              - target: node_049
+                text: Actually, Professor Vale explains it much better.
+                price: 20
+      transitions: []
+    node_044:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_044
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Alone with Ethan
+      scenes:
+      - name: node_044_story
+        display_name: Alone with Ethan
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#44 Alone with Ethan]
+          Lily confidently steps to the podium, passionately explaining her pancreatic cancer research. Her sharp analysis impresses Ben Miller and quietens the room. From the front row, Ethan watches her with undeniable pride, their academic chemistry shining.
+        publication:
+          views:
+          - id: node_044_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#44 Alone with Ethan'
+              - label: 当前状态
+                value: node_044
+              - label: 音频数量
+                value: 3
+              - label: 可选目标
+                value: node_045
+      - name: node_044_choice
+        display_name: Alone with Ethan - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_045
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_045: Hold up his keycard. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_044_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_045
+                text: Hold up his keycard.
+                price: 20
+      transitions: []
+    node_045:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_045
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Midnight Invitation
+      scenes:
+      - name: node_045_story
+        display_name: Midnight Invitation
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#45 Midnight Invitation]
+          After the seminar, Ben Miller leaves impressed while Linh departs with a warning glare, leaving Lily and Ethan alone in the empty Academic Lecture Hall. Lily playfully questions Ethan about the keycard, prompting him to step down from the podium and intimately close the distance between them. Brushing her fingers and whispering in her ear, Ethan challenges her about being afraid of a midnight meeting and assures her that both her funding and he are waiting in his lab. Lily must now decide whether to accept the invitation while warning him to keep his hands to himself, or teasingly ask if his words are a promise.
+        publication:
+          views:
+          - id: node_045_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#45 Midnight Invitation'
+              - label: 当前状态
+                value: node_045
+              - label: 音频数量
+                value: 5
+              - label: 可选目标
+                value: node_046, node_048
+      - name: node_045_choice
+        display_name: Midnight Invitation - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_046
+          - node_048
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_046: I'll be there. Just keep your hands to yourself. | price=20
+          - node_048: Is that a promise, Professor? | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_045_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_046
+                text: I'll be there. Just keep your hands to yourself.
+                price: 20
+              - target: node_048
+                text: Is that a promise, Professor?
+                price: 20
+      transitions: []
+    node_046:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_046
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: The Midnight Keycard
+      scenes:
+      - name: node_046_story
+        display_name: The Midnight Keycard
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#46 The Midnight Keycard]
+          Lily takes the keycard with a smirk, warning Ethan to stay professional. He chuckles warmly, promising to be on his best behavior, before Lily heads to the lab with a racing heart.
+        publication:
+          views:
+          - id: node_046_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#46 The Midnight Keycard'
+              - label: 当前状态
+                value: node_046
+              - label: 音频数量
+                value: 4
+              - label: 可选目标
+                value: node_047
+      - name: node_046_choice
+        display_name: The Midnight Keycard - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_047
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_047: Head to Ethan's private lab at midnight. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_046_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_047
+                text: Head to Ethan's private lab at midnight.
+                price: 20
+      transitions: []
+    node_047:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_047
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: From Fake to Real
+      scenes:
+      - name: node_047_story
+        display_name: From Fake to Real
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#47 From Fake to Real]
+          Lily enters Professor Ethan Vale's private lab to find him waiting with her favorite takeout and her signed research funding approval, officially saving her research. When Lily asks if their contract is over, Ethan steps close and confesses that the fake dating agreement was merely his excuse to keep her close because he wants a real relationship. Lily embraces him and they share a passionate, real kiss under the lab lights, officially transforming their fake arrangement into a true, romantic partnership.
+        publication:
+          views:
+          - id: node_047_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#47 From Fake to Real'
+              - label: 当前状态
+                value: node_047
+              - label: 音频数量
+                value: 8
+      transitions:
+      - to: end
+    node_048:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_048
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Midnight Promise
+      scenes:
+      - name: node_048_story
+        display_name: Midnight Promise
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#48 Midnight Promise]
+          Lily boldly accepts the keycard, teasing Ethan. He steps closer, whispering that he never breaks his promises, leaving Lily breathless as she heads to the private lab tonight.
+        publication:
+          views:
+          - id: node_048_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#48 Midnight Promise'
+              - label: 当前状态
+                value: node_048
+              - label: 音频数量
+                value: 4
+              - label: 可选目标
+                value: node_047
+      - name: node_048_choice
+        display_name: Midnight Promise - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_047
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_047: Head to Ethan's private lab at midnight. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_048_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_047
+                text: Head to Ethan's private lab at midnight.
+                price: 20
+      transitions: []
+    node_049:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_049
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Alone with Ethan
+      scenes:
+      - name: node_049_story
+        display_name: Alone with Ethan
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#49 Alone with Ethan]
+          Lily defers to Ethan, who smoothly takes the stage. He brilliantly explains the data but keeps highlighting Lily's crucial contributions, turning the moment into a stunning demonstration of their perfect collaborative and romantic synergy.
+        publication:
+          views:
+          - id: node_049_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#49 Alone with Ethan'
+              - label: 当前状态
+                value: node_049
+              - label: 音频数量
+                value: 4
+              - label: 可选目标
+                value: node_045
+      - name: node_049_choice
+        display_name: Alone with Ethan - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_045
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_045: Hold up his keycard. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_049_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_045
+                text: Hold up his keycard.
+                price: 20
+      transitions: []
+    node_050:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_050
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Secret Hand Hold
+      scenes:
+      - name: node_050_story
+        display_name: Secret Hand Hold
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#50 Secret Hand Hold]
+          Lily softly squeezes Ethan's hand on the armrest. Startled, Ethan's fingers instantly entwine with hers, his thumb tracing her knuckles under the desk while keeping a perfectly professional, stoic face for the surrounding audience.
+        publication:
+          views:
+          - id: node_050_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#50 Secret Hand Hold'
+              - label: 当前状态
+                value: node_050
+              - label: 音频数量
+                value: 4
+              - label: 可选目标
+                value: node_043
+      - name: node_050_choice
+        display_name: Secret Hand Hold - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_043
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_043: Focus on the stage. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_050_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_043
+                text: Focus on the stage.
+                price: 20
+      transitions: []
+    node_051:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_051
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Silence is Best
+      scenes:
+      - name: node_051_story
+        display_name: Silence is Best
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#51 Silence is Best]
+          Lily panics and drafts a cold, academic denial. Ethan quickly stops her, arguing that over-explaining looks suspicious, forcing Lily to nervously agree to just ignore it.
+        publication:
+          views:
+          - id: node_051_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#51 Silence is Best'
+              - label: 当前状态
+                value: node_051
+              - label: 音频数量
+                value: 7
+              - label: 可选目标
+                value: node_041
+      - name: node_051_choice
+        display_name: Silence is Best - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_041
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_041: Hurry to the seminar. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_051_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_041
+                text: Hurry to the seminar.
+                price: 20
+      transitions: []
+    node_052:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_052
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Sweet Tension
+      scenes:
+      - name: node_052_story
+        display_name: Sweet Tension
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#52 Sweet Tension]
+          Flustered by his closeness, Lily blushes deeply and gives Ethan a playful push. He chuckles softly, stepping back just enough to let her breathe but keeping his gaze locked on her face, thoroughly enjoying her flustered reaction and the sweet tension between them.
+        publication:
+          views:
+          - id: node_052_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#52 Sweet Tension'
+              - label: 当前状态
+                value: node_052
+              - label: 音频数量
+                value: 3
+              - label: 可选目标
+                value: node_039
+      - name: node_052_choice
+        display_name: Sweet Tension - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_039
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_039: Turn around to see the noise. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_052_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_039
+                text: Turn around to see the noise.
+                price: 20
+      transitions: []
+    node_053:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_053
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Perfect Girlfriend Test
+      scenes:
+      - name: node_053_story
+        display_name: Perfect Girlfriend Test
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#53 Perfect Girlfriend Test]
+          Lily confesses the fake dating contract to Linh in the Life Science Lab Hallway, shocking Linh, who is relieved Lily isn't actually falling for Ethan. Suddenly, Ethan interrupts with news that Ben Miller has invited them to an exclusive faculty dinner tonight to finalize the research funding. Emphasizing the high-stakes performance required, Ethan places his hand on Lily's waist, creating romantic tension. Challenged by Linh's protectiveness and Ethan's anxiety, Lily must choose whether to bring Linh along to the dinner as her assistant or trust herself to play Ethan's perfect girlfriend alone.
+        publication:
+          views:
+          - id: node_053_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#53 Perfect Girlfriend Test'
+              - label: 当前状态
+                value: node_053
+              - label: 音频数量
+                value: 7
+              - label: 可选目标
+                value: node_054, node_068
+      - name: node_053_choice
+        display_name: Perfect Girlfriend Test - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_054
+          - node_068
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_054: Linh is coming with us as my assistant. | price=20
+          - node_068: Trust me, Ethan. I can play your perfect girlfriend alone. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_053_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_054
+                text: Linh is coming with us as my assistant.
+                price: 20
+              - target: node_068
+                text: Trust me, Ethan. I can play your perfect girlfriend alone.
+                price: 20
+      transitions: []
+    node_054:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_054
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Hand in Hand
+      scenes:
+      - name: node_054_story
+        display_name: Hand in Hand
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#54 Hand in Hand]
+          Lily insists on bringing Linh as her assistant. Ethan is annoyed but reluctantly agrees, warning Linh to stay professional as they head to the venue.
+        publication:
+          views:
+          - id: node_054_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#54 Hand in Hand'
+              - label: 当前状态
+                value: node_054
+              - label: 音频数量
+                value: 6
+              - label: 可选目标
+                value: node_055
+      - name: node_054_choice
+        display_name: Hand in Hand - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_055
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_055: Take a deep breath and step inside. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_054_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_055
+                text: Take a deep breath and step inside.
+                price: 20
+      transitions: []
+    node_055:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_055
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Who Fell First
+      scenes:
+      - name: node_055_story
+        display_name: Who Fell First
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#55 Who Fell First]
+          Arriving at the elegant Faculty Club, Lily and Ethan join Ben Miller for dinner. Under the table, Ethan squeezes Lily's hand tightly, silently pleading for assistance as Ben probes into their relationship, asking who fell in love first and when the spark started. Lily must quickly decide how to paint their origin story to convince Ben, choosing between claiming she fell for Ethan first during late-night lab sessions, or declaring that Ethan was completely helpless against her scientific charm.
+        publication:
+          views:
+          - id: node_055_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#55 Who Fell First'
+              - label: 当前状态
+                value: node_055
+              - label: 音频数量
+                value: 5
+              - label: 可选目标
+                value: node_056, node_067
+      - name: node_055_choice
+        display_name: Who Fell First - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_056
+          - node_067
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_056: I fell for him first during late-night lab sessions. | price=20
+          - node_067: He was completely helpless against my scientific charm. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_055_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_056
+                text: I fell for him first during late-night lab sessions.
+                price: 20
+              - target: node_067
+                text: He was completely helpless against my scientific charm.
+                price: 20
+      transitions: []
+    node_056:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_056
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Sweet Lies
+      scenes:
+      - name: node_056_story
+        display_name: Sweet Lies
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#56 Sweet Lies]
+          Lily spins a romantic tale of watching Ethan model proteins late at night. Ethan plays along, adding his own touching fake memories of her dedication, completely charming Ben.
+        publication:
+          views:
+          - id: node_056_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#56 Sweet Lies'
+              - label: 当前状态
+                value: node_056
+              - label: 音频数量
+                value: 6
+              - label: 可选目标
+                value: node_057
+      - name: node_056_choice
+        display_name: Sweet Lies - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_057
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_057: Hold your breath as Ben smiles. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_056_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_057
+                text: Hold your breath as Ben smiles.
+                price: 20
+      transitions: []
+    node_057:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_057
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Fake Couple Pose
+      scenes:
+      - name: node_057_story
+        display_name: Fake Couple Pose
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#57 Fake Couple Pose]
+          Delighted by their story, Ben Miller approves the preliminary joint funding. To celebrate the partnership, he insists on taking a photo of Lily and Ethan for the university newsletter. Despite Ethan's attempt to decline, Ben presses on, prompting Ethan to pull Lily close. Panicked about exposing their fake relationship to the entire campus, Lily must decide how to pose for the camera, choosing between leaning in to rest her head on Ethan's shoulder, or turning to wrap her arm around his neck.
+        publication:
+          views:
+          - id: node_057_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#57 Fake Couple Pose'
+              - label: 当前状态
+                value: node_057
+              - label: 音频数量
+                value: 7
+              - label: 可选目标
+                value: node_058, node_066
+      - name: node_057_choice
+        display_name: Fake Couple Pose - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_058
+          - node_066
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_058: Lean in and rest your head on his shoulder. | price=20
+          - node_066: Turn and wrap your arm around his neck. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_057_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_058
+                text: Lean in and rest your head on his shoulder.
+                price: 20
+              - target: node_066
+                text: Turn and wrap your arm around his neck.
+                price: 20
+      transitions: []
+    node_058:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_058
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Lean On Him
+      scenes:
+      - name: node_058_story
+        display_name: Lean On Him
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#58 Lean On Him]
+          Lily gently leans her head on Ethan's shoulder. Feeling his shoulders tense then soften, she breathes in his clean scent. The camera flashes, capturing their quiet, heart-fluttering intimacy.
+        publication:
+          views:
+          - id: node_058_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#58 Lean On Him'
+              - label: 当前状态
+                value: node_058
+              - label: 音频数量
+                value: 4
+              - label: 可选目标
+                value: node_059
+      - name: node_058_choice
+        display_name: Lean On Him - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_059
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_059: Walk out with him. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_058_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_059
+                text: Walk out with him.
+                price: 20
+      transitions: []
+    node_059:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_059
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Leaked Photo Scandal
+      scenes:
+      - name: node_059_story
+        display_name: Leaked Photo Scandal
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#59 Leaked Photo Scandal]
+          After leaving the Faculty Club, Lily and Ethan walk in silence to the Campus Parking Area. Lily receives an urgent text from her roommate Theo showing a leaked, highly romantic photo of them at dinner already trending on the campus forum. Ethan tenses up, fearing a university inquiry could ruin their chances before the research funding is secured. As he unlocks his car in heavy silence, Lily must decide how to handle the situation: either tease Ethan by suggesting they look pretty good together, or demand they establish strict rules before the rumor mill spins completely out of control.
+        publication:
+          views:
+          - id: node_059_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#59 Leaked Photo Scandal'
+              - label: 当前状态
+                value: node_059
+              - label: 音频数量
+                value: 5
+              - label: 可选目标
+                value: node_060, node_065
+      - name: node_059_choice
+        display_name: Leaked Photo Scandal - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_060
+          - node_065
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_060: Admit it, Professor, we look pretty good together. | price=20
+          - node_065: We need to set strict rules before this gets any crazier. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_059_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_060
+                text: Admit it, Professor, we look pretty good together.
+                price: 20
+              - target: node_065
+                text: We need to set strict rules before this gets any crazier.
+                price: 20
+      transitions: []
+    node_060:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_060
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Caught You Blushing
+      scenes:
+      - name: node_060_story
+        display_name: Caught You Blushing
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#60 Caught You Blushing]
+          Lily playfully teases Ethan that they look great in the leaked photo. Ethan, caught completely off guard, gets flustered and tries to dismiss it, but his blushing ears in the dim car light betray his reaction.
+        publication:
+          views:
+          - id: node_060_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#60 Caught You Blushing'
+              - label: 当前状态
+                value: node_060
+              - label: 音频数量
+                value: 4
+              - label: 可选目标
+                value: node_061
+      - name: node_060_choice
+        display_name: Caught You Blushing - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_061
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_061: Step out at my apartment. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_060_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_061
+                text: Step out at my apartment.
+                price: 20
+      transitions: []
+    node_061:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_061
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Caught by Roommate
+      scenes:
+      - name: node_061_story
+        display_name: Caught by Roommate
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#61 Caught by Roommate]
+          Arriving at Lily's apartment, Lily and Ethan are immediately cornered by Lily's dramatic roommate and campus gossip king, Theo, who brandishes the viral photo on his phone and demands an explanation. Annoyed by the intrusion, Ethan tells Lily to handle the situation to prevent further gossip. Lily must decide how to diffuse Theo's interrogation, choosing between hugging Ethan's arm and claiming they are in love, or pulling Theo aside to fabricate a lie about their research collaboration.
+        publication:
+          views:
+          - id: node_061_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#61 Caught by Roommate'
+              - label: 当前状态
+                value: node_061
+              - label: 音频数量
+                value: 5
+              - label: 可选目标
+                value: node_062, node_064
+      - name: node_061_choice
+        display_name: Caught by Roommate - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_062
+          - node_064
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_062: Hug Ethan's arm and say we are in love. | price=20
+          - node_064: Pull Theo aside to make up a research lie. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_061_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_062
+                text: Hug Ethan's arm and say we are in love.
+                price: 20
+              - target: node_064
+                text: Pull Theo aside to make up a research lie.
+                price: 20
+      transitions: []
+    node_062:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_062
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Ethan Holds Me Close
+      scenes:
+      - name: node_062_story
+        display_name: Ethan Holds Me Close
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#62 Ethan Holds Me Close]
+          Lily hugs Ethan's arm, declaring passionately that they are madly in love. Ethan stiffens in surprise but plays along with a soft, unexpectedly genuine smile. Theo gasps dramatically, utterly thrilled by the juicy development.
+        publication:
+          views:
+          - id: node_062_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#62 Ethan Holds Me Close'
+              - label: 当前状态
+                value: node_062
+              - label: 音频数量
+                value: 5
+              - label: 可选目标
+                value: node_063
+      - name: node_062_choice
+        display_name: Ethan Holds Me Close - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_063
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_063: Look up at him. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_062_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_063
+                text: Look up at him.
+                price: 20
+      transitions: []
+    node_063:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_063
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Love Begins
+      scenes:
+      - name: node_063_story
+        display_name: Love Begins
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#63 Love Begins]
+          In the quiet hallway of Lily's apartment, Ethan hands Lily the signed official document that unfreezes her pancreatic cancer research funding, successfully saving her lab. When Lily wonders if this means their contract is officially over, Ethan pulls her into his arms, confessing that he does not want their connection to end. He asks her to go on a real date with him without any contracts or lies. Lily happily accepts, and they share a passionate, sweet kiss, turning their fake partnership into a genuine love story.
+        publication:
+          views:
+          - id: node_063_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#63 Love Begins'
+              - label: 当前状态
+                value: node_063
+              - label: 音频数量
+                value: 8
+      transitions:
+      - to: end
+    node_064:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_064
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Midnight Lie
+      scenes:
+      - name: node_064_story
+        display_name: Midnight Lie
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#64 Midnight Lie]
+          Lily drags Theo aside, whispering a convoluted lie about a high-stakes, 24-hour academic modeling collaboration. Theo looks highly skeptical, amused by Lily's panic, while Ethan watches with dry, silent amusement.
+        publication:
+          views:
+          - id: node_064_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#64 Midnight Lie'
+              - label: 当前状态
+                value: node_064
+              - label: 音频数量
+                value: 6
+              - label: 可选目标
+                value: node_063
+      - name: node_064_choice
+        display_name: Midnight Lie - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_063
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_063: Look at Ethan. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_064_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_063
+                text: Look at Ethan.
+                price: 20
+      transitions: []
+    node_065:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_065
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Setting Cold Boundaries
+      scenes:
+      - name: node_065_story
+        display_name: Setting Cold Boundaries
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#65 Setting Cold Boundaries]
+          Lily insists on setting strict boundaries before the rumors spin out of control. Ethan quickly agrees, masking a fleeting hint of disappointment behind his cold, professional mask as they get into the car.
+        publication:
+          views:
+          - id: node_065_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#65 Setting Cold Boundaries'
+              - label: 当前状态
+                value: node_065
+              - label: 音频数量
+                value: 5
+              - label: 可选目标
+                value: node_061
+      - name: node_065_choice
+        display_name: Setting Cold Boundaries - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_061
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_061: Step out at my apartment. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_065_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_061
+                text: Step out at my apartment.
+                price: 20
+      transitions: []
+    node_066:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_066
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Intimate Embrace
+      scenes:
+      - name: node_066_story
+        display_name: Intimate Embrace
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#66 Intimate Embrace]
+          Lily boldly wraps her arm around Ethan's neck. Startled, Ethan grips her waist tightly to stabilize her. The camera flashes, freezing their intense, highly convincing embrace.
+        publication:
+          views:
+          - id: node_066_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#66 Intimate Embrace'
+              - label: 当前状态
+                value: node_066
+              - label: 音频数量
+                value: 4
+              - label: 可选目标
+                value: node_059
+      - name: node_066_choice
+        display_name: Intimate Embrace - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_059
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_059: Walk out with him. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_066_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_059
+                text: Walk out with him.
+                price: 20
+      transitions: []
+    node_067:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_067
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Disarmed by Genius
+      scenes:
+      - name: node_067_story
+        display_name: Disarmed by Genius
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#67 Disarmed by Genius]
+          Lily boldly claims Ethan was utterly mesmerized by her scientific brilliance. Though caught off guard, Ethan smoothly recovers and mock-grudgingly admits her genius totally disarmed him, amusing Ben.
+        publication:
+          views:
+          - id: node_067_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#67 Disarmed by Genius'
+              - label: 当前状态
+                value: node_067
+              - label: 音频数量
+                value: 6
+              - label: 可选目标
+                value: node_057
+      - name: node_067_choice
+        display_name: Disarmed by Genius - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_057
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_057: Hold your breath as Ben smiles. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_067_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_057
+                text: Hold your breath as Ben smiles.
+                price: 20
+      transitions: []
+    node_068:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_068
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Holding Hands
+      scenes:
+      - name: node_068_story
+        display_name: Holding Hands
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#68 Holding Hands]
+          Lily confidently tells Ethan she can handle this alone. Linh reluctantly backs down with a warning, leaving Ethan secretly impressed as they depart together.
+        publication:
+          views:
+          - id: node_068_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#68 Holding Hands'
+              - label: 当前状态
+                value: node_068
+              - label: 音频数量
+                value: 7
+              - label: 可选目标
+                value: node_055
+      - name: node_068_choice
+        display_name: Holding Hands - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_055
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_055: Take a deep breath and step inside. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_068_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_055
+                text: Take a deep breath and step inside.
+                price: 20
+      transitions: []
+    node_069:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_069
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Let Them Stare
+      scenes:
+      - name: node_069_story
+        display_name: Let Them Stare
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#69 Let Them Stare]
+          Lily loops her arm tightly through Ethan's, leaning slightly into his shoulder. The sudden closeness makes Ethan's posture stiffen briefly before he relaxes and adjusts his stride, creating a picture of elegant, quiet intimacy that turns every head in the hallway.
+        publication:
+          views:
+          - id: node_069_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#69 Let Them Stare'
+              - label: 当前状态
+                value: node_069
+              - label: 音频数量
+                value: 3
+              - label: 可选目标
+                value: node_005
+      - name: node_069_choice
+        display_name: Let Them Stare - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_005
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_005: Walk into the lounge. | price=20
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_069_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_005
+                text: Walk into the lounge.
+                price: 20
+      transitions: []
+    node_070:
+      entry_effects:
+      - type: set_state
+        entity: GAME
+        attr: current_node
+        value: node_070
+      - type: set_state
+        entity: GAME
+        attr: current_node_title
+        value: Showtime In Ten
+      scenes:
+      - name: node_070_story
+        display_name: Showtime In Ten
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+        cue: |-
+          [#70 Showtime In Ten]
+          Lily demands immediate full funding. Ethan, amused by her audacity, counters by unfreezing an initial phase of her budget, promising the rest only after Ben Miller signs the collaboration.
+        publication:
+          views:
+          - id: node_070_metadata
+            kind: key-value
+            title: Castloop 节点信息
+            audience: public
+            data:
+              rows:
+              - label: 剧本编号
+                value: '1780138388'
+              - label: 源节点
+                value: '#70 Showtime In Ten'
+              - label: 当前状态
+                value: node_070
+              - label: 音频数量
+                value: 6
+              - label: 可选目标
+                value: node_003
+      - name: node_070_choice
+        display_name: Showtime In Ten - 选择
+        scene_type: choose
+        scope: public
+        participants: all
+        candidates:
+          extra:
+          - node_003
+        action_policy:
+          kind: choose_one
+          target: required
+          validate_candidates: true
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: target
+          include_reason: false
+        cue: |-
+          请选择下一步。提交 target 时必须使用目标状态 ID。
+          - node_003: What do you mean right now?
+        resolution:
+          effects:
+          - type: set_state
+            entity: GAME
+            attr: last_choice_target
+            value: data.target
+          - type: flow_set_next
+            state: data.target
+        publication:
+          views:
+          - id: node_070_options
+            kind: list
+            title: 分支选项
+            audience: public
+            data:
+              items:
+              - target: node_003
+                text: What do you mean right now?
+                price: null
+      transitions: []
+    end:
+      terminal: true
+      scenes: []
+      transitions: []
+referee:
+  win_conditions: []
