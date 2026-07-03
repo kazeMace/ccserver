@@ -1,15 +1,15 @@
 meta:
   id: castloop_1779438786
   name: castloop_1779438786_slip_into_your_heart
-  title: Slip Into Your Heart
+  title: 滑入你的心里
   version: 0.1.0
   author: castloop_import_sample
-  description: A boy who has a supernatural ability spends one school festival day trying to stay invisible — and failing, one unstoppable consequence at a time, in front of the one girl he least wanted to notice.
+  description: 一个拥有超自然能力的男孩在一个学校节日里试图在一个他最不想注意到的女孩面前保持隐形，但最终失败了，一次一个不可阻挡的后果。
   tags:
   - castloop
   - branching_story
   - import_sample
-  locale: en-US
+  locale: zh-CN
 runtime:
   type: game_session
 extensions:
@@ -30,26 +30,26 @@ extensions:
 concepts:
   roles:
     reader:
-      display_name: Reader
-      description: Single player who chooses the next branch.
+      display_name: 读者
+      description: 选择下一条分支的单人玩家。
   factions:
     solo:
-      display_name: Solo
-      description: Single-player story progression.
+      display_name: 单人
+      description: 单人故事推进。
   scopes:
     public:
-      display_name: Story
-      description: Visible story text and branch options.
+      display_name: 故事
+      description: 可见的故事文本和分支选项。
   abilities:
     choose_branch:
-      display_name: Choose branch
-      description: Select the next Castloop node.
-      prompt: Pick one target state from the options.
+      display_name: 选择分支
+      description: 选择下一个 Castloop 节点。
+      prompt: 从选项中选择一个目标状态。
 roles:
 - name: reader
-  display_name: Reader
+  display_name: 读者
   faction: solo
-  brief: You are reading an imported branching story and choosing the next node.
+  brief: 你正在阅读导入的分支故事，并选择下一个节点。
   scopes:
   - public
   abilities:
@@ -78,10 +78,10 @@ flow:
       - type: set_state
         entity: GAME
         attr: current_node_title
-        value: Curtain, Skin, Zero Friction
+        value: 窗帘、皮肤、零摩擦
       scenes:
       - name: node_001_story
-        display_name: Curtain, Skin, Zero Friction
+        display_name: 窗帘、皮肤、零摩擦
         scene_type: narration
         scope: public
         participants: all
@@ -90,8 +90,8 @@ flow:
         response:
           mode: none
         cue: |-
-          [#1 Curtain, Skin, Zero Friction]
-          The school festival is setting up around him, and Haruki wants no part of it. When a bucket of red paint flies toward Mizuki, he reverses it without thinking — and pays the price: friction vanishes beneath her feet, she pitches sideways, and she's falling straight at him. The morning has barely started.
+          [#1 窗帘、皮肤、零摩擦]
+          学园祭即将在他周围举行，春树不想参与其中。当一桶红色油漆飞向水树时，他不假思索地扭转了方向，并付出了代价：她脚下的摩擦力消失了，她向侧面倾斜，然后径直向他摔倒。早上才刚刚开始。
         publication:
           views:
           - id: node_001_metadata
@@ -103,7 +103,7 @@ flow:
               - label: 剧本编号
                 value: '1779438786'
               - label: 源节点
-                value: '#1 Curtain, Skin, Zero Friction'
+                value: '#1 窗帘、皮肤、零摩擦'
               - label: 当前状态
                 value: node_001
               - label: 视频链接
@@ -113,7 +113,7 @@ flow:
               - label: 可选目标
                 value: node_002, node_003
       - name: node_001_choice
-        display_name: Curtain, Skin, Zero Friction - 选择
+        display_name: 窗帘、皮肤、零摩擦 - 选择
         scene_type: choose
         scope: public
         participants: all
@@ -133,8 +133,8 @@ flow:
           include_reason: false
         cue: |-
           请选择下一步。提交 target 时必须使用目标状态 ID。
-          - node_002: Stand there frozen
-          - node_003: Reach out and catch her
+          - node_002: 站在那里冻僵了
+          - node_003: 伸手抓住她
         resolution:
           effects:
           - type: set_state
@@ -152,10 +152,10 @@ flow:
             data:
               items:
               - target: node_002
-                text: Stand there frozen
+                text: 站在那里冻僵了
                 price: null
               - target: node_003
-                text: Reach out and catch her
+                text: 伸手抓住她
                 price: null
       transitions: []
     node_002:
@@ -167,10 +167,10 @@ flow:
       - type: set_state
         entity: GAME
         attr: current_node_title
-        value: Frozen in Place
+        value: 冻结在原地
       scenes:
       - name: node_002_story
-        display_name: Frozen in Place
+        display_name: 冻结在原地
         scene_type: narration
         scope: public
         participants: all
@@ -179,8 +179,8 @@ flow:
         response:
           mode: none
         cue: |-
-          [#2 Frozen in Place]
-          Haruki freezes. Mizuki grabs his arm to catch herself, ends up pressed against his side, then stands up on her own and walks away with one remark about the paint on his pants. Sota grins. Nono beams. Haruki tries to shut the conversation down by bringing up what happened in the gymnasium yesterday — but Sota has no memory of shoving him in there, and no interest in the consequences.
+          [#2 冻结在原地]
+          春树愣住了。水希抓住他的手臂想抱住自己，结果被压在他的身边，然后自己站起来走开，对他裤子上的油漆说了一句。索塔咧嘴一笑。诺诺光束。春树试图通过提起昨天在体育馆发生的事情来结束谈话——但苍太不记得把他推到那里，也不关心后果。
         publication:
           views:
           - id: node_002_metadata
@@ -192,7 +192,7 @@ flow:
               - label: 剧本编号
                 value: '1779438786'
               - label: 源节点
-                value: '#2 Frozen in Place'
+                value: '#2 冻结在原地'
               - label: 当前状态
                 value: node_002
               - label: 视频链接
@@ -202,7 +202,7 @@ flow:
               - label: 可选目标
                 value: node_004
       - name: node_002_choice
-        display_name: Frozen in Place - 选择
+        display_name: 冻结在原地 - 选择
         scene_type: choose
         scope: public
         participants: all
@@ -221,7 +221,7 @@ flow:
           include_reason: false
         cue: |-
           请选择下一步。提交 target 时必须使用目标状态 ID。
-          - node_004: Her hair brushes your cheek as she gets up.
+          - node_004: 当她起身时，她的头发拂过你的脸颊。
         resolution:
           effects:
           - type: set_state
@@ -239,7 +239,7 @@ flow:
             data:
               items:
               - target: node_004
-                text: Her hair brushes your cheek as she gets up.
+                text: 当她起身时，她的头发拂过你的脸颊。
                 price: null
       transitions: []
     node_003:
@@ -251,10 +251,10 @@ flow:
       - type: set_state
         entity: GAME
         attr: current_node_title
-        value: Heartbeat Distance
+        value: 心跳距离
       scenes:
       - name: node_003_story
-        display_name: Heartbeat Distance
+        display_name: 心跳距离
         scene_type: narration
         scope: public
         participants: all
@@ -263,8 +263,8 @@ flow:
         response:
           mode: none
         cue: |-
-          [#3 Heartbeat Distance]
-          Haruki catches her — but the momentum carries, and for a moment they're close enough to hear each other breathe. She says something near his ear, her hair brushes his face, and then she's gone. Sota is already grinning. Haruki tries to kill the conversation by mentioning what happened in the gymnasium yesterday, but Sota doesn't remember pushing him in there at all.
+          [#3 心跳距离]
+          春树接住了她——但势头依然强劲，有那么一刻他们离得很近，可以听到彼此的呼吸声。她在他耳边说了些什么，她的头发拂过他的脸，然后就消失了。索塔已经在笑了。春树试图通过提及昨天在体育馆发生的事情来结束谈话，但苍太根本不记得把他推进去了。
         publication:
           views:
           - id: node_003_metadata
@@ -276,7 +276,7 @@ flow:
               - label: 剧本编号
                 value: '1779438786'
               - label: 源节点
-                value: '#3 Heartbeat Distance'
+                value: '#3 心跳距离'
               - label: 当前状态
                 value: node_003
               - label: 视频链接
@@ -286,7 +286,7 @@ flow:
               - label: 可选目标
                 value: node_004
       - name: node_003_choice
-        display_name: Heartbeat Distance - 选择
+        display_name: 心跳距离 - 选择
         scene_type: choose
         scope: public
         participants: all
@@ -305,7 +305,7 @@ flow:
           include_reason: false
         cue: |-
           请选择下一步。提交 target 时必须使用目标状态 ID。
-          - node_004: Her hair brushes your cheek as she gets up.
+          - node_004: 当她起身时，她的头发拂过你的脸颊。
         resolution:
           effects:
           - type: set_state
@@ -323,7 +323,7 @@ flow:
             data:
               items:
               - target: node_004
-                text: Her hair brushes your cheek as she gets up.
+                text: 当她起身时，她的头发拂过你的脸颊。
                 price: null
       transitions: []
     node_004:
@@ -335,10 +335,10 @@ flow:
       - type: set_state
         entity: GAME
         attr: current_node_title
-        value: Behind the Fallen Curtain
+        value: 落下的帷幕后面
       scenes:
       - name: node_004_story
-        display_name: Behind the Fallen Curtain
+        display_name: 落下的帷幕后面
         scene_type: narration
         scope: public
         participants: all
@@ -347,8 +347,8 @@ flow:
         response:
           mode: none
         cue: |-
-          [#4 Behind the Fallen Curtain]
-          Rin gets up off Haruki, straightens her ribbon to exactly where it was, and tells Haruki she'll be watching him at the festival tomorrow. Today, he ends up alone in the auditorium backstage with a knotted string of lights — and then Mizuki walks in to change. A prop door starts to tilt. He stops it. The cost calculates where it's going to land, and of course it lands there. The curtain drops without a sound. From the hallway: a knock.
+          [#4 落下的帷幕后面]
+          凛从春树身上站起来，将丝带拉直到原来的位置，并告诉春树她明天会在音乐节上看着他。今天，他独自一人在礼堂后台，手里拿着一串打结的灯——然后水希走进去换衣服。支撑门开始倾斜。他阻止了。成本计算的是它要降落在哪里，当然就降落在那里。幕布无声无息地落下。走廊里传来：敲门声。
         publication:
           views:
           - id: node_004_metadata
@@ -360,7 +360,7 @@ flow:
               - label: 剧本编号
                 value: '1779438786'
               - label: 源节点
-                value: '#4 Behind the Fallen Curtain'
+                value: '#4 落下的帷幕后面'
               - label: 当前状态
                 value: node_004
               - label: 视频链接
@@ -370,7 +370,7 @@ flow:
               - label: 可选目标
                 value: node_005, node_006
       - name: node_004_choice
-        display_name: Behind the Fallen Curtain - 选择
+        display_name: 落下的帷幕后面 - 选择
         scene_type: choose
         scope: public
         participants: all
@@ -390,8 +390,8 @@ flow:
           include_reason: false
         cue: |-
           请选择下一步。提交 target 时必须使用目标状态 ID。
-          - node_005: Close my eyes and turn away | price=20
-          - node_006: Step in and cover Mizuki | price=100
+          - node_005: 闭上眼睛转身离开 | price=20
+          - node_006: 介入并掩护水希 | price=100
         resolution:
           effects:
           - type: set_state
@@ -409,10 +409,10 @@ flow:
             data:
               items:
               - target: node_005
-                text: Close my eyes and turn away
+                text: 闭上眼睛转身离开
                 price: 20
               - target: node_006
-                text: Step in and cover Mizuki
+                text: 介入并掩护水希
                 price: 100
       transitions: []
     node_005:
@@ -424,10 +424,10 @@ flow:
       - type: set_state
         entity: GAME
         attr: current_node_title
-        value: See No Evil
+        value: 无恶不作
       scenes:
       - name: node_005_story
-        display_name: See No Evil
+        display_name: 无恶不作
         scene_type: narration
         scope: public
         participants: all
@@ -436,8 +436,8 @@ flow:
         response:
           mode: none
         cue: |-
-          [#5 See No Evil]
-          Haruki's first instinct is to step behind the prop door. His feet are still visible. Rin walks in, glances down at them, and tells him to come out — she already knew it would be him. Mizuki changes and leaves without a word, without a look back. Rin opens her record book and waits for his explanation. Haruki watches the door and says nothing. He can't stop wondering whether she hates him now.
+          [#5 无恶不作]
+          春树的第一反应是走到道具门后面。他的脚仍然可见。凛走进来，低头看了他们一眼，叫他出来——她已经知道会是他了。水树身形一变，一言不发，头也不回地离开了。凛打开记录本，等待着他的解释。春树看着门，什么也没说。他无法停止想知道她现在是否恨他。
         publication:
           views:
           - id: node_005_metadata
@@ -449,7 +449,7 @@ flow:
               - label: 剧本编号
                 value: '1779438786'
               - label: 源节点
-                value: '#5 See No Evil'
+                value: '#5 无恶不作'
               - label: 当前状态
                 value: node_005
               - label: 视频链接
@@ -459,7 +459,7 @@ flow:
               - label: 可选目标
                 value: node_007
       - name: node_005_choice
-        display_name: See No Evil - 选择
+        display_name: 无恶不作 - 选择
         scene_type: choose
         scope: public
         participants: all
@@ -478,7 +478,7 @@ flow:
           include_reason: false
         cue: |-
           请选择下一步。提交 target 时必须使用目标状态 ID。
-          - node_007: Wait for Rin's verdict | price=20
+          - node_007: 等待凛的裁决 | price=20
         resolution:
           effects:
           - type: set_state
@@ -496,7 +496,7 @@ flow:
             data:
               items:
               - target: node_007
-                text: Wait for Rin's verdict
+                text: 等待凛的裁决
                 price: 20
       transitions: []
     node_006:
@@ -508,10 +508,10 @@ flow:
       - type: set_state
         entity: GAME
         attr: current_node_title
-        value: An Unexpected Ally
+        value: 意想不到的盟友
       scenes:
       - name: node_006_story
-        display_name: An Unexpected Ally
+        display_name: 意想不到的盟友
         scene_type: narration
         scope: public
         participants: all
@@ -520,8 +520,8 @@ flow:
         response:
           mode: none
         cue: |-
-          [#6 An Unexpected Ally]
-          Haruki picks up the curtain, turns his back to Mizuki, and holds it up between her and the door — both arms raised, face red. When Rin walks in, he tells her whatever this looks like, it's on him. Mizuki comes out in her ceremony uniform, pauses beside Rin, and without looking at Haruki says: the curtain fell on its own. Rin closes her record book, unconvinced. Haruki watches the door, and can't work out why Mizuki said that.
+          [#6 意想不到的盟友]
+          春树拿起窗帘，背对美月，将其挡在她和门之间，双臂高举，脸色通红。当凛走进来时，他告诉她无论这件事是什么样子，都是他的责任。穿着礼服的美月走出来，在凛身旁停了下来，没有看春树，说道：幕布自行落下。凛合上她的记录本，有些不相信。春树看着门，不明白美月为什么这么说。
         publication:
           views:
           - id: node_006_metadata
@@ -533,7 +533,7 @@ flow:
               - label: 剧本编号
                 value: '1779438786'
               - label: 源节点
-                value: '#6 An Unexpected Ally'
+                value: '#6 意想不到的盟友'
               - label: 当前状态
                 value: node_006
               - label: 视频链接
@@ -543,7 +543,7 @@ flow:
               - label: 可选目标
                 value: node_007
       - name: node_006_choice
-        display_name: An Unexpected Ally - 选择
+        display_name: 意想不到的盟友 - 选择
         scene_type: choose
         scope: public
         participants: all
@@ -562,7 +562,7 @@ flow:
           include_reason: false
         cue: |-
           请选择下一步。提交 target 时必须使用目标状态 ID。
-          - node_007: Wait for Rin's verdict | price=20
+          - node_007: 等待凛的裁决 | price=20
         resolution:
           effects:
           - type: set_state
@@ -580,7 +580,7 @@ flow:
             data:
               items:
               - target: node_007
-                text: Wait for Rin's verdict
+                text: 等待凛的裁决
                 price: 20
       transitions: []
     node_007:
@@ -592,10 +592,10 @@ flow:
       - type: set_state
         entity: GAME
         attr: current_node_title
-        value: The Prop List Crisis
+        value: 道具清单危机
       scenes:
       - name: node_007_story
-        display_name: The Prop List Crisis
+        display_name: 道具清单危机
         scene_type: narration
         scope: public
         participants: all
@@ -604,8 +604,8 @@ flow:
         response:
           mode: none
         cue: |-
-          [#7 The Prop List Crisis]
-          Sota and Nono come to the backstage to regroup with Haruki. Sota brings the prop delivery list for the day. Nono brings a can of soda — which sprays all over Haruki, and which Nono instinctively grabs the nearest piece of paper to wipe up. That piece of paper is the list. The three of them figure out they can sort the props by looking at them. Then Sota mentions, almost as an afterthought, that Mizuki is currently at the first destination.
+          [#7 道具清单危机]
+          苍太和野野来到后台与春树重聚。 苍太 带来了当天的道具交付清单。诺诺带来了一罐汽水，汽水喷到春树身上，诺诺本能地抓起最近的一张纸擦掉。那张纸就是清单。他们三人发现他们可以通过查看道具来对它们进行分类。然后苍太几乎是事后才想起，水希目前正在第一个目的地。
         publication:
           views:
           - id: node_007_metadata
@@ -617,7 +617,7 @@ flow:
               - label: 剧本编号
                 value: '1779438786'
               - label: 源节点
-                value: '#7 The Prop List Crisis'
+                value: '#7 道具清单危机'
               - label: 当前状态
                 value: node_007
               - label: 视频链接
@@ -627,7 +627,7 @@ flow:
               - label: 可选目标
                 value: node_008
       - name: node_007_choice
-        display_name: The Prop List Crisis - 选择
+        display_name: 道具清单危机 - 选择
         scene_type: choose
         scope: public
         participants: all
@@ -646,7 +646,7 @@ flow:
           include_reason: false
         cue: |-
           请选择下一步。提交 target 时必须使用目标状态 ID。
-          - node_008: Head to the maid café | price=20
+          - node_008: 前往女仆咖啡厅 | price=20
         resolution:
           effects:
           - type: set_state
@@ -664,7 +664,7 @@ flow:
             data:
               items:
               - target: node_008
-                text: Head to the maid café
+                text: 前往女仆咖啡厅
                 price: 20
       transitions: []
     node_008:
@@ -676,10 +676,10 @@ flow:
       - type: set_state
         entity: GAME
         attr: current_node_title
-        value: The Maid Café
+        value: 女仆咖啡厅
       scenes:
       - name: node_008_story
-        display_name: The Maid Café
+        display_name: 女仆咖啡厅
         scene_type: narration
         scope: public
         participants: all
@@ -688,8 +688,8 @@ flow:
         response:
           mode: none
         cue: |-
-          [#8 The Maid Café]
-          The three arrive at the maid café with the first batch of props. Sota is gone the moment he steps through the door, drawn helplessly toward the maids. Haruki notices Mizuki is already here — but she has her back to him, and he doesn't approach. Once the props are placed, Nono spots the freshly prepared coffees on the counter and volunteers to carry them over. The spring mechanism hidden in the tray's base fires. Three cups launch into the air. Haruki intervenes and stops them — and the cost lands on the wheels of a serving cart near the entrance. The cart begins sliding silently toward Mizuki. Her back is to it. She has no idea.
+          [#8 女仆咖啡厅]
+          三人带着第一批道具来到了女仆咖啡厅。索塔一进门就消失了，无助地被女仆们吸引着。春树注意到美月已经在这里了——但她背对着他，他没有靠近。道具放置完毕后，诺诺发现柜台上有新鲜煮好的咖啡，并自愿将它们搬过来。隐藏在托盘底部的弹簧装置会触发。三个杯子飞向空中。春树介入并阻止了他们——费用落在入口附近一辆服务车的轮子上。手推车开始无声无息地向瑞希滑行。她背对着它。她不知道。
         publication:
           views:
           - id: node_008_metadata
@@ -701,7 +701,7 @@ flow:
               - label: 剧本编号
                 value: '1779438786'
               - label: 源节点
-                value: '#8 The Maid Café'
+                value: '#8 女仆咖啡厅'
               - label: 当前状态
                 value: node_008
               - label: 视频链接
@@ -711,7 +711,7 @@ flow:
               - label: 可选目标
                 value: node_009, node_010
       - name: node_008_choice
-        display_name: The Maid Café - 选择
+        display_name: 女仆咖啡厅 - 选择
         scene_type: choose
         scope: public
         participants: all
@@ -731,8 +731,8 @@ flow:
           include_reason: false
         cue: |-
           请选择下一步。提交 target 时必须使用目标状态 ID。
-          - node_009: Shout a warning | price=20
-          - node_010: Rush to Mizuki's side | price=150
+          - node_009: 大声警告 | price=20
+          - node_010: 冲到美月身边 | price=150
         resolution:
           effects:
           - type: set_state
@@ -750,10 +750,10 @@ flow:
             data:
               items:
               - target: node_009
-                text: Shout a warning
+                text: 大声警告
                 price: 20
               - target: node_010
-                text: Rush to Mizuki's side
+                text: 冲到美月身边
                 price: 150
       transitions: []
     node_009:
@@ -765,10 +765,10 @@ flow:
       - type: set_state
         entity: GAME
         attr: current_node_title
-        value: I Need to Ask You
+        value: 我需要问你
       scenes:
       - name: node_009_story
-        display_name: I Need to Ask You
+        display_name: 我需要问你
         scene_type: narration
         scope: public
         participants: all
@@ -777,8 +777,8 @@ flow:
         response:
           mode: none
         cue: |-
-          [#9 I Need to Ask You]
-          Haruki warns Mizuki out loud as a runaway cart heads toward her. She stops it herself, but a dessert falls and shatters. The commotion draws everyone's attention. Mizuki walks over to Haruki, addresses him by name, and tells him she has something to ask — leaving him dreading that she's about to confront him about his ability.
+          [#9 我需要问你]
+          当一辆失控的马车朝她驶来时，春树大声警告瑞希。她自己阻止了它，但甜点掉了下来并摔碎了。骚动吸引了所有人的注意力。水希走到春树面前，叫出他的名字，并告诉他她有件事要问——这让他害怕她会质问他的能力。
         publication:
           views:
           - id: node_009_metadata
@@ -790,7 +790,7 @@ flow:
               - label: 剧本编号
                 value: '1779438786'
               - label: 源节点
-                value: '#9 I Need to Ask You'
+                value: '#9 我需要问你'
               - label: 当前状态
                 value: node_009
               - label: 视频链接
@@ -800,7 +800,7 @@ flow:
               - label: 可选目标
                 value: node_011
       - name: node_009_choice
-        display_name: I Need to Ask You - 选择
+        display_name: 我需要问你 - 选择
         scene_type: choose
         scope: public
         participants: all
@@ -819,7 +819,7 @@ flow:
           include_reason: false
         cue: |-
           请选择下一步。提交 target 时必须使用目标状态 ID。
-          - node_011: See what Mizuki says next | price=20
+          - node_011: 看看水木接下来怎么说 | price=20
         resolution:
           effects:
           - type: set_state
@@ -837,7 +837,7 @@ flow:
             data:
               items:
               - target: node_011
-                text: See what Mizuki says next
+                text: 看看水木接下来怎么说
                 price: 20
       transitions: []
     node_010:
@@ -849,10 +849,10 @@ flow:
       - type: set_state
         entity: GAME
         attr: current_node_title
-        value: You Caught My Attention
+        value: 你引起了我的注意
       scenes:
       - name: node_010_story
-        display_name: You Caught My Attention
+        display_name: 你引起了我的注意
         scene_type: narration
         scope: public
         participants: all
@@ -861,8 +861,8 @@ flow:
         response:
           mode: none
         cue: |-
-          [#10 You Caught My Attention]
-          Haruki rushes in and stops the cart himself, ending up face to face with Mizuki as a dessert shatters between them. Mizuki responds with warmth and a wink, calling him her hero — and then uses his name, catching him off guard. When he asks if she knows who he is, she tells him he caught her attention, leaving him flustered and unsettled in a way he can't quite explain.
+          [#10 你引起了我的注意]
+          春树冲进去，亲自停下车，最终与水树面对面，甜点在他们之间碎裂。水希热情地眨了眨眼，称他为她的英雄，然后使用了他的名字，让他措手不及。当他问她是否知道他是谁时，她告诉他，他引起了她的注意，让他以一种他无法解释的方式感到慌乱和不安。
         publication:
           views:
           - id: node_010_metadata
@@ -874,7 +874,7 @@ flow:
               - label: 剧本编号
                 value: '1779438786'
               - label: 源节点
-                value: '#10 You Caught My Attention'
+                value: '#10 你引起了我的注意'
               - label: 当前状态
                 value: node_010
               - label: 视频链接
@@ -884,7 +884,7 @@ flow:
               - label: 可选目标
                 value: node_011
       - name: node_010_choice
-        display_name: You Caught My Attention - 选择
+        display_name: 你引起了我的注意 - 选择
         scene_type: choose
         scope: public
         participants: all
@@ -903,7 +903,7 @@ flow:
           include_reason: false
         cue: |-
           请选择下一步。提交 target 时必须使用目标状态 ID。
-          - node_011: See what Mizuki says next | price=20
+          - node_011: 看看水木接下来怎么说 | price=20
         resolution:
           effects:
           - type: set_state
@@ -921,7 +921,7 @@ flow:
             data:
               items:
               - target: node_011
-                text: See what Mizuki says next
+                text: 看看水木接下来怎么说
                 price: 20
       transitions: []
     node_011:
@@ -933,10 +933,10 @@ flow:
       - type: set_state
         entity: GAME
         attr: current_node_title
-        value: The Cost Lasts Too Long
+        value: 成本持续太久
       scenes:
       - name: node_011_story
-        display_name: The Cost Lasts Too Long
+        display_name: 成本持续太久
         scene_type: narration
         scope: public
         participants: all
@@ -945,8 +945,8 @@ flow:
         response:
           mode: none
         cue: |-
-          [#11 The Cost Lasts Too Long]
-          Mizuki drops the subject without pushing further, thanks Haruki, and invites him to get coffee — her treat. Haruki hasn't quite caught up yet, but he follows. The two of them are walking toward the counter when the door opens, something snaps, and Rin lands hard on the floor. The friction on the entryway tiles hasn't recovered. Rin can't stand up. She looks around the room, finds Haruki, and doesn't look away.
+          [#11 成本持续太久]
+          瑞希没有继续追问就放弃了这个话题，感谢了春树，并邀请他去喝咖啡——她请客。春树还没有完全跟上，但他也跟了上来。两人正走向柜台时，门打开了，有什么东西啪地一声，凛重重地摔在了地板上。入口瓷砖上的摩擦力还没有恢复。凛站不起来了。她环顾房间，找到了春树，然后没有移开视线。
         publication:
           views:
           - id: node_011_metadata
@@ -958,7 +958,7 @@ flow:
               - label: 剧本编号
                 value: '1779438786'
               - label: 源节点
-                value: '#11 The Cost Lasts Too Long'
+                value: '#11 成本持续太久'
               - label: 当前状态
                 value: node_011
               - label: 视频链接
@@ -968,7 +968,7 @@ flow:
               - label: 可选目标
                 value: node_012, node_013
       - name: node_011_choice
-        display_name: The Cost Lasts Too Long - 选择
+        display_name: 成本持续太久 - 选择
         scene_type: choose
         scope: public
         participants: all
@@ -988,8 +988,8 @@ flow:
           include_reason: false
         cue: |-
           请选择下一步。提交 target 时必须使用目标状态 ID。
-          - node_012: Stay where you are | price=20
-          - node_013: Walk over and offer your hand | price=150
+          - node_012: 留在原地 | price=20
+          - node_013: 走过去伸出你的手 | price=150
         resolution:
           effects:
           - type: set_state
@@ -1007,10 +1007,10 @@ flow:
             data:
               items:
               - target: node_012
-                text: Stay where you are
+                text: 留在原地
                 price: 20
               - target: node_013
-                text: Walk over and offer your hand
+                text: 走过去伸出你的手
                 price: 150
       transitions: []
     node_012:
@@ -1022,10 +1022,10 @@ flow:
       - type: set_state
         entity: GAME
         attr: current_node_title
-        value: Keep Your Distance
+        value: 保持距离
       scenes:
       - name: node_012_story
-        display_name: Keep Your Distance
+        display_name: 保持距离
         scene_type: narration
         scope: public
         participants: all
@@ -1034,8 +1034,8 @@ flow:
         response:
           mode: none
         cue: |-
-          [#12 Keep Your Distance]
-          Rin picks herself up off the floor without help, confronts Haruki, and orders him to leave the festival grounds. Before he can respond, Nono and Sota appear and vouch for him, buying him a reprieve. Rin backs down with a warning and leaves. Sota immediately steers Haruki toward market street deliveries, and the three of them file out together — leaving Mizuki standing at the counter holding two cups of coffee, watching them go. The moment settles quietly on her face.
+          [#12 保持距离]
+          凛在没有帮助的情况下从地板上爬起来，面对春树，并命令他离开节日场地。在他做出回应之前，诺诺和索塔出现并为他担保，为他赢得了缓刑。凛发出警告后退缩并离开。苍太立即引导春树前往市场街的送货处，三人一起鱼贯而出——留下瑞希拿着两杯咖啡站在柜台旁，看着他们离开。这一刻静静地落在她的脸上。
         publication:
           views:
           - id: node_012_metadata
@@ -1047,7 +1047,7 @@ flow:
               - label: 剧本编号
                 value: '1779438786'
               - label: 源节点
-                value: '#12 Keep Your Distance'
+                value: '#12 保持距离'
               - label: 当前状态
                 value: node_012
               - label: 视频链接
@@ -1057,7 +1057,7 @@ flow:
               - label: 可选目标
                 value: node_014
       - name: node_012_choice
-        display_name: Keep Your Distance - 选择
+        display_name: 保持距离 - 选择
         scene_type: choose
         scope: public
         participants: all
@@ -1076,7 +1076,7 @@ flow:
           include_reason: false
         cue: |-
           请选择下一步。提交 target 时必须使用目标状态 ID。
-          - node_014: The dart is already in the air. | price=20
+          - node_014: 飞镖已经飞到空中了。 | price=20
         resolution:
           effects:
           - type: set_state
@@ -1094,7 +1094,7 @@ flow:
             data:
               items:
               - target: node_014
-                text: The dart is already in the air.
+                text: 飞镖已经飞到空中了。
                 price: 20
       transitions: []
     node_013:
@@ -1106,10 +1106,10 @@ flow:
       - type: set_state
         entity: GAME
         attr: current_node_title
-        value: Offer Your Hand
+        value: 伸出你的手
       scenes:
       - name: node_013_story
-        display_name: Offer Your Hand
+        display_name: 伸出你的手
         scene_type: narration
         scope: public
         participants: all
@@ -1118,8 +1118,8 @@ flow:
         response:
           mode: none
         cue: |-
-          [#13 Offer Your Hand]
-          Haruki walks over and helps Rin up, handing back her record book and telling her to go ahead and write him up. Rin, visibly flustered, admits it wasn't his fault and leaves without recording anything. Sota and Nono appear behind him, and Sota teases that Rin clearly has a soft spot for Haruki — which Haruki shuts down immediately. The three of them head out to market street, leaving Mizuki at the counter with two cups of coffee and an unfinished expression.
+          [#13 伸出你的手]
+          春树走过去，扶起凛，把她的记录本还给她，并告诉她去把他写下来。林显然很慌张，承认这不是他的错，然后没有记录任何东西就离开了。苍太和野野出现在他身后，苍太取笑凛显然对春树情有独钟——春树立即将其关闭。三人往市场街走去，留下水希拿着两杯咖啡站在柜台前，一脸未完成的表情。
         publication:
           views:
           - id: node_013_metadata
@@ -1131,7 +1131,7 @@ flow:
               - label: 剧本编号
                 value: '1779438786'
               - label: 源节点
-                value: '#13 Offer Your Hand'
+                value: '#13 伸出你的手'
               - label: 当前状态
                 value: node_013
               - label: 视频链接
@@ -1141,7 +1141,7 @@ flow:
               - label: 可选目标
                 value: node_014
       - name: node_013_choice
-        display_name: Offer Your Hand - 选择
+        display_name: 伸出你的手 - 选择
         scene_type: choose
         scope: public
         participants: all
@@ -1160,7 +1160,7 @@ flow:
           include_reason: false
         cue: |-
           请选择下一步。提交 target 时必须使用目标状态 ID。
-          - node_014: The dart is already in the air. | price=20
+          - node_014: 飞镖已经飞到空中了。 | price=20
         resolution:
           effects:
           - type: set_state
@@ -1178,7 +1178,7 @@ flow:
             data:
               items:
               - target: node_014
-                text: The dart is already in the air.
+                text: 飞镖已经飞到空中了。
                 price: 20
       transitions: []
     node_014:
@@ -1190,10 +1190,10 @@ flow:
       - type: set_state
         entity: GAME
         attr: current_node_title
-        value: The Market Street
+        value: 市场街
       scenes:
       - name: node_014_story
-        display_name: The Market Street
+        display_name: 市场街
         scene_type: narration
         scope: public
         participants: all
@@ -1202,8 +1202,8 @@ flow:
         response:
           mode: none
         cue: |-
-          [#14 The Market Street]
-          Haruki intervenes, the dart pivots in midair and hits the bullseye. Sota claims the achievement entirely as his own; the stall keeper plays along. While Sota is absorbed in picking a prize, Haruki quietly runs the perception scan — sweeps the whole area, finds nothing. The scan ends. Then his trousers start sliding down. He clamps a hand over his waistband and realizes the cost has landed on his own zipper. He looks for a direction with fewer people — and locks eyes with Mizuki, who is already walking toward him, a grilled skewer in her hand.
+          [#14 市场街]
+          春树介入，飞镖在半空中旋转并击中靶心。索塔声称这项成就完全属于他自己；摊主也跟着一起玩。当苍太全神贯注地挑选奖品时，春树则悄悄地进​​行感知扫描——扫遍整个区域，但一无所获。扫描结束。然后他的裤子开始滑落。他用一只手夹住腰带，意识到成本已经落在了他自己的拉链上。他寻找着人少的方向——然后与手上拿着烤串朝他走来的美月四目相对。
         publication:
           views:
           - id: node_014_metadata
@@ -1215,7 +1215,7 @@ flow:
               - label: 剧本编号
                 value: '1779438786'
               - label: 源节点
-                value: '#14 The Market Street'
+                value: '#14 市场街'
               - label: 当前状态
                 value: node_014
               - label: 视频链接
@@ -1225,7 +1225,7 @@ flow:
               - label: 可选目标
                 value: node_015
       - name: node_014_choice
-        display_name: The Market Street - 选择
+        display_name: 市场街 - 选择
         scene_type: choose
         scope: public
         participants: all
@@ -1244,7 +1244,7 @@ flow:
           include_reason: false
         cue: |-
           请选择下一步。提交 target 时必须使用目标状态 ID。
-          - node_015: ...Just pray Mizuki won't see it. | price=20
+          - node_015: ……祈祷瑞希不要看到吧。 | price=20
         resolution:
           effects:
           - type: set_state
@@ -1262,7 +1262,7 @@ flow:
             data:
               items:
               - target: node_015
-                text: '...Just pray Mizuki won''t see it.'
+                text: ……祈祷瑞希不要看到吧。
                 price: 20
       transitions: []
     node_015:
@@ -1274,10 +1274,10 @@ flow:
       - type: set_state
         entity: GAME
         attr: current_node_title
-        value: The Dangerous Skewer
+        value: 危险的串烧
       scenes:
       - name: node_015_story
-        display_name: The Dangerous Skewer
+        display_name: 危险的串烧
         scene_type: narration
         scope: public
         participants: all
@@ -1286,8 +1286,8 @@ flow:
         response:
           mode: none
         cue: |-
-          [#15 The Dangerous Skewer]
-          Mizuki walks over and catches Haruki mid-cover-up. He gets teased about looking at pretty girls, and before he can stop himself: "No — you're prettier." He claps a hand over his mouth, face red. Mizuki smiles, doesn't acknowledge it, and holds out a grilled skewer dripping with dark sauce — a substitute for the coffee she never got to buy him. Their fingertips meet on the bamboo skewer. Then Nono's voice cuts through the crowd and pulls Haruki's attention away. He lets go of the skewer before he's properly taken it. Mizuki draws her hand back and holds the skewer against her chest. Nono reports the wrong support beam. She hasn't finished before the grilled skewer stall behind them starts tilting. Haruki stops it. The perception scan finds the cost on Mizuki's hand — the hand holding the skewer, directly above her ceremonial dress. The skewer begins to slip. The choice screen appears.
+          [#15 危险的串烧]
+          美月走过去，接住了正在遮盖的春树。他因为看漂亮女孩而被嘲笑，他还没来得及阻止自己：“不——你更漂亮。”他用手捂住嘴，脸涨得通红。瑞希微笑着，没有承认这一点，并拿出一根滴着黑酱的烤串——这是她从未给他买过的咖啡的替代品。他们的指尖在竹签上相遇。然后野野的声音穿过人群，吸引了春树的注意力。在他正确地接过串之前，他就放开了它。美月收回手，将串肉棒抵在胸前。诺诺报告错误的支撑梁。她还没说完，身后的烤串摊就开始倾斜了。春树阻止了。感知扫描发现瑞希的手上有成本——那只手拿着串，就在她礼服的正上方。串肉串开始滑动。出现选择屏幕。
         publication:
           views:
           - id: node_015_metadata
@@ -1299,7 +1299,7 @@ flow:
               - label: 剧本编号
                 value: '1779438786'
               - label: 源节点
-                value: '#15 The Dangerous Skewer'
+                value: '#15 危险的串烧'
               - label: 当前状态
                 value: node_015
               - label: 视频链接
@@ -1309,7 +1309,7 @@ flow:
               - label: 可选目标
                 value: node_016, node_017
       - name: node_015_choice
-        display_name: The Dangerous Skewer - 选择
+        display_name: 危险的串烧 - 选择
         scene_type: choose
         scope: public
         participants: all
@@ -1329,8 +1329,8 @@ flow:
           include_reason: false
         cue: |-
           请选择下一步。提交 target 时必须使用目标状态 ID。
-          - node_016: Watch it fall | price=20
-          - node_017: Intercept at her chest | price=150
+          - node_016: 看着它坠落 | price=20
+          - node_017: 拦截在她的胸部 | price=150
         resolution:
           effects:
           - type: set_state
@@ -1348,10 +1348,10 @@ flow:
             data:
               items:
               - target: node_016
-                text: Watch it fall
+                text: 看着它坠落
                 price: 20
               - target: node_017
-                text: Intercept at her chest
+                text: 拦截在她的胸部
                 price: 150
       transitions: []
     node_016:
@@ -1363,10 +1363,10 @@ flow:
       - type: set_state
         entity: GAME
         attr: current_node_title
-        value: Let It Fall
+        value: 让它落下
       scenes:
       - name: node_016_story
-        display_name: Let It Fall
+        display_name: 让它落下
         scene_type: narration
         scope: public
         participants: all
@@ -1375,8 +1375,8 @@ flow:
         response:
           mode: none
         cue: |-
-          [#16 Let It Fall]
-          The skewer slips and grazes Mizuki's dress, leaving a small sauce stain. She excuses herself quietly and disappears into the crowd to deal with it, leaving Haruki standing alone looking at the skewer on the ground. The moment between them is gone. Afterward, Nono rounds Haruki up for the final prop delivery, abandoning a distracted Sota at a nearby stall. At the haunted house, Nono climbs a ladder to hang a prop corpse while Haruki steadies it below. When the ceiling hook begins to deform, Nono reaches for the rope on instinct, throwing her weight forward — then the ladder lurches and sends her pitching backward off it.
+          [#16 让它落下]
+          串子滑落，擦伤了瑞希的裙子，留下了一小块酱渍。她悄悄地告辞，消失在人群中去处理这件事，只剩下春树一个人站在地上，看着地上的烤串。他们之间的时刻已经过去了。随后，野野将春树围到最后的道具运送处，将心烦意乱的苍太遗弃在附近的摊位上。在鬼屋里，诺诺爬上梯子悬挂一具道具尸体，而春树则将其稳定在下面。当天花板挂钩开始变形时，诺诺本能地伸手去抓绳子，将她的体重向前抛——然后梯子突然倾斜，让她向后倾斜。
         publication:
           views:
           - id: node_016_metadata
@@ -1388,7 +1388,7 @@ flow:
               - label: 剧本编号
                 value: '1779438786'
               - label: 源节点
-                value: '#16 Let It Fall'
+                value: '#16 让它落下'
               - label: 当前状态
                 value: node_016
               - label: 视频链接
@@ -1398,7 +1398,7 @@ flow:
               - label: 可选目标
                 value: node_018
       - name: node_016_choice
-        display_name: Let It Fall - 选择
+        display_name: 让它落下 - 选择
         scene_type: choose
         scope: public
         participants: all
@@ -1417,7 +1417,7 @@ flow:
           include_reason: false
         cue: |-
           请选择下一步。提交 target 时必须使用目标状态 ID。
-          - node_018: She's going to fall! | price=20
+          - node_018: 她要摔倒了！ | price=20
         resolution:
           effects:
           - type: set_state
@@ -1435,7 +1435,7 @@ flow:
             data:
               items:
               - target: node_018
-                text: She's going to fall!
+                text: 她要摔倒了！
                 price: 20
       transitions: []
     node_017:
@@ -1447,10 +1447,10 @@ flow:
       - type: set_state
         entity: GAME
         attr: current_node_title
-        value: Intercept at Her Chest
+        value: 在她的胸部拦截
       scenes:
       - name: node_017_story
-        display_name: Intercept at Her Chest
+        display_name: 在她的胸部拦截
         scene_type: narration
         scope: public
         participants: all
@@ -1459,8 +1459,8 @@ flow:
         response:
           mode: none
         cue: |-
-          [#17 Intercept at Her Chest]
-          Haruki reaches in and catches the skewer before it touches Mizuki's dress, burning his hand in the process. Mizuki, flustered, takes his hand and blows gently across his palm — then invites him to watch her performance that afternoon before slipping away into the crowd. Haruki stands looking at his own palm for a long moment. Afterward, Nono rounds him up for the final prop delivery, abandoning a distracted Sota at a nearby stall. At the haunted house, Nono climbs a ladder to hang a prop corpse while Haruki steadies it below. When the ceiling hook begins to deform, Nono reaches for the rope on instinct, throwing her weight forward — then the ladder lurches and sends her pitching backward off it.
+          [#17 在她的胸部拦截]
+          春树伸手接住了串肉串，以免串肉碰到水希的衣服，并在此过程中烫伤了他的手。水树慌乱地握住他的手，轻轻地在他的手掌上吹了吹——然后邀请他那天下午观看她的表演，然后溜进了人群。春树站在那里，看着自己的手掌良久。之后，诺诺把他围起来进行最后一次道具运送，将心烦意乱的索塔遗弃在附近的一个摊位上。在鬼屋里，诺诺爬上梯子悬挂一具道具尸体，而春树则将其稳定在下面。当天花板挂钩开始变形时，诺诺本能地伸手去抓绳子，将她的体重向前抛——然后梯子突然倾斜，让她向后倾斜。
         publication:
           views:
           - id: node_017_metadata
@@ -1472,7 +1472,7 @@ flow:
               - label: 剧本编号
                 value: '1779438786'
               - label: 源节点
-                value: '#17 Intercept at Her Chest'
+                value: '#17 在她的胸部拦截'
               - label: 当前状态
                 value: node_017
               - label: 视频链接
@@ -1482,7 +1482,7 @@ flow:
               - label: 可选目标
                 value: node_018
       - name: node_017_choice
-        display_name: Intercept at Her Chest - 选择
+        display_name: 在她的胸部拦截 - 选择
         scene_type: choose
         scope: public
         participants: all
@@ -1501,7 +1501,7 @@ flow:
           include_reason: false
         cue: |-
           请选择下一步。提交 target 时必须使用目标状态 ID。
-          - node_018: She's going to fall! | price=20
+          - node_018: 她要摔倒了！ | price=20
         resolution:
           effects:
           - type: set_state
@@ -1519,7 +1519,7 @@ flow:
             data:
               items:
               - target: node_018
-                text: She's going to fall!
+                text: 她要摔倒了！
                 price: 20
       transitions: []
     node_018:
@@ -1531,10 +1531,10 @@ flow:
       - type: set_state
         entity: GAME
         attr: current_node_title
-        value: The Haunted House
+        value: 鬼屋
       scenes:
       - name: node_018_story
-        display_name: The Haunted House
+        display_name: 鬼屋
         scene_type: narration
         scope: public
         participants: all
@@ -1543,10 +1543,10 @@ flow:
         response:
           mode: none
         cue: |-
-          [#18 The Haunted House]
-          The freeze releases. Haruki whistles, the ladder steadies, and the prop drifts down to the floor without hitting anyone. Nono climbs down, checks the fallen prop, and finds the hook — wrong size. She installed the wrong hook. Haruki runs the perception scan on the corridor and comes up empty. The cost isn't here. He follows the corridor to the other end and pushes open a half-open door.
-          Inside: a hospital-themed room with sheeted beds, a dim yellow light, and Rin moving through it with her record book, running her safety check alone. Before Haruki can decide what to do, the bed nearest to Rin begins sliding — slow, even, inevitable. Rin notices it coming and steps back. The bed hits the wall. The sheeted corpse prop launches off the mattress and lands at her feet, face up. Rin looks down. She goes to her knees, face drained, record book sliding out of her hand.
-          Haruki is standing in the doorway. He's seen everything. Rin hasn't noticed him yet.
+          [#18 鬼屋]
+          冻结解除。春树吹了一声口哨，梯子稳住了，道具飘落到地板上，没有撞到任何人。诺诺爬下来，检查掉落的支柱，发现了钩子——尺寸不对。她安装了错误的挂钩。春树对走廊进行了感知扫描，结果空无一物。费用不在这里。他沿着走廊走到另一端，推开一扇半开的门。
+          里面：一个医院主题的房间，里面铺着床单，昏暗的黄灯，琳拿着她的记录本在里面走动，独自进行安全检查。在春树决定要做什么之前，距离凛最近的床开始滑动——缓慢，均匀，不可避免。凛注意到它的到来，向后退了一步。床撞到了墙上。裹着床单的尸体道具从床垫上弹起，面朝上落在她的脚边。凛低下头。她跪倒在地，面色苍白，记录本从手中滑落。
+          春树站在门口。他已经看到了一切。凛还没有注意到他。
         publication:
           views:
           - id: node_018_metadata
@@ -1558,7 +1558,7 @@ flow:
               - label: 剧本编号
                 value: '1779438786'
               - label: 源节点
-                value: '#18 The Haunted House'
+                value: '#18 鬼屋'
               - label: 当前状态
                 value: node_018
               - label: 视频链接
@@ -1568,7 +1568,7 @@ flow:
               - label: 可选目标
                 value: node_019, node_020
       - name: node_018_choice
-        display_name: The Haunted House - 选择
+        display_name: 鬼屋 - 选择
         scene_type: choose
         scope: public
         participants: all
@@ -1588,8 +1588,8 @@ flow:
           include_reason: false
         cue: |-
           请选择下一步。提交 target 时必须使用目标状态 ID。
-          - node_019: Pretend you didn't see anything | price=20
-          - node_020: Walk over and comfort her | price=150
+          - node_019: 假装你什么也没看见 | price=20
+          - node_020: 走过去安慰她 | price=150
         resolution:
           effects:
           - type: set_state
@@ -1607,10 +1607,10 @@ flow:
             data:
               items:
               - target: node_019
-                text: Pretend you didn't see anything
+                text: 假装你什么也没看见
                 price: 20
               - target: node_020
-                text: Walk over and comfort her
+                text: 走过去安慰她
                 price: 150
       transitions: []
     node_019:
@@ -1622,10 +1622,10 @@ flow:
       - type: set_state
         entity: GAME
         attr: current_node_title
-        value: Pretend You Saw Nothing
+        value: 假装你什么也没看见
       scenes:
       - name: node_019_story
-        display_name: Pretend You Saw Nothing
+        display_name: 假装你什么也没看见
         scene_type: narration
         scope: public
         participants: all
@@ -1634,8 +1634,8 @@ flow:
         response:
           mode: none
         cue: |-
-          [#19 Pretend You Saw Nothing]
-          Haruki: (I didn't see anything.) Nono: Haruki-senpai! I fixed the prop! Haruki: Shh—— Nono: Senpai? Rin: …Haruki. How long have you been there? Haruki: …Uh—— Rin: Come in. Rin: There's a serious safety issue in this haunted house. I need to hear your explanation. Haruki: Hold on, Rin — I wasn't—— Nono: Haruki-senpai was with me the whole time moving props. This has nothing to do with him. Sota: Haruki, Nono — I've been looking everywhere for you. Nono: We're the ones who couldn't find you. Sota: Alright, alright. The performance is about to start. We need to go. Sota: Mizuki's piece is first, by the way. Rin: Haruki. Rin: Don't let me catch you doing anything to anyone again. Rin: …Especiall
+          [#19 假装你什么也没看见]
+          春树：（我什么也没看到。） 诺诺：春树学长！我修好了道具！春树：嘘—— 野野：学长？凛：……春树。你去那里多久了？ 春树：……呃—— 凛：进来吧。 凛：这个鬼屋里有严重的安全问题。我需要听听你的解释。村上：等等，凛——我没有—— 野野：村上学长一直陪着我搬道具。这与他无关。 苍太：春树，野野——我一直在到处寻找你们。诺诺：我们是找不到你的人。索塔：好吧好吧。演出即将开始。我们得走了。 苍太：顺便说一句，水树的作品是第一。凛：春树。凛：别再让我发现你对任何人做了任何事。凛：……特别是
         publication:
           views:
           - id: node_019_metadata
@@ -1647,7 +1647,7 @@ flow:
               - label: 剧本编号
                 value: '1779438786'
               - label: 源节点
-                value: '#19 Pretend You Saw Nothing'
+                value: '#19 假装你什么也没看见'
               - label: 当前状态
                 value: node_019
               - label: 视频链接
@@ -1657,7 +1657,7 @@ flow:
               - label: 可选目标
                 value: node_032, node_021
       - name: node_019_choice
-        display_name: Pretend You Saw Nothing - 选择
+        display_name: 假装你什么也没看见 - 选择
         scene_type: choose
         scope: public
         participants: all
@@ -1677,8 +1677,8 @@ flow:
           include_reason: false
         cue: |-
           请选择下一步。提交 target 时必须使用目标状态 ID。
-          - node_032: Leave the haunted house | price=20
-          - node_021: Leave the haunted house | price=20
+          - node_032: 离开鬼屋 | price=20
+          - node_021: 离开鬼屋 | price=20
         resolution:
           effects:
           - type: set_state
@@ -1696,10 +1696,10 @@ flow:
             data:
               items:
               - target: node_032
-                text: Leave the haunted house
+                text: 离开鬼屋
                 price: 20
               - target: node_021
-                text: Leave the haunted house
+                text: 离开鬼屋
                 price: 20
       transitions: []
     node_020:
@@ -1711,10 +1711,10 @@ flow:
       - type: set_state
         entity: GAME
         attr: current_node_title
-        value: Comfort Rin
+        value: 舒适凛
       scenes:
       - name: node_020_story
-        display_name: Comfort Rin
+        display_name: 舒适凛
         scene_type: narration
         scope: public
         participants: all
@@ -1723,8 +1723,8 @@ flow:
         response:
           mode: none
         cue: |-
-          [#20 Comfort Rin]
-          Rin: …Don't go. Rin: What just happened — not a word to anyone. Haruki: You have my word. Nono: Haruki-senpai, the prop's fixed—— Nono: …Rin-senpai? What are you two…doing? Haruki: We were—— Rin: We were—— Sota: Haruki, Nono — I've been looking everywhere for you. Nono: We're the ones who couldn't find you. Sota: Alright, alright. The performance is about to start. We need to go. Sota: Mizuki's piece is first, by the way. Rin: Haruki. Rin: Don't let me catch you doing anything to anyone again. Rin: …Especially Mizuki.
+          [#20 舒适凛]
+          凛：……别走。凛：刚刚发生了什么——没有对任何人说一句话。春树：我向你保证。野野：春树前辈，道具修好了—— 野野：……凛前辈？你们两个……在做什么？春树：我们是—— 凛：我们是—— 苍太：春树，野野——我一直在到处寻找你们。诺诺：我们是找不到你的人。索塔：好吧好吧。演出即将开始。我们得走了。 苍太：顺便说一句，水树的作品是第一。凛：春树。凛：别再让我发现你对任何人做了任何事。凛：……尤其是瑞希。
         publication:
           views:
           - id: node_020_metadata
@@ -1736,7 +1736,7 @@ flow:
               - label: 剧本编号
                 value: '1779438786'
               - label: 源节点
-                value: '#20 Comfort Rin'
+                value: '#20 舒适凛'
               - label: 当前状态
                 value: node_020
               - label: 视频链接
@@ -1746,7 +1746,7 @@ flow:
               - label: 可选目标
                 value: node_032, node_021
       - name: node_020_choice
-        display_name: Comfort Rin - 选择
+        display_name: 舒适凛 - 选择
         scene_type: choose
         scope: public
         participants: all
@@ -1766,8 +1766,8 @@ flow:
           include_reason: false
         cue: |-
           请选择下一步。提交 target 时必须使用目标状态 ID。
-          - node_032: Leave the haunted house | price=20
-          - node_021: Leave the haunted house | price=20
+          - node_032: 离开鬼屋 | price=20
+          - node_021: 离开鬼屋 | price=20
         resolution:
           effects:
           - type: set_state
@@ -1785,10 +1785,10 @@ flow:
             data:
               items:
               - target: node_032
-                text: Leave the haunted house
+                text: 离开鬼屋
                 price: 20
               - target: node_021
-                text: Leave the haunted house
+                text: 离开鬼屋
                 price: 20
       transitions: []
     node_021:
@@ -1800,10 +1800,10 @@ flow:
       - type: set_state
         entity: GAME
         attr: current_node_title
-        value: The Dress, No Problem?
+        value: 这件衣服没问题吗？
       scenes:
       - name: node_021_story
-        display_name: The Dress, No Problem?
+        display_name: 这件衣服没问题吗？
         scene_type: narration
         scope: public
         participants: all
@@ -1812,8 +1812,8 @@ flow:
         response:
           mode: none
         cue: |-
-          [#21 The Dress, No Problem?]
-          Haruki, Sota, and Nono arrive backstage before the performance. Haruki stops at Mizuki's mirror to check on the dress stain from earlier — she reassures him it's fine, and they part on easy terms. During the prop check, Nono discovers she hung the wrong backdrop — the heavier full moon instead of the crescent Mizuki is supposed to perform in front of. With only ten minutes to curtain and no time to swap it, Haruki tells the others not to panic, but privately knows the rigging may not hold. He heads toward the wings to warn Mizuki before she goes on.
+          [#21 这件衣服没问题吗？]
+          春树、苍太和野野在演出前抵达后台。春树在瑞希的镜子前停下来检查之前衣服上的污渍——她向他保证没关系，然后他们就轻松地分手了。在检查道具的过程中，诺诺发现她挂错了背景——更重的满月，而不是瑞希应该在前面表演的新月。距离幕布只有十分钟，没有时间更换，春树告诉其他人不要惊慌，但私下里知道索具可能站不住脚。他走向侧翼，在瑞希继续前行之前警告她。
         publication:
           views:
           - id: node_021_metadata
@@ -1825,7 +1825,7 @@ flow:
               - label: 剧本编号
                 value: '1779438786'
               - label: 源节点
-                value: '#21 The Dress, No Problem?'
+                value: '#21 这件衣服没问题吗？'
               - label: 当前状态
                 value: node_021
               - label: 视频链接
@@ -1835,7 +1835,7 @@ flow:
               - label: 可选目标
                 value: node_022
       - name: node_021_choice
-        display_name: The Dress, No Problem? - 选择
+        display_name: 这件衣服没问题吗？ - 选择
         scene_type: choose
         scope: public
         participants: all
@@ -1854,7 +1854,7 @@ flow:
           include_reason: false
         cue: |-
           请选择下一步。提交 target 时必须使用目标状态 ID。
-          - node_022: Meet Mizuki at the side stage | price=20
+          - node_022: 在舞台边遇见水树 | price=20
         resolution:
           effects:
           - type: set_state
@@ -1872,7 +1872,7 @@ flow:
             data:
               items:
               - target: node_022
-                text: Meet Mizuki at the side stage
+                text: 在舞台边遇见水树
                 price: 20
       transitions: []
     node_022:
@@ -1884,10 +1884,10 @@ flow:
       - type: set_state
         entity: GAME
         attr: current_node_title
-        value: Serious Violation
+        value: 严重违规
       scenes:
       - name: node_022_story
-        display_name: Serious Violation
+        display_name: 严重违规
         scene_type: narration
         scope: public
         participants: all
@@ -1896,8 +1896,8 @@ flow:
         response:
           mode: none
         cue: |-
-          [#22 Serious Violation]
-          Haruki walks into the wings and finds Mizuki making her final preparations before going on. He lowers his voice and tells her to watch out if anything on stage starts moving or the floor gets slippery. The warning lands — Mizuki nods, no questions. Haruki exhales and starts to turn. Then Rin comes in on her rounds, sees the two of them close together, speaking quietly, and stops. It's been less than an hour since her warning in the Haunted House: "Don't let me catch you doing anything to anyone again… Especially Mizuki". So she walks over, cites a violation, and opens the record book. Haruki stands between Rin and Mizuki, find it really hard to explain. The frame freezes on the open record book.
+          [#22 严重违规]
+          春树走进侧翼，发现美月正在做最后的准备。他压低声音，告诉她要小心舞台上是否有任何东西开始移动或地板变得湿滑。警告落地——水树点点头，没有疑问。春树呼出一口气，开始转身。然后凛进来巡视，看到他们两个靠得很近，小声说话，然后停了下来。距离她在鬼屋警告“不要再让我发现你对任何人做任何事……尤其是瑞希”还不到一个小时。于是她走过去，列举了违规行为，然后打开了记录簿。春树站在凛和瑞希之间，实在难以解释。画面定格在打开的记录簿上。
         publication:
           views:
           - id: node_022_metadata
@@ -1909,7 +1909,7 @@ flow:
               - label: 剧本编号
                 value: '1779438786'
               - label: 源节点
-                value: '#22 Serious Violation'
+                value: '#22 严重违规'
               - label: 当前状态
                 value: node_022
               - label: 视频链接
@@ -1919,7 +1919,7 @@ flow:
               - label: 可选目标
                 value: node_023, node_024, node_025
       - name: node_022_choice
-        display_name: Serious Violation - 选择
+        display_name: 严重违规 - 选择
         scene_type: choose
         scope: public
         participants: all
@@ -1940,9 +1940,9 @@ flow:
           include_reason: false
         cue: |-
           请选择下一步。提交 target 时必须使用目标状态 ID。
-          - node_023: Back down | price=20
-          - node_024: Declare Mizuki as your girlfriend | price=200
-          - node_025: Use the incident to ask Rin out | price=200
+          - node_023: 退后 | price=20
+          - node_024: 宣布水希为你的女朋友 | price=200
+          - node_025: 利用这次事件约凛出去 | price=200
         resolution:
           effects:
           - type: set_state
@@ -1960,13 +1960,13 @@ flow:
             data:
               items:
               - target: node_023
-                text: Back down
+                text: 退后
                 price: 20
               - target: node_024
-                text: Declare Mizuki as your girlfriend
+                text: 宣布水希为你的女朋友
                 price: 200
               - target: node_025
-                text: Use the incident to ask Rin out
+                text: 利用这次事件约凛出去
                 price: 200
       transitions: []
     node_023:
@@ -1978,10 +1978,10 @@ flow:
       - type: set_state
         entity: GAME
         attr: current_node_title
-        value: Back Down
+        value: 后退
       scenes:
       - name: node_023_story
-        display_name: Back Down
+        display_name: 后退
         scene_type: narration
         scope: public
         participants: all
@@ -1990,8 +1990,8 @@ flow:
         response:
           mode: none
         cue: |-
-          [#23 Back Down]
-          Haruki tries to talk his way out of Rin's reprimand, but she's unmoved — she closes the record book and orders him off the side stage. Mizuki quietly defuses the situation by pointing out she's about to go on, and Rin leaves with a warning that there will be consequences in the morning. Haruki watches her go, deflated. Mizuki says nothing to him — she simply turns back to face the curtain. The announcer's voice signals the start of the performance. Mizuki looks at Haruki one last time, no words, and walks through into the light.
+          [#23 后退]
+          春树试图摆脱凛的斥责，但她不为所动——她合上记录本并命令他离开舞台。瑞希指出她要继续下去，平静地化解了局面，凛离开时警告说早上会有后果。春树沮丧地看着她离去。瑞希没有对他说什么——只是转身面向窗帘。播音员的声音标志着表演开始。瑞希最后看了春树一眼，没有说话，走进了光亮之中。
         publication:
           views:
           - id: node_023_metadata
@@ -2003,7 +2003,7 @@ flow:
               - label: 剧本编号
                 value: '1779438786'
               - label: 源节点
-                value: '#23 Back Down'
+                value: '#23 后退'
               - label: 当前状态
                 value: node_023
               - label: 视频链接
@@ -2013,7 +2013,7 @@ flow:
               - label: 可选目标
                 value: node_026
       - name: node_023_choice
-        display_name: Back Down - 选择
+        display_name: 后退 - 选择
         scene_type: choose
         scope: public
         participants: all
@@ -2032,7 +2032,7 @@ flow:
           include_reason: false
         cue: |-
           请选择下一步。提交 target 时必须使用目标状态 ID。
-          - node_026: Watch Mizuki going on stage | price=20
+          - node_026: 观看水希上台表演 | price=20
         resolution:
           effects:
           - type: set_state
@@ -2050,7 +2050,7 @@ flow:
             data:
               items:
               - target: node_026
-                text: Watch Mizuki going on stage
+                text: 观看水希上台表演
                 price: 20
       transitions: []
     node_024:
@@ -2062,10 +2062,10 @@ flow:
       - type: set_state
         entity: GAME
         attr: current_node_title
-        value: Mizuki ”Is“ Your Girlfriend
+        value: 水希“是”你的女朋友
       scenes:
       - name: node_024_story
-        display_name: Mizuki ”Is“ Your Girlfriend
+        display_name: 水希“是”你的女朋友
         scene_type: narration
         scope: public
         participants: all
@@ -2074,8 +2074,8 @@ flow:
         response:
           mode: none
         cue: |-
-          [#24 Mizuki ”Is“ Your Girlfriend]
-          With Rin's pen already on the page, Haruki makes a split-second decision — he puts his arm around Mizuki and tells Rin she's his girlfriend. Rin freezes and looks to Mizuki for a denial. Mizuki gives her none — just a calm smile that says everything. Rin closes the record book and leaves, unsatisfied but without grounds to act. In the silence that follows, Haruki starts to apologize to Mizuki — she stops him with a finger to his lips and tells him she already knows, with a smile that sees straight through him. The announcer's voice signals the start of the performance. Mizuki looks at Haruki one last time, no words, and walks through into the light.
+          [#24 水希“是”你的女朋友]
+          当凛的笔已经写在纸上时，春树瞬间做出了决定——他用手臂搂住瑞希，告诉凛她是他的女朋友。凛愣住了，看向水树，寻求否认。瑞希什么也没给她——只是一个平静的微笑说明了一切。凛合上记录本并离开，虽然不满意，但没有采取行动的理由。在接下来的沉默中，春树开始向瑞树道歉——她用一根手指抵住他的嘴唇阻止了他，并告诉他她已经知道了，脸上的笑容直视着他。播音员的声音标志着表演开始。瑞希最后看了春树一眼，没有说话，走进了光亮之中。
         publication:
           views:
           - id: node_024_metadata
@@ -2087,7 +2087,7 @@ flow:
               - label: 剧本编号
                 value: '1779438786'
               - label: 源节点
-                value: '#24 Mizuki ”Is“ Your Girlfriend'
+                value: '#24 水希“是”你的女朋友'
               - label: 当前状态
                 value: node_024
               - label: 视频链接
@@ -2097,7 +2097,7 @@ flow:
               - label: 可选目标
                 value: node_026
       - name: node_024_choice
-        display_name: Mizuki ”Is“ Your Girlfriend - 选择
+        display_name: 水希“是”你的女朋友 - 选择
         scene_type: choose
         scope: public
         participants: all
@@ -2116,7 +2116,7 @@ flow:
           include_reason: false
         cue: |-
           请选择下一步。提交 target 时必须使用目标状态 ID。
-          - node_026: Watch Mizuki going on stage | price=20
+          - node_026: 观看水希上台表演 | price=20
         resolution:
           effects:
           - type: set_state
@@ -2134,7 +2134,7 @@ flow:
             data:
               items:
               - target: node_026
-                text: Watch Mizuki going on stage
+                text: 观看水希上台表演
                 price: 20
       transitions: []
     node_025:
@@ -2146,10 +2146,10 @@ flow:
       - type: set_state
         entity: GAME
         attr: current_node_title
-        value: Ask Rin Out
+        value: 询问 Rin 出去
       scenes:
       - name: node_025_story
-        display_name: Ask Rin Out
+        display_name: 询问 凛 出去
         scene_type: narration
         scope: public
         participants: all
@@ -2158,8 +2158,8 @@ flow:
         response:
           mode: none
         cue: |-
-          [#25 Ask Rin Out]
-          Rather than backing down, Haruki turns the situation around — he steps toward Rin, puts a hand on the wall behind her, and tells her that if she wants the truth, she should come have ramen with him after the show. He guesses she likes ramen; her flustered reaction confirms it before she can stop herself. She realizes what she's given away, goes red, and retreats fast. Mizuki, watching from behind, asks Haruki how he knew about the ramen. He tells her he guessed. She doesn't look entirely convinced. The announcer's voice signals the start of the performance. Mizuki looks at Haruki one last time, no words, and walks through into the light.
+          [#25 询问 凛 出去]
+          春树没有退缩，而是扭转了局面——他走向凛，把手放在她身后的墙上，告诉她，如果她想知道真相，她应该在演出结束后和他一起吃拉面。他猜她喜欢拉面；在她阻止自己之前，她慌乱的反应证实了这一点。她意识到自己放弃了什么，脸红了，然后迅速撤退。水树在后面看着，问春树他是怎么知道拉面的。他告诉她他猜到了。她看起来并不完全相信。播音员的声音标志着表演开始。瑞希最后看了春树一眼，没有说话，走进了光亮之中。
         publication:
           views:
           - id: node_025_metadata
@@ -2171,7 +2171,7 @@ flow:
               - label: 剧本编号
                 value: '1779438786'
               - label: 源节点
-                value: '#25 Ask Rin Out'
+                value: '#25 询问 凛 出去'
               - label: 当前状态
                 value: node_025
               - label: 视频链接
@@ -2181,7 +2181,7 @@ flow:
               - label: 可选目标
                 value: node_026
       - name: node_025_choice
-        display_name: Ask Rin Out - 选择
+        display_name: 询问 凛 出去 - 选择
         scene_type: choose
         scope: public
         participants: all
@@ -2200,7 +2200,7 @@ flow:
           include_reason: false
         cue: |-
           请选择下一步。提交 target 时必须使用目标状态 ID。
-          - node_026: Watch Mizuki going on stage | price=20
+          - node_026: 观看水希上台表演 | price=20
         resolution:
           effects:
           - type: set_state
@@ -2218,7 +2218,7 @@ flow:
             data:
               items:
               - target: node_026
-                text: Watch Mizuki going on stage
+                text: 观看水希上台表演
                 price: 20
       transitions: []
     node_026:
@@ -2230,10 +2230,10 @@ flow:
       - type: set_state
         entity: GAME
         attr: current_node_title
-        value: Shadow Over the Stage
+        value: 舞台上的阴影
       scenes:
       - name: node_026_story
-        display_name: Shadow Over the Stage
+        display_name: 舞台上的阴影
         scene_type: narration
         scope: public
         participants: all
@@ -2242,9 +2242,9 @@ flow:
         response:
           mode: none
         cue: |-
-          [#26 Shadow Over the Stage]
-          The performance begins without incident — until Haruki spots the rigging on the full moon backdrop starting to give way, directly above Mizuki. When the rope snaps, he uses his ability to redirect the falling backdrop in a smooth arc off the stage, making it look almost intentional to the audience. Sota and Nono watch in stunned silence.
-          But the cost lands immediately and at scale. The friction disappears from the entire stage floor — every board, spreading even into the front rows of the audience. Mizuki's feet find nothing beneath her next step. She can't fall gracefully or correct herself; each instinctive adjustment only slides her further toward the edge of the stage. The audience still hasn't realized anything is wrong — to them, it looks like part of the act. In the wings, Haruki watches through the curtain gap as she drifts toward the drop, his hand tightening around the curtain.
+          [#26 舞台上的阴影]
+          表演开始时没有发生任何事故，直到春树发现满月背景上的索具开始松动，就在瑞树的正上方。当绳子折断时，他利用自己的能力将下落的背景以平滑的弧线重新引导到舞台之外，使观众看起来几乎是故意的。索塔和诺诺目瞪口呆地看着。
+          但成本会立即大规模降低。整个舞台地板——每块木板——的摩擦力都消失了，甚至蔓延到了前排观众席。下一步，美月的脚下什么也没有发现。她无法优雅地跌倒或纠正自己；每一次本能的调整都只会让她进一步滑向舞台边缘。观众仍然没有意识到有什么不对劲——对他们来说，这看起来像是表演的一部分。在侧翼，春树透过窗帘的缝隙看着她飘向坠落的地方，他的手紧紧地握住窗帘。
         publication:
           views:
           - id: node_026_metadata
@@ -2256,7 +2256,7 @@ flow:
               - label: 剧本编号
                 value: '1779438786'
               - label: 源节点
-                value: '#26 Shadow Over the Stage'
+                value: '#26 舞台上的阴影'
               - label: 当前状态
                 value: node_026
               - label: 视频链接
@@ -2266,7 +2266,7 @@ flow:
               - label: 可选目标
                 value: node_027, node_028
       - name: node_026_choice
-        display_name: Shadow Over the Stage - 选择
+        display_name: 舞台上的阴影 - 选择
         scene_type: choose
         scope: public
         participants: all
@@ -2286,8 +2286,8 @@ flow:
           include_reason: false
         cue: |-
           请选择下一步。提交 target 时必须使用目标状态 ID。
-          - node_027: Watch and do nothing | price=20
-          - node_028: Get to her | price=150
+          - node_027: 观察而不做任何事 | price=20
+          - node_028: 到她身边 | price=150
         resolution:
           effects:
           - type: set_state
@@ -2305,10 +2305,10 @@ flow:
             data:
               items:
               - target: node_027
-                text: Watch and do nothing
+                text: 观察而不做任何事
                 price: 20
               - target: node_028
-                text: Get to her
+                text: 到她身边
                 price: 150
       transitions: []
     node_027:
@@ -2320,10 +2320,10 @@ flow:
       - type: set_state
         entity: GAME
         attr: current_node_title
-        value: A Solo on Ice
+        value: 冰上独奏
       scenes:
       - name: node_027_story
-        display_name: A Solo on Ice
+        display_name: 冰上独奏
         scene_type: narration
         scope: public
         participants: all
@@ -2332,8 +2332,8 @@ flow:
         response:
           mode: none
         cue: |-
-          [#27 A Solo on Ice]
-          Haruki stays in the wings and watches as Mizuki loses her footing on the frictionless stage. Rather than panicking, she reads the surface and adapts — turning the slide into movement, her arms opening for balance, her feet finding a rhythm until she is no longer fighting the stage but dancing on it. The audience has no idea anything went wrong. Sota and Nono watch in stunned silence. When Mizuki completes her performance and bows, the applause breaks — and Haruki, still in the wings, claps with the crowd. As evening falls and the festival winds down, Haruki leans against an empty stall frame and exhales. Rin appears in front of him with something unresolved in her expression.
+          [#27 冰上独奏]
+          春树站在侧翼，看着美月在无摩擦的舞台上失去立足之地。她没有惊慌，而是阅读表面并适应——将幻灯片变成运动，张开双臂保持平衡，双脚找到节奏，直到她不再与舞台对抗，而是在舞台上跳舞。观众不知道出了什么问题。索塔和诺诺目瞪口呆地看着。当美月完成她的表演并鞠躬时，掌声响起——而春树仍在后台，与人群一起鼓掌。夜幕降临，节日落下帷幕，春树靠在空荡荡的摊位上，长出了一口气。凛出现在他面前，脸上的表情有些悬而未决。
         publication:
           views:
           - id: node_027_metadata
@@ -2345,7 +2345,7 @@ flow:
               - label: 剧本编号
                 value: '1779438786'
               - label: 源节点
-                value: '#27 A Solo on Ice'
+                value: '#27 冰上独奏'
               - label: 当前状态
                 value: node_027
               - label: 视频链接
@@ -2355,7 +2355,7 @@ flow:
               - label: 可选目标
                 value: node_029, node_030, node_031
       - name: node_027_choice
-        display_name: A Solo on Ice - 选择
+        display_name: 冰上独奏 - 选择
         scene_type: choose
         scope: public
         participants: all
@@ -2376,9 +2376,9 @@ flow:
           include_reason: false
         cue: |-
           请选择下一步。提交 target 时必须使用目标状态 ID。
-          - node_029: Rin is here. Why? | price=20
-          - node_030: Rin is here. Why? | price=20
-          - node_031: Rin is here. Why? | price=20
+          - node_029: 凛来了。为什么？ | price=20
+          - node_030: 凛来了。为什么？ | price=20
+          - node_031: 凛来了。为什么？ | price=20
         resolution:
           effects:
           - type: set_state
@@ -2396,13 +2396,13 @@ flow:
             data:
               items:
               - target: node_029
-                text: Rin is here. Why?
+                text: 凛来了。为什么？
                 price: 20
               - target: node_030
-                text: Rin is here. Why?
+                text: 凛来了。为什么？
                 price: 20
               - target: node_031
-                text: Rin is here. Why?
+                text: 凛来了。为什么？
                 price: 20
       transitions: []
     node_028:
@@ -2414,10 +2414,10 @@ flow:
       - type: set_state
         entity: GAME
         attr: current_node_title
-        value: The Unplanned Waltz
+        value: 无计划的华尔兹
       scenes:
       - name: node_028_story
-        display_name: The Unplanned Waltz
+        display_name: 无计划的华尔兹
         scene_type: narration
         scope: public
         participants: all
@@ -2426,8 +2426,8 @@ flow:
         response:
           mode: none
         cue: |-
-          [#28 The Unplanned Waltz]
-          Haruki pushes through the curtain and runs onto the stage — straight into the frictionless surface. He can't stop. Mizuki turns and reaches out, and their hands collide at center stage. Rather than going down, Haruki uses the momentum to pull her into a spin, his arm going around her waist as Mizuki takes the lead and guides them into something that looks like a waltz on ice. The audience is transfixed, convinced it was always part of the show. When friction returns and the music ends, they bow together to the loudest applause of the day. Sota and Nono are beside themselves in the wings. As evening falls and the festival winds down, Haruki leans against an empty stall frame and exhales. Rin appears in front of him with something unresolved in her expression.
+          [#28 无计划的华尔兹]
+          春树推开幕布，跑到舞台上——直接跑到无摩擦的表面上。他无法停下来。水树转身伸出手，两人的双手在舞台中央碰撞在一起。春树并没有倒下，而是利用势头将她拉入旋转，他的手臂搂着她的腰，水树带头引导他们进入了看起来像冰上华尔兹的动作。观众们都惊呆了，相信这始终是演出的一部分。当摩擦力恢复并且音乐结束时，他们在当天最响亮的掌声中一起鞠躬。索塔和诺诺在侧翼疯狂。夜幕降临，节日落下帷幕，春树靠在空荡荡的摊位上，长出了一口气。凛出现在他面前，脸上的表情有些悬而未决。
         publication:
           views:
           - id: node_028_metadata
@@ -2439,7 +2439,7 @@ flow:
               - label: 剧本编号
                 value: '1779438786'
               - label: 源节点
-                value: '#28 The Unplanned Waltz'
+                value: '#28 无计划的华尔兹'
               - label: 当前状态
                 value: node_028
               - label: 视频链接
@@ -2449,7 +2449,7 @@ flow:
               - label: 可选目标
                 value: node_029, node_030, node_031
       - name: node_028_choice
-        display_name: The Unplanned Waltz - 选择
+        display_name: 无计划的华尔兹 - 选择
         scene_type: choose
         scope: public
         participants: all
@@ -2470,9 +2470,9 @@ flow:
           include_reason: false
         cue: |-
           请选择下一步。提交 target 时必须使用目标状态 ID。
-          - node_029: Rin is here. Why? | price=20
-          - node_030: Rin is here. Why? | price=20
-          - node_031: Rin is here. Why? | price=20
+          - node_029: 凛来了。为什么？ | price=20
+          - node_030: 凛来了。为什么？ | price=20
+          - node_031: 凛来了。为什么？ | price=20
         resolution:
           effects:
           - type: set_state
@@ -2490,13 +2490,13 @@ flow:
             data:
               items:
               - target: node_029
-                text: Rin is here. Why?
+                text: 凛来了。为什么？
                 price: 20
               - target: node_030
-                text: Rin is here. Why?
+                text: 凛来了。为什么？
                 price: 20
               - target: node_031
-                text: Rin is here. Why?
+                text: 凛来了。为什么？
                 price: 20
       transitions: []
     node_029:
@@ -2508,10 +2508,10 @@ flow:
       - type: set_state
         entity: GAME
         attr: current_node_title
-        value: Mizuki's Promise
+        value: 水木的承诺
       scenes:
       - name: node_029_story
-        display_name: Mizuki's Promise
+        display_name: 水木的承诺
         scene_type: narration
         scope: public
         participants: all
@@ -2520,8 +2520,8 @@ flow:
         response:
           mode: none
         cue: |-
-          [#29 Mizuki's Promise]
-          Rin delivers her verdict — everything is on record, a school-wide announcement would be warranted by the rules — but the festival ended without incident, and Nono and Sota have been asking on Haruki's behalf, so she lets it go. She leaves without another word. Haruki leans against a stall frame looking at the sky. Mizuki appears beside him, shoulder lightly touching his, back in her school uniform. She tells him she heard the rigging snap on stage — and that it didn't fall. She asks how much he wants to tell her, and when he doesn't answer, says she won't push. Then she leans in close and tells him that all his reluctance, all his trying not to show it, and still always being quietly there — that's what makes him so cute. Haruki, ears red, looks at her directly and says he'll keep doing it. Mizuki smiles, takes his hand, fingers interlaced, and tells him she'll hold him to that. The camera pulls back slowly into the evening light.
+          [#29 水木的承诺]
+          凛做出了她的决定——一切都记录在案，按照规则，在全校范围内宣布是有必要的——但节日顺利结束，野野和苍太一直在代表春树询问，所以她就放弃了。她一言不发地离开了。春树靠在隔间的框架上看着天空。穿着校服的美月出现在他身边，肩膀轻轻碰着他的肩膀。她告诉他，她听到舞台上的索具断裂了，但它并没有掉下来。她问他有多想告诉她，当他不回答时，她说她不会强迫。然后她靠近并告诉他，他所有的不情愿，他所有的努力不表现出来，但仍然总是安静地在那里——这就是他如此可爱的原因。春树的耳朵红了，直视着她，说他会继续这样做。瑞希微笑着握住他的手，十指交扣，告诉他她会坚持到底。镜头慢慢拉回到傍晚的光线中。
         publication:
           views:
           - id: node_029_metadata
@@ -2533,7 +2533,7 @@ flow:
               - label: 剧本编号
                 value: '1779438786'
               - label: 源节点
-                value: '#29 Mizuki''s Promise'
+                value: '#29 水木的承诺'
               - label: 当前状态
                 value: node_029
               - label: 视频链接
@@ -2551,10 +2551,10 @@ flow:
       - type: set_state
         entity: GAME
         attr: current_node_title
-        value: Rin's Exception
+        value: 凛的例外
       scenes:
       - name: node_030_story
-        display_name: Rin's Exception
+        display_name: 凛的例外
         scene_type: narration
         scope: public
         participants: all
@@ -2563,8 +2563,8 @@ flow:
         response:
           mode: none
         cue: |-
-          [#30 Rin's Exception]
-          Rin finds Haruki on the boulevard and tells him she's decided not to file a report — framing it as a matter of professional satisfaction rather than anything personal. When Haruki quietly brings up the ramen, she insists she was holding him to it all along. He takes the record book out of her hands and tells her to leave the official business behind for the evening. She goes still, face red, and agrees in a voice barely above a whisper. They walk into the evening light together. From the shade of a nearby tree, Mizuki watches their backs, smiles quietly to herself, and turns to walk the other way.
+          [#30 凛的例外]
+          凛在大道上找到了春树，并告诉他她决定不提交报告——将其视为职业满足感而不是任何个人问题。当春树静静地提起拉面时，她坚称自己一直在拉着他吃。他从她手中夺走了记录本，并告诉她今晚不要处理公务。她一动不动，脸红了，用略高于耳语的声音表示同意。他们一起走进傍晚的灯光。瑞希在附近的树荫下看着他们的背影，默默地对自己微笑，然后转身向另一条路走去。
         publication:
           views:
           - id: node_030_metadata
@@ -2576,7 +2576,7 @@ flow:
               - label: 剧本编号
                 value: '1779438786'
               - label: 源节点
-                value: '#30 Rin''s Exception'
+                value: '#30 凛的例外'
               - label: 当前状态
                 value: node_030
               - label: 视频链接
@@ -2594,10 +2594,10 @@ flow:
       - type: set_state
         entity: GAME
         attr: current_node_title
-        value: Sota's Treat
+        value: 索塔的款待
       scenes:
       - name: node_031_story
-        display_name: Sota's Treat
+        display_name: 索塔的款待
         scene_type: narration
         scope: public
         participants: all
@@ -2606,8 +2606,8 @@ flow:
         response:
           mode: none
         cue: |-
-          [#31 Sota's Treat]
-          Rin delivers her verdict — everything is on record, a school-wide announcement would be warranted by the rules — but the festival ended without incident, and Nono and Sota have been asking on Haruki's behalf, so she lets it go. She leaves. Haruki leans against the stall frame looking at the sky. Sota and Nono find him there — Sota claps him on the shoulder and offers to pay for dinner, Nono apologizes quietly for all the trouble she caused. Haruki reassures her with a smile, she tears up, and Sota is already moving before either of them finishes talking. The three of them walk into the evening light together.
+          [#31 索塔的款待]
+          凛做出了她的决定——一切都记录在案，按照规则，在全校范围内宣布是有必要的——但节日顺利结束，野野和苍太一直在代表春树询问，所以她就放弃了。她离开了。春树靠在隔间的框架上看着天空。索塔和诺诺在那里找到了他——索塔拍了拍他的肩膀并提出支付晚餐费用，诺诺为她造成的所有麻烦轻声道歉。春树微笑着安慰她，她流下了眼泪，两人还没说完，苍太就已经动了。三人一起走进夜色之中。
         publication:
           views:
           - id: node_031_metadata
@@ -2619,7 +2619,7 @@ flow:
               - label: 剧本编号
                 value: '1779438786'
               - label: 源节点
-                value: '#31 Sota''s Treat'
+                value: '#31 索塔的款待'
               - label: 当前状态
                 value: node_031
               - label: 视频链接
@@ -2637,10 +2637,10 @@ flow:
       - type: set_state
         entity: GAME
         attr: current_node_title
-        value: You Actually Came
+        value: 你真的来了
       scenes:
       - name: node_032_story
-        display_name: You Actually Came
+        display_name: 你真的来了
         scene_type: narration
         scope: public
         participants: all
@@ -2649,8 +2649,8 @@ flow:
         response:
           mode: none
         cue: |-
-          [#32 You Actually Came]
-          Haruki, Sota, and Nono arrive backstage before the performance. Mizuki spots Haruki in the mirror and smiles — she's glad he kept his promise to come. They exchange a quiet, warm moment before she heads to the wings. During the prop check, Nono discovers she hung the wrong backdrop — the heavier full moon instead of the crescent Mizuki needs. With only ten minutes to curtain and no time to swap it, Haruki tells the others not to panic, but privately knows the rigging may not hold. He heads toward the wings to warn Mizuki before she goes on.
+          [#32 你真的来了]
+          春树、苍太和野野在演出前抵达后台。水希在镜子里看到了春树，微笑着——她很高兴他信守诺言来。在她走向侧翼之前，他们交换了一个安静而温暖的时刻。在检查道具时，诺诺发现她挂了错误的背景——更重的满月，而不是水希需要的新月。距离幕布只有十分钟，没有时间更换，春树告诉其他人不要惊慌，但私下里知道索具可能站不住脚。他走向侧翼，在瑞希继续前行之前警告她。
         publication:
           views:
           - id: node_032_metadata
@@ -2662,7 +2662,7 @@ flow:
               - label: 剧本编号
                 value: '1779438786'
               - label: 源节点
-                value: '#32 You Actually Came'
+                value: '#32 你真的来了'
               - label: 当前状态
                 value: node_032
               - label: 视频链接
@@ -2672,7 +2672,7 @@ flow:
               - label: 可选目标
                 value: node_022
       - name: node_032_choice
-        display_name: You Actually Came - 选择
+        display_name: 你真的来了 - 选择
         scene_type: choose
         scope: public
         participants: all
@@ -2691,7 +2691,7 @@ flow:
           include_reason: false
         cue: |-
           请选择下一步。提交 target 时必须使用目标状态 ID。
-          - node_022: Meet Mizuki at the side stage | price=20
+          - node_022: 在舞台边遇见水树 | price=20
         resolution:
           effects:
           - type: set_state
@@ -2709,7 +2709,7 @@ flow:
             data:
               items:
               - target: node_022
-                text: Meet Mizuki at the side stage
+                text: 在舞台边遇见水树
                 price: 20
       transitions: []
     end:
