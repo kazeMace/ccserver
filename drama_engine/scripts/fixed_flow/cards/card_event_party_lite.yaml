@@ -8,7 +8,7 @@ runtime:
 extensions:
   cards:
     enabled: true
-    version: "0.1"
+    version: '0.1'
     config:
       decks:
         event:
@@ -41,12 +41,15 @@ concepts:
       description: 对其他玩家的应对做评分。
       prompt: 根据创意、合理性和趣味性打分。
 roles:
-  - name: contestant
-    display_name: 参赛者
-    faction: solo
-    brief: 你要用有趣且合理的方式应对事件牌，争取得分。
-    scopes: [public]
-    abilities: [react, judge]
+- name: contestant
+  display_name: 参赛者
+  faction: solo
+  brief: 你要用有趣且合理的方式应对事件牌，争取得分。
+  scopes:
+  - public
+  abilities:
+  - react
+  - judge
 players:
   count: 4
   initial_attrs:
@@ -57,95 +60,97 @@ players:
     distribution:
       contestant: 4
 scopes:
-  - name: public
-    members: all
+- name: public
+  members: all
 flow:
   loop: true
   scenes:
-    - name: draw-event
-      display_name: 抽事件牌
-      scene_type: card
-      scope: public
-      participants:
-        filter:
-          alive: true
-      action_policy:
-        kind: card_action
-        input:
-          widget: card_select
-      response:
-        mode: structured
-        schema: card_action
-        cue: 提交 type=draw 抽取一张事件牌并公开事件主题；系统写入 GAME.current_event。
-      resolution:
-        effects:
-          - type: rule_set_apply
-            result_path: GAME.last_event_card
-      publication:
-        views:
-          - id: current-event
-            kind: key-value
-            title: 当前事件
-            audience: public
-            data:
-              rows:
-                - label: 事件牌
-                  value:
-                    ref: GAME.current_event
-                - label: 抽牌结算
-                  value:
-                    ref: GAME.last_event_card
-    - name: react-to-event
-      display_name: 全员应对
-      scene_type: speak
-      scope: public
-      participants: all
-      dialogue_policy:
-        mode: sequential
-      response:
-        mode: text
-        cue: 每名玩家给出自己的应对方案，控制在 80 字以内。
-    - name: score-reactions
-      display_name: 应对评分
-      scene_type: action
-      scope: public
-      participants: all
-      action_policy:
-        kind: form
-        input:
-          widget: choice
-      response:
-        mode: structured
-        schema: custom
-        fields:
-          type:
-            type: string
-            description: 固定填写 score。
-          target:
-            type: string
-            description: 被加分玩家，例如 Player_2。
-          points:
-            type: int
-            description: 加分，建议 1-3。
-        include_reason: true
-        cue: 为你认为最好的应对加分，提交 type=score、target 和 points，并说明理由。
-      resolution:
-        effects:
-          - type: rule_set_apply
-            result_path: GAME.last_score_rule_result
-      publication:
-        views:
-          - id: score-result
-            kind: key-value
-            title: 评分结果
-            audience: public
-            data:
-              rows:
-                - label: 最近得分玩家
-                  value:
-                    ref: GAME.last_scored_player
-                - label: 评分结算
-                  value:
-                    ref: GAME.last_score_rule_result
+  - name: draw-event
+    display_name: 抽事件牌
+    scene_type: card
+    scope: public
+    participants:
+      filter:
+        alive: true
+    action_policy:
+      kind: card_action
+      input:
+        widget: card_select
+    response:
+      mode: structured
+      schema: card_action
+      cue: 提交 type=draw 抽取一张事件牌并公开事件主题；系统写入 GAME.current_event。
+    resolution:
+      effects:
+      - type: rule_set_apply
+        result_path: GAME.last_event_card
+    publication:
+      views:
+      - id: current-event
+        kind: key-value
+        title: 当前事件
+        audience: public
+        data:
+          rows:
+          - label: 事件牌
+            value:
+              ref: GAME.current_event
+          - label: 抽牌结算
+            value:
+              ref: GAME.last_event_card
+  - name: react-to-event
+    display_name: 全员应对
+    scene_type: speak
+    scope: public
+    participants: all
+    dialogue_policy:
+      mode: sequential
+    response:
+      mode: text
+      cue: 每名玩家给出自己的应对方案，控制在 80 字以内。
+  - name: score-reactions
+    display_name: 应对评分
+    scene_type: action
+    scope: public
+    participants: all
+    action_policy:
+      kind: form
+      input:
+        widget: choice
+    response:
+      mode: structured
+      schema: custom
+      fields:
+        type:
+          type: string
+          description: 固定填写 score。
+        target:
+          type: string
+          description: 被加分玩家，例如 Player_2。
+        points:
+          type: int
+          description: 加分，建议 1-3。
+      include_reason: true
+      cue: 为你认为最好的应对加分，提交 type=score、target 和 points，并说明理由。
+    resolution:
+      effects:
+      - type: rule_set_apply
+        result_path: GAME.last_score_rule_result
+    publication:
+      views:
+      - id: score-result
+        kind: key-value
+        title: 评分结果
+        audience: public
+        data:
+          rows:
+          - label: 最近得分玩家
+            value:
+              ref: GAME.last_scored_player
+          - label: 评分结算
+            value:
+              ref: GAME.last_score_rule_result
 referee:
-  win_conditions: []
+  conditions: []
+  check_on:
+  - after_scene

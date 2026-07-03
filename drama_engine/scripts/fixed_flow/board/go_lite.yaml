@@ -8,7 +8,7 @@ runtime:
 extensions:
   board:
     enabled: true
-    version: "0.1"
+    version: '0.1'
     config:
       boards:
         main:
@@ -46,18 +46,22 @@ concepts:
       description: 在空交叉点落下一枚棋子。
       prompt: 选择能扩张地盘或攻击对方气的坐标。
 roles:
-  - name: black
-    display_name: 黑棋
-    faction: black_side
-    brief: 你执黑先手，目标围出更多实地。
-    scopes: [public]
-    abilities: [place_stone]
-  - name: white
-    display_name: 白棋
-    faction: white_side
-    brief: 你执白后手，目标围出更多实地。
-    scopes: [public]
-    abilities: [place_stone]
+- name: black
+  display_name: 黑棋
+  faction: black_side
+  brief: 你执黑先手，目标围出更多实地。
+  scopes:
+  - public
+  abilities:
+  - place_stone
+- name: white
+  display_name: 白棋
+  faction: white_side
+  brief: 你执白后手，目标围出更多实地。
+  scopes:
+  - public
+  abilities:
+  - place_stone
 players:
   count: 2
   initial_attrs:
@@ -68,109 +72,111 @@ players:
       black: 1
       white: 1
 scopes:
-  - name: public
-    members: all
+- name: public
+  members: all
 flow:
   loop: true
   scenes:
-    - name: go-setup
-      display_name: 空棋盘
-      scene_type: narration
-      scope: public
-      participants: all
-      dialogue_policy:
-        mode: none
-      response:
-        mode: none
-        cue: 系统建立 9 路棋盘，黑棋先手。手动运行时可把棋盘写入 GAME.go_board，key 为 row,col，value 为 B 或 W。
-      publication:
-        views:
-          - id: go-board
-            kind: board
-            title: 围棋棋盘
-            audience: public
-            data:
-              board:
-                ref: GAME.go_board
-              size: 9
-          - id: go-status
-            kind: key-value
-            title: 围棋状态
-            audience: public
-            data:
-              rows:
-                - label: 最近提子
-                  value:
-                    ref: GAME.last_captured
-    - name: black-place
-      display_name: 黑棋落子
-      scene_type: board
-      scope: public
-      participants:
-        filter:
-          role: black
-      action_policy:
-        kind: board_move
-        input:
-          widget: board_move
-      response:
-        mode: structured
-        schema: move
-        cue: 黑棋选择一个空点落子，例如 position=[4,4]。系统会提掉相邻无气白棋块。
-      resolution:
-        effects:
-          - type: rule_set_apply
-            result_path: GAME.last_go_rule_result
-      publication:
-        views:
-          - id: go-last-result
-            kind: key-value
-            title: 最近落子
-            audience: public
-            data:
-              rows:
-                - label: 结算
-                  value:
-                    ref: GAME.last_go_rule_result
-    - name: white-place
-      display_name: 白棋落子
-      scene_type: board
-      scope: public
-      participants:
-        filter:
-          role: white
-      action_policy:
-        kind: board_move
-        input:
-          widget: board_move
-      response:
-        mode: structured
-        schema: move
-        cue: 白棋选择一个空点落子，例如 position=[4,5]。系统会提掉相邻无气黑棋块。
-      resolution:
-        effects:
-          - type: rule_set_apply
-            result_path: GAME.last_go_rule_result
-      publication:
-        views:
-          - id: go-last-result
-            kind: key-value
-            title: 最近落子
-            audience: public
-            data:
-              rows:
-                - label: 结算
-                  value:
-                    ref: GAME.last_go_rule_result
-    - name: territory-summary
-      display_name: 数地摘要
-      scene_type: narration
-      scope: public
-      participants: all
-      dialogue_policy:
-        mode: none
-      response:
-        mode: none
-        cue: 系统根据当前棋盘给出简化地盘、提子摘要和下一手建议。双方连续选择 pass 时可进入终局数地。
+  - name: go-setup
+    display_name: 空棋盘
+    scene_type: narration
+    scope: public
+    participants: all
+    dialogue_policy:
+      mode: none
+    response:
+      mode: none
+      cue: 系统建立 9 路棋盘，黑棋先手。手动运行时可把棋盘写入 GAME.go_board，key 为 row,col，value 为 B 或 W。
+    publication:
+      views:
+      - id: go-board
+        kind: board
+        title: 围棋棋盘
+        audience: public
+        data:
+          board:
+            ref: GAME.go_board
+          size: 9
+      - id: go-status
+        kind: key-value
+        title: 围棋状态
+        audience: public
+        data:
+          rows:
+          - label: 最近提子
+            value:
+              ref: GAME.last_captured
+  - name: black-place
+    display_name: 黑棋落子
+    scene_type: board
+    scope: public
+    participants:
+      filter:
+        role: black
+    action_policy:
+      kind: board_move
+      input:
+        widget: board_move
+    response:
+      mode: structured
+      schema: move
+      cue: 黑棋选择一个空点落子，例如 position=[4,4]。系统会提掉相邻无气白棋块。
+    resolution:
+      effects:
+      - type: rule_set_apply
+        result_path: GAME.last_go_rule_result
+    publication:
+      views:
+      - id: go-last-result
+        kind: key-value
+        title: 最近落子
+        audience: public
+        data:
+          rows:
+          - label: 结算
+            value:
+              ref: GAME.last_go_rule_result
+  - name: white-place
+    display_name: 白棋落子
+    scene_type: board
+    scope: public
+    participants:
+      filter:
+        role: white
+    action_policy:
+      kind: board_move
+      input:
+        widget: board_move
+    response:
+      mode: structured
+      schema: move
+      cue: 白棋选择一个空点落子，例如 position=[4,5]。系统会提掉相邻无气黑棋块。
+    resolution:
+      effects:
+      - type: rule_set_apply
+        result_path: GAME.last_go_rule_result
+    publication:
+      views:
+      - id: go-last-result
+        kind: key-value
+        title: 最近落子
+        audience: public
+        data:
+          rows:
+          - label: 结算
+            value:
+              ref: GAME.last_go_rule_result
+  - name: territory-summary
+    display_name: 数地摘要
+    scene_type: narration
+    scope: public
+    participants: all
+    dialogue_policy:
+      mode: none
+    response:
+      mode: none
+      cue: 系统根据当前棋盘给出简化地盘、提子摘要和下一手建议。双方连续选择 pass 时可进入终局数地。
 referee:
-  win_conditions: []
+  conditions: []
+  check_on:
+  - after_scene

@@ -8,11 +8,21 @@ runtime:
 extensions:
   avalon:
     enabled: true
-    version: "0.1"
+    version: '0.1'
     rules:
       player_count: 5
-      quest_team_sizes: [2, 3, 2, 3, 3]
-      quest_fail_thresholds: [1, 1, 1, 1, 1]
+      quest_team_sizes:
+      - 2
+      - 3
+      - 2
+      - 3
+      - 3
+      quest_fail_thresholds:
+      - 1
+      - 1
+      - 1
+      - 1
+      - 1
       team_rejection_limit: 5
 concepts:
   roles:
@@ -69,36 +79,56 @@ concepts:
       description: 刺客在终局猜测并刺杀梅林。
       prompt: 根据全局发言和投票行为选择最像梅林的玩家。
 roles:
-  - name: merlin
-    display_name: 梅林
-    faction: good
-    brief: 你知道邪恶阵营是谁，但不能让刺客识别你。引导任务成功时要隐藏信息来源。
-    scopes: [public, merlin-vision]
-    abilities: [vote, mission]
-  - name: percival
-    display_name: 派西维尔
-    faction: good
-    brief: 你知道两名梅林候选人，需要保护真梅林并帮助好人判断队伍。
-    scopes: [public, percival-vision]
-    abilities: [vote, mission]
-  - name: loyal_servant
-    display_name: 忠臣
-    faction: good
-    brief: 你没有夜间信息，需要通过队伍、投票和发言判断邪恶方。
-    scopes: [public]
-    abilities: [vote, mission]
-  - name: morgana
-    display_name: 莫甘娜
-    faction: evil
-    brief: 你需要伪装成好人或梅林，干扰派西维尔和队伍判断。
-    scopes: [public, evil-den]
-    abilities: [vote, mission]
-  - name: assassin
-    display_name: 刺客
-    faction: evil
-    brief: 你与莫甘娜同阵营。任务若未能三次失败，需要在终局刺杀梅林。
-    scopes: [public, evil-den]
-    abilities: [vote, mission, assassinate]
+- name: merlin
+  display_name: 梅林
+  faction: good
+  brief: 你知道邪恶阵营是谁，但不能让刺客识别你。引导任务成功时要隐藏信息来源。
+  scopes:
+  - public
+  - merlin-vision
+  abilities:
+  - vote
+  - mission
+- name: percival
+  display_name: 派西维尔
+  faction: good
+  brief: 你知道两名梅林候选人，需要保护真梅林并帮助好人判断队伍。
+  scopes:
+  - public
+  - percival-vision
+  abilities:
+  - vote
+  - mission
+- name: loyal_servant
+  display_name: 忠臣
+  faction: good
+  brief: 你没有夜间信息，需要通过队伍、投票和发言判断邪恶方。
+  scopes:
+  - public
+  abilities:
+  - vote
+  - mission
+- name: morgana
+  display_name: 莫甘娜
+  faction: evil
+  brief: 你需要伪装成好人或梅林，干扰派西维尔和队伍判断。
+  scopes:
+  - public
+  - evil-den
+  abilities:
+  - vote
+  - mission
+- name: assassin
+  display_name: 刺客
+  faction: evil
+  brief: 你与莫甘娜同阵营。任务若未能三次失败，需要在终局刺杀梅林。
+  scopes:
+  - public
+  - evil-den
+  abilities:
+  - vote
+  - mission
+  - assassinate
 players:
   count: 5
   initial_attrs:
@@ -113,220 +143,226 @@ players:
       morgana: 1
       assassin: 1
 scopes:
-  - name: public
-    members: all
-  - name: evil-den
-    members:
-      filter:
-        faction: evil
-  - name: merlin-vision
-    members:
-      filter:
-        role: merlin
-  - name: percival-vision
-    members:
-      filter:
-        role: percival
+- name: public
+  members: all
+- name: evil-den
+  members:
+    filter:
+      faction: evil
+- name: merlin-vision
+  members:
+    filter:
+      role: merlin
+- name: percival-vision
+  members:
+    filter:
+      role: percival
 flow:
   type: state_machine
   initial: setup
   states:
     setup:
       entry_effects:
-        - type: set_state
-          entity: GAME
-          attr: player_count
-          value: 5
-        - type: set_state
-          entity: GAME
-          attr: quest_number
-          value: 1
-        - type: set_state
-          entity: GAME
-          attr: good_score
-          value: 0
-        - type: set_state
-          entity: GAME
-          attr: evil_score
-          value: 0
-        - type: set_state
-          entity: GAME
-          attr: leader_index
-          value: 1
-        - type: avalon_set_quest_rule
-        - type: flow_set_next
-          state: team_building
+      - type: set_state
+        entity: GAME
+        attr: player_count
+        value: 5
+      - type: set_state
+        entity: GAME
+        attr: quest_number
+        value: 1
+      - type: set_state
+        entity: GAME
+        attr: good_score
+        value: 0
+      - type: set_state
+        entity: GAME
+        attr: evil_score
+        value: 0
+      - type: set_state
+        entity: GAME
+        attr: leader_index
+        value: 1
+      - type: avalon_set_quest_rule
+      - type: flow_set_next
+        state: team_building
       scenes:
-        - name: opening-info
-          display_name: 初始信息确认
-          scene_type: narration
-          scope: public
-          participants: all
-          dialogue_policy:
-            mode: none
-          response:
-            mode: none
-            cue: 系统确认角色信息、邪恶方互认、梅林与派西维尔获得各自视野。
+      - name: opening-info
+        display_name: 初始信息确认
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+          cue: 系统确认角色信息、邪恶方互认、梅林与派西维尔获得各自视野。
     team_building:
       scenes:
-        - name: leader-nominate-team
-          display_name: 队长提名任务队伍
-          scene_type: choose
-          scope: public
-          participants:
-            filter:
-              seat_index:
-                equals_state: GAME.leader_index
-            min: 1
-          candidates:
-            filter:
-              in_game: true
-            count:
-              state: GAME.current_team_size
-            distinct: true
-          action_policy:
-            kind: choose_many
-            target: required
-            input:
-              widget: multi_player_select
-          response:
-            mode: structured
-            schema: targets
-            include_reason: true
-            cue: 队长请选择本轮任务队伍，人数必须等于当前任务人数。
-          resolution:
-            effects:
-              - type: avalon_clear_current_team
-              - type: avalon_record_team
-              - type: flow_set_next
-                state: team_vote
+      - name: leader-nominate-team
+        display_name: 队长提名任务队伍
+        scene_type: choose
+        scope: public
+        participants:
+          filter:
+            ref: entity.seat_index
+            op: equal
+            value:
+              ref: GAME.leader_index
+          min: 1
+        candidates:
+          filter:
+            in_game: true
+          count:
+            state: GAME.current_team_size
+          distinct: true
+        action_policy:
+          kind: choose_many
+          target: required
+          input:
+            widget: multi_player_select
+        response:
+          mode: structured
+          schema: targets
+          include_reason: true
+          cue: 队长请选择本轮任务队伍，人数必须等于当前任务人数。
+        resolution:
+          effects:
+          - type: avalon_clear_current_team
+          - type: avalon_record_team
+          - type: flow_set_next
+            state: team_vote
     team_vote:
       scenes:
-        - name: vote-on-team
-          display_name: 全员表决队伍
-          scene_type: action
-          scope: public
-          participants: all
-          dialogue_policy:
-            mode: simultaneous
-          action_policy:
-            kind: yes_no
-            target: none
-            input:
-              widget: confirm
-          response:
-            mode: structured
-            schema: action
-            include_reason: true
-            cue: 是否同意当前队伍执行任务？
-          resolution:
-            effects:
-              - type: avalon_record_team_vote
-              - type: avalon_resolve_team_vote
-                ifs:
-                  - when:
-                      value:
-                        ref: GAME.evil_score
-                      greater_than_equal: 3
-                    state: evil_win
-                default: mission
+      - name: vote-on-team
+        display_name: 全员表决队伍
+        scene_type: action
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: simultaneous
+        action_policy:
+          kind: yes_no
+          target: none
+          input:
+            widget: confirm
+        response:
+          mode: structured
+          schema: action
+          include_reason: true
+          cue: 是否同意当前队伍执行任务？
+        resolution:
+          effects:
+          - type: avalon_record_team_vote
+          - type: avalon_resolve_team_vote
+            ifs:
+            - when:
+                ref: GAME.evil_score
+                op: greater_than_equal
+                value: 3
+              state: evil_win
+            default: mission
     mission:
       entry_effects:
-        - type: avalon_set_quest_rule
+      - type: avalon_set_quest_rule
       scenes:
-        - name: mission-card
-          display_name: 任务成员出牌
-          scene_type: action
-          scope: public
-          participants:
-            from_state_set: GAME.current_team
-            ordered: true
-          dialogue_policy:
-            mode: simultaneous
-          action_policy:
-            kind: yes_no
-            target: none
-            input:
-              widget: choice
-          response:
-            mode: structured
-            schema: action
-            cue: 任务成员提交任务牌：true 表示成功，false 表示失败。
-          resolution:
-            effects:
-              - type: avalon_record_mission_card
-              - type: avalon_resolve_mission
-                ifs:
-                  - when:
-                      value:
-                        ref: GAME.good_score
-                      greater_than_equal: 3
-                    state: assassination
-                  - when:
-                      value:
-                        ref: GAME.evil_score
-                      greater_than_equal: 3
-                    state: evil_win
-                default: team_building
+      - name: mission-card
+        display_name: 任务成员出牌
+        scene_type: action
+        scope: public
+        participants:
+          from_state_set: GAME.current_team
+          ordered: true
+        dialogue_policy:
+          mode: simultaneous
+        action_policy:
+          kind: yes_no
+          target: none
+          input:
+            widget: choice
+        response:
+          mode: structured
+          schema: action
+          cue: 任务成员提交任务牌：true 表示成功，false 表示失败。
+        resolution:
+          effects:
+          - type: avalon_record_mission_card
+          - type: avalon_resolve_mission
+            ifs:
+            - when:
+                ref: GAME.good_score
+                op: greater_than_equal
+                value: 3
+              state: assassination
+            - when:
+                ref: GAME.evil_score
+                op: greater_than_equal
+                value: 3
+              state: evil_win
+            default: team_building
     assassination:
       scenes:
-        - name: assassin-guess-merlin
-          display_name: 刺客刺杀梅林
-          scene_type: choose
-          scope: public
-          participants:
-            filter:
-              role: assassin
-            min: 1
-          candidates:
-            filter:
-              faction: good
-              in_game: true
-          action_policy:
-            kind: choose_one
-            target: required
-            input:
-              widget: player_select
-          response:
-            mode: structured
-            schema: target
-            include_reason: true
-            cue: 刺客请选择你认为是梅林的玩家。
-          resolution:
-            effects:
-              - type: flow_set_next
-                state: good_win
+      - name: assassin-guess-merlin
+        display_name: 刺客刺杀梅林
+        scene_type: choose
+        scope: public
+        participants:
+          filter:
+            role: assassin
+          min: 1
+        candidates:
+          filter:
+            faction: good
+            in_game: true
+        action_policy:
+          kind: choose_one
+          target: required
+          input:
+            widget: player_select
+        response:
+          mode: structured
+          schema: target
+          include_reason: true
+          cue: 刺客请选择你认为是梅林的玩家。
+        resolution:
+          effects:
+          - type: flow_set_next
+            state: good_win
     good_win:
       scenes:
-        - name: good-ending
-          display_name: 正义阵营胜利
-          scene_type: narration
-          scope: public
-          participants: all
-          dialogue_policy:
-            mode: none
-          response:
-            mode: none
-            cue: 正义阵营完成三次任务并守住梅林，获得胜利。
+      - name: good-ending
+        display_name: 正义阵营胜利
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+          cue: 正义阵营完成三次任务并守住梅林，获得胜利。
     evil_win:
       scenes:
-        - name: evil-ending
-          display_name: 邪恶阵营胜利
-          scene_type: narration
-          scope: public
-          participants: all
-          dialogue_policy:
-            mode: none
-          response:
-            mode: none
-            cue: 邪恶阵营通过任务失败或刺杀梅林获得胜利。
+      - name: evil-ending
+        display_name: 邪恶阵营胜利
+        scene_type: narration
+        scope: public
+        participants: all
+        dialogue_policy:
+          mode: none
+        response:
+          mode: none
+          cue: 邪恶阵营通过任务失败或刺杀梅林获得胜利。
 referee:
-  win_conditions:
-    - faction: good
-      when:
-        state: GAME.good_score
-        greater_than_equal: 3
-    - faction: evil
-      when:
-        state: GAME.evil_score
-        greater_than_equal: 3
+  conditions:
+  - faction: good
+    when:
+      ref: GAME.good_score
+      op: greater_than_equal
+      value: 3
+  - faction: evil
+    when:
+      ref: GAME.evil_score
+      op: greater_than_equal
+      value: 3
+  check_on:
+  - after_scene

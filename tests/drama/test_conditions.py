@@ -274,6 +274,99 @@ def test_when_value_ref_comparisons():
     ) is True
 
 
+def test_unified_ref_op_condition():
+    """ref/op/value 是新的统一 condition 写法。"""
+    state = _make_state(round=3)
+
+    assert evaluator.evaluate(
+        {"ref": "GAME.round", "op": "greater_than_equal", "value": 3},
+        state,
+        actor=None,
+    ) is True
+    assert evaluator.evaluate(
+        {"evaluator": "primitive", "ref": "GAME.round", "op": "less_than", "value": 3},
+        state,
+        actor=None,
+    ) is False
+
+
+def test_unified_left_op_right_condition_with_count():
+    """left/op/right 支持结构化 value expression，例如 count。"""
+    players = {
+        "P1": {"alive": True, "faction": "wolf"},
+        "P2": {"alive": False, "faction": "wolf"},
+        "P3": {"alive": True, "faction": "good"},
+    }
+    state = _make_state_with_players(players)
+
+    assert evaluator.evaluate(
+        {
+            "left": {
+                "count": {
+                    "filter": {
+                        "all": [
+                            {"value": "alive", "equal": True},
+                            {"value": "faction", "equal": "wolf"},
+                        ]
+                    }
+                }
+            },
+            "op": "equal",
+            "right": 1,
+        },
+        state,
+        actor=None,
+    ) is True
+
+
+def test_code_evaluator_python_with_env():
+    """code evaluator 支持指定 runtime/env/code。"""
+    state = _make_state(round=4)
+
+    assert evaluator.evaluate(
+        {
+            "evaluator": "code",
+            "runtime": "python",
+            "env": {"MIN_ROUND": "3"},
+            "code": "result = state('GAME.round') >= int(env('MIN_ROUND'))",
+        },
+        state,
+        actor=None,
+    ) is True
+
+
+def test_code_evaluator_shell_exit_code():
+    """shell code evaluator 使用退出码作为布尔结果。"""
+    state = _make_state(round=1)
+
+    assert evaluator.evaluate(
+        {
+            "evaluator": "code",
+            "runtime": "shell",
+            "code": "python - <<'PY'\nimport json, os, sys\nctx=json.loads(os.environ['DRAMA_CONDITION_CONTEXT'])\nsys.exit(0 if ctx['state']['GAME']['round'] == 1 else 1)\nPY",
+        },
+        state,
+        actor=None,
+    ) is True
+
+
+def test_http_evaluator_without_endpoint_uses_fallback():
+    """http/llm evaluator 未配置 endpoint 时应使用 fallback。"""
+    state = _make_state(round=1)
+
+    assert evaluator.evaluate(
+        {
+            "evaluator": "llm",
+            "id": "story_ending_judge",
+            "endpoint": "semantic.story_ending_judge",
+            "fallback": True,
+            "input": {"round": {"ref": "GAME.round"}},
+        },
+        state,
+        actor=None,
+    ) is True
+
+
 def test_state_actor_can_compare_to_state_value():
     state = _make_state_with_players({"P1": {"alive": False}})
     writer = StateWriter(state)

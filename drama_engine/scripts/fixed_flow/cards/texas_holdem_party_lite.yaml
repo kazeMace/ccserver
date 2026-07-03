@@ -8,7 +8,7 @@ runtime:
 extensions:
   cards:
     enabled: true
-    version: "0.1"
+    version: '0.1'
     config:
       decks:
         poker:
@@ -17,7 +17,7 @@ extensions:
           deal_count: 2
   economy:
     enabled: true
-    version: "0.1"
+    version: '0.1'
     config:
       currency: chip
 rule_set:
@@ -52,12 +52,16 @@ concepts:
       description: 公开手牌并说明牌型。
       prompt: 如果进入摊牌，说明你的最佳五张牌组合。
 roles:
-  - name: poker_player
-    display_name: 扑克玩家
-    faction: solo
-    brief: 你要在有限筹码内判断牌力，争取赢下底池。
-    scopes: [public, private-hand]
-    abilities: [bet, reveal]
+- name: poker_player
+  display_name: 扑克玩家
+  faction: solo
+  brief: 你要在有限筹码内判断牌力，争取赢下底池。
+  scopes:
+  - public
+  - private-hand
+  abilities:
+  - bet
+  - reveal
 players:
   count: 4
   initial_attrs:
@@ -68,126 +72,130 @@ players:
     distribution:
       poker_player: 4
 scopes:
-  - name: public
-    members: all
-  - name: private-hand
-    members: all
+- name: public
+  members: all
+- name: private-hand
+  members: all
 flow:
   loop: true
   scenes:
-    - name: deal-hole-cards
-      display_name: 发底牌
-      scene_type: narration
-      scope: private-hand
-      participants: all
-      dialogue_policy:
-        mode: none
-      response:
-        mode: none
-        cue: 系统给每名玩家发两张私密底牌，并把公共牌写入 GAME.community_cards。测试或手动运行时，玩家在摊牌阶段需要提交自己的 cards 列表。
-    - name: preflop-betting
-      display_name: 翻前下注
-      scene_type: action
-      scope: public
-      participants: all
-      dialogue_policy:
-        mode: sequential
-      action_policy:
-        kind: form
-        input:
-          widget: choice
-      response:
-        mode: structured
-        schema: custom
-        fields:
-          move:
-            type: string
-            description: fold call raise check
-          amount:
-            type: int
-            required: false
-            description: 下注或加注数量
-        cue: |
-          选择 fold、call、raise、bet 或 check，并给出筹码数量 amount。
-          下注/跟注/加注会从你的 chips 中扣除并加入 GAME.pot；fold 会写入 folded=true。
-      resolution:
-        effects:
-          - type: rule_set_apply
-            result_path: GAME.last_betting_rule_result
-      publication:
-        views:
-          - id: holdem-pot
-            kind: key-value
-            title: 德州下注状态
-            audience: public
-            data:
-              rows:
-                - label: 当前底池
-                  value:
-                    ref: GAME.pot
-                - label: 最近下注
-                  value:
-                    ref: GAME.last_betting_rule_result
-    - name: community-cards
-      display_name: 翻公共牌
-      scene_type: narration
-      scope: public
-      participants: all
-      dialogue_policy:
-        mode: none
-      response:
-        mode: none
-        cue: 系统依次翻出 5 张公共牌，并记录当前底池。若手动测试，可把公共牌写为 GAME.community_cards，例如 ["AH","KH","QH","2C","3D"]。
-      publication:
-        views:
-          - id: holdem-community
-            kind: cards
-            title: 公共牌
-            audience: public
-            data:
-              cards:
-                ref: GAME.community_cards
-    - name: showdown-rating
-      display_name: 摊牌评分
-      scene_type: action
-      scope: public
-      participants:
-        filter:
-          alive: true
-      action_policy:
-        kind: form
-        input:
-          widget: choice
-      response:
-        mode: structured
-        schema: custom
-        fields:
+  - name: deal-hole-cards
+    display_name: 发底牌
+    scene_type: narration
+    scope: private-hand
+    participants: all
+    dialogue_policy:
+      mode: none
+    response:
+      mode: none
+      cue: 系统给每名玩家发两张私密底牌，并把公共牌写入 GAME.community_cards。测试或手动运行时，玩家在摊牌阶段需要提交自己的 cards 列表。
+  - name: preflop-betting
+    display_name: 翻前下注
+    scene_type: action
+    scope: public
+    participants: all
+    dialogue_policy:
+      mode: sequential
+    action_policy:
+      kind: form
+      input:
+        widget: choice
+    response:
+      mode: structured
+      schema: custom
+      fields:
+        move:
+          type: string
+          description: fold call raise check
+        amount:
+          type: int
+          required: false
+          description: 下注或加注数量
+      cue: '选择 fold、call、raise、bet 或 check，并给出筹码数量 amount。
+
+        下注/跟注/加注会从你的 chips 中扣除并加入 GAME.pot；fold 会写入 folded=true。
+
+        '
+    resolution:
+      effects:
+      - type: rule_set_apply
+        result_path: GAME.last_betting_rule_result
+    publication:
+      views:
+      - id: holdem-pot
+        kind: key-value
+        title: 德州下注状态
+        audience: public
+        data:
+          rows:
+          - label: 当前底池
+            value:
+              ref: GAME.pot
+          - label: 最近下注
+            value:
+              ref: GAME.last_betting_rule_result
+  - name: community-cards
+    display_name: 翻公共牌
+    scene_type: narration
+    scope: public
+    participants: all
+    dialogue_policy:
+      mode: none
+    response:
+      mode: none
+      cue: 系统依次翻出 5 张公共牌，并记录当前底池。若手动测试，可把公共牌写为 GAME.community_cards，例如 ["AH","KH","QH","2C","3D"]。
+    publication:
+      views:
+      - id: holdem-community
+        kind: cards
+        title: 公共牌
+        audience: public
+        data:
           cards:
-            type: string
-            description: 你的两张底牌，用逗号分隔，例如 JH,TH。
-          community:
-            type: string
-            required: false
-            description: 可选公共牌覆盖值，用逗号分隔；默认读取 GAME.community_cards。
-        include_reason: true
-        cue: 提交你的两张底牌 cards，例如 JH,TH。系统会结合 GAME.community_cards 自动比较最佳五张牌，写入 GAME.showdown_results 和 GAME.winner。
-      resolution:
-        effects:
-          - type: rule_set_apply
-            result_path: GAME.last_showdown_rule_result
-      publication:
-        views:
-          - id: holdem-showdown
-            kind: key-value
-            title: 摊牌结果
-            audience: public
-            data:
-              rows:
-                - label: 赢家
-                  value:
-                    ref: GAME.winner
-                - label: 摊牌明细
-                  value:
-                    ref: GAME.showdown_results
+            ref: GAME.community_cards
+  - name: showdown-rating
+    display_name: 摊牌评分
+    scene_type: action
+    scope: public
+    participants:
+      filter:
+        alive: true
+    action_policy:
+      kind: form
+      input:
+        widget: choice
+    response:
+      mode: structured
+      schema: custom
+      fields:
+        cards:
+          type: string
+          description: 你的两张底牌，用逗号分隔，例如 JH,TH。
+        community:
+          type: string
+          required: false
+          description: 可选公共牌覆盖值，用逗号分隔；默认读取 GAME.community_cards。
+      include_reason: true
+      cue: 提交你的两张底牌 cards，例如 JH,TH。系统会结合 GAME.community_cards 自动比较最佳五张牌，写入 GAME.showdown_results 和 GAME.winner。
+    resolution:
+      effects:
+      - type: rule_set_apply
+        result_path: GAME.last_showdown_rule_result
+    publication:
+      views:
+      - id: holdem-showdown
+        kind: key-value
+        title: 摊牌结果
+        audience: public
+        data:
+          rows:
+          - label: 赢家
+            value:
+              ref: GAME.winner
+          - label: 摊牌明细
+            value:
+              ref: GAME.showdown_results
 referee:
-  win_conditions: []
+  conditions: []
+  check_on:
+  - after_scene

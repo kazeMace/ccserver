@@ -8,12 +8,12 @@ runtime:
 extensions:
   story:
     enabled: true
-    version: "0.1"
+    version: '0.1'
     config:
       setting: old_ruins
   dice:
     enabled: true
-    version: "0.1"
+    version: '0.1'
     config:
       checks: d20
 rule_set:
@@ -54,30 +54,42 @@ concepts:
       description: 在多个剧情路线中选择一个。
       prompt: 结合风险和队伍能力选择路线。
 roles:
-  - name: warrior
-    display_name: 战士
-    faction: party
-    brief: 你擅长防御和近战，适合承担危险和保护队友。
-    scopes: [public]
-    abilities: [act, choose]
-  - name: rogue
-    display_name: 游荡者
-    faction: party
-    brief: 你擅长侦查、潜行和机关处理，适合先手探路。
-    scopes: [public]
-    abilities: [act, choose]
-  - name: mage
-    display_name: 法师
-    faction: party
-    brief: 你擅长奥术知识和远程支援，适合解析遗迹线索。
-    scopes: [public]
-    abilities: [act, choose]
-  - name: cleric
-    display_name: 牧师
-    faction: party
-    brief: 你擅长治疗和神圣仪式，适合稳定队伍状态。
-    scopes: [public]
-    abilities: [act, choose]
+- name: warrior
+  display_name: 战士
+  faction: party
+  brief: 你擅长防御和近战，适合承担危险和保护队友。
+  scopes:
+  - public
+  abilities:
+  - act
+  - choose
+- name: rogue
+  display_name: 游荡者
+  faction: party
+  brief: 你擅长侦查、潜行和机关处理，适合先手探路。
+  scopes:
+  - public
+  abilities:
+  - act
+  - choose
+- name: mage
+  display_name: 法师
+  faction: party
+  brief: 你擅长奥术知识和远程支援，适合解析遗迹线索。
+  scopes:
+  - public
+  abilities:
+  - act
+  - choose
+- name: cleric
+  display_name: 牧师
+  faction: party
+  brief: 你擅长治疗和神圣仪式，适合稳定队伍状态。
+  scopes:
+  - public
+  abilities:
+  - act
+  - choose
 players:
   count: 4
   initial_attrs:
@@ -91,130 +103,136 @@ players:
       mage: 1
       cleric: 1
 scopes:
-  - name: public
-    members: all
+- name: public
+  members: all
 flow:
   loop: true
   scenes:
-    - name: tavern-hook
-      display_name: 酒馆委托
-      scene_type: narration
-      scope: public
-      participants: all
-      dialogue_policy:
-        mode: none
-      response:
-        mode: none
-        cue: 镇长请求小队进入旧遗迹，取回能驱散黑雾的银月圣徽。
-      publication:
-        views:
-          - id: dnd-story-state
-            kind: key-value
-            title: DND 冒险状态
-            audience: public
-            data:
-              rows:
-                - label: 成功次数
-                  value:
-                    ref: GAME.dnd_fixed_adventure_successes
-                - label: 胜利方
-                  value:
-                    ref: GAME.winner
-    - name: choose-route
-      display_name: 选择进入路线
-      scene_type: choose
-      scope: public
-      participants: all
-      candidates:
-        extra: [front_gate, collapsed_tunnel, old_well]
-      action_policy:
-        kind: choose_one
-        target: required
-        input:
-          widget: choice
-      response:
-        mode: structured
-        schema: target
-        include_reason: true
-        cue: 选择进入遗迹的路线：正门、塌陷隧道或旧井。
-      resolution:
-        effects:
-          - type: record_target
-            attr: chosen_route
-            source: data.target
-    - name: skill-check
-      display_name: 关键检定
-      scene_type: action
-      scope: public
-      participants: all
-      action_policy:
-        kind: form
-        input:
-          widget: text
-      response:
-        mode: structured
-        schema: custom
-        fields:
-          action:
-            type: string
-            description: 角色行动
-          roll:
-            type: int
-            description: d20 点数
-        cue: 描述你的行动并提交 d20 点数，系统按固定 DC 12 判断结果。
-      resolution:
-        effects:
-          - type: rule_set_apply
-            result_path: GAME.last_story_rule_result
-      publication:
-        views:
-          - id: dnd-last-check
-            kind: key-value
-            title: 最近检定
-            audience: public
-            data:
-              rows:
-                - label: 结算
-                  value:
-                    ref: GAME.last_story_rule_result
-    - name: final-choice
-      display_name: 圣徽抉择
-      scene_type: action
-      scope: public
-      participants: all
-      dialogue_policy:
-        mode: openchat
-        rounds: 1
-        speakers_per_round: 4
-      action_policy:
-        kind: yes_no
-        target: none
-        input:
-          widget: confirm
-      response:
-        mode: structured
-        schema: action
-        include_reason: true
-        cue: 是否立刻启动银月圣徽净化黑雾？选择并说明理由。
-      resolution:
-        effects:
-          - type: set_state
-            entity: GAME
-            attr: relic_activated
-            value: data.action
-    - name: ending
-      display_name: 冒险结局
-      scene_type: narration
-      scope: public
-      participants: all
-      dialogue_policy:
-        mode: none
-      response:
-        mode: none
-        cue: 系统根据路线、检定、story_memory 和圣徽选择讲述固定结局；成功次数达到 3 时小队完成目标。
+  - name: tavern-hook
+    display_name: 酒馆委托
+    scene_type: narration
+    scope: public
+    participants: all
+    dialogue_policy:
+      mode: none
+    response:
+      mode: none
+      cue: 镇长请求小队进入旧遗迹，取回能驱散黑雾的银月圣徽。
+    publication:
+      views:
+      - id: dnd-story-state
+        kind: key-value
+        title: DND 冒险状态
+        audience: public
+        data:
+          rows:
+          - label: 成功次数
+            value:
+              ref: GAME.dnd_fixed_adventure_successes
+          - label: 胜利方
+            value:
+              ref: GAME.winner
+  - name: choose-route
+    display_name: 选择进入路线
+    scene_type: choose
+    scope: public
+    participants: all
+    candidates:
+      extra:
+      - front_gate
+      - collapsed_tunnel
+      - old_well
+    action_policy:
+      kind: choose_one
+      target: required
+      input:
+        widget: choice
+    response:
+      mode: structured
+      schema: target
+      include_reason: true
+      cue: 选择进入遗迹的路线：正门、塌陷隧道或旧井。
+    resolution:
+      effects:
+      - type: record_target
+        attr: chosen_route
+        source: data.target
+  - name: skill-check
+    display_name: 关键检定
+    scene_type: action
+    scope: public
+    participants: all
+    action_policy:
+      kind: form
+      input:
+        widget: text
+    response:
+      mode: structured
+      schema: custom
+      fields:
+        action:
+          type: string
+          description: 角色行动
+        roll:
+          type: int
+          description: d20 点数
+      cue: 描述你的行动并提交 d20 点数，系统按固定 DC 12 判断结果。
+    resolution:
+      effects:
+      - type: rule_set_apply
+        result_path: GAME.last_story_rule_result
+    publication:
+      views:
+      - id: dnd-last-check
+        kind: key-value
+        title: 最近检定
+        audience: public
+        data:
+          rows:
+          - label: 结算
+            value:
+              ref: GAME.last_story_rule_result
+  - name: final-choice
+    display_name: 圣徽抉择
+    scene_type: action
+    scope: public
+    participants: all
+    dialogue_policy:
+      mode: openchat
+      rounds: 1
+      speakers_per_round: 4
+    action_policy:
+      kind: yes_no
+      target: none
+      input:
+        widget: confirm
+    response:
+      mode: structured
+      schema: action
+      include_reason: true
+      cue: 是否立刻启动银月圣徽净化黑雾？选择并说明理由。
+    resolution:
+      effects:
+      - type: set_state
+        entity: GAME
+        attr: relic_activated
+        value: data.action
+  - name: ending
+    display_name: 冒险结局
+    scene_type: narration
+    scope: public
+    participants: all
+    dialogue_policy:
+      mode: none
+    response:
+      mode: none
+      cue: 系统根据路线、检定、story_memory 和圣徽选择讲述固定结局；成功次数达到 3 时小队完成目标。
 referee:
-  win_conditions:
-    - faction: party
-      when:
-        state: GAME.relic_activated
-        equals: true
+  conditions:
+  - faction: party
+    when:
+      ref: GAME.relic_activated
+      op: equals
+      value: true
+  check_on:
+  - after_scene

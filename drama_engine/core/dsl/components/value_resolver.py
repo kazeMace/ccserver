@@ -148,6 +148,12 @@ class ValueResolver:
         if source.startswith("item."):
             return self._resolve_nested_path(extra.get("item"), source.split(".", 1)[1], state)
 
+        if source == "result":
+            return extra.get("result")
+
+        if source.startswith("result."):
+            return self._resolve_nested_path(extra.get("result"), source.split(".", 1)[1], state)
+
         if "." in source and state is not None:
             maybe_state_value = self._resolve_state_path(source, state, actor, candidate)
             if maybe_state_value is not None:
@@ -219,6 +225,11 @@ class ValueResolver:
             return extra.get("item")
         if ref.startswith("item."):
             return self._resolve_nested_path(extra.get("item"), ref.split(".", 1)[1], state)
+
+        if ref == "result":
+            return extra.get("result")
+        if ref.startswith("result."):
+            return self._resolve_nested_path(extra.get("result"), ref.split(".", 1)[1], state)
 
         if ":" in ref and self._plugins is not None:
             prefix = ref.split(":", 1)[0]

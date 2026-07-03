@@ -560,7 +560,7 @@ def test_compile_publication_views_and_project_view_event():
     scene = script.flow.scenes[0]
     assert scene.publication["views"][0]["projector"] == "core.views.inline"
 
-    from drama_engine.core.engine import State
+    from drama_engine.core.engine import SetAttr, State, StateWriter
     from drama_engine.core.dsl.plugins import ViewContext
 
     state = State(script.vocab)
@@ -785,7 +785,7 @@ def test_compile_scene_when_condition():
         referee:
           win_conditions: []
     """)
-    from drama_engine.core.engine import State, StateWriter, SetAttr
+    from drama_engine.core.engine import SetAttr, State, StateWriter
 
     script = compiler.compile_doc(doc)
     state = State(script.vocab)
@@ -920,6 +920,63 @@ def test_compile_state_machine_flow_transitions():
     assert [scene.name for scene in script.flow.next_scenes(state)] == ["day-vote"]
     script.flow.after_batch(state, writer)
     assert [scene.name for scene in script.flow.next_scenes(state)] == ["pk-vote"]
+
+
+def test_compile_referee_conditions_with_check_on_and_include():
+    """新版 referee.conditions 支持 check_on/include，并保留 callable 兼容。"""
+    doc = _yaml("""
+        meta: {title: 裁判 Hook 测试}
+        roles:
+          - {name: v, display_name: 村民, faction: good, brief: 你是村民}
+        concepts:
+          roles: {v: {display_name: 村民, description: 普通玩家}}
+          factions: {good: {display_name: 好人, description: 好人阵营}}
+          scopes: {public: {display_name: 公开, description: 全员可见}}
+        players:
+          count: 1
+          casting: {type: shuffle, distribution: {v: 1}}
+        scopes:
+          - {name: public, members: all}
+        flow:
+          scenes:
+            - name: only-check-here
+              scene_type: narration
+              scope: public
+              dialogue_policy: {mode: none}
+              response: {mode: none}
+              cue: "检查"
+            - name: skip-here
+              scene_type: narration
+              scope: public
+              dialogue_policy: {mode: none}
+              response: {mode: none}
+              cue: "跳过"
+        referee:
+          check_on: [after_scene]
+          include:
+            scenes: [only-check-here]
+          conditions:
+            - id: done
+              message: 结束
+              when:
+                ref: GAME.done
+                op: equals
+                value: true
+    """)
+    from drama_engine.core.engine import State, StateWriter, SetAttr
+
+    errors = compiler.validate(doc)
+    assert errors == []
+
+    script = compiler.compile_doc(doc)
+    state = State(script.vocab)
+    state.register_entity("GAME", {"done": True})
+    scene = script.flow.scenes[0]
+    skipped_scene = script.flow.scenes[1]
+
+    assert script.referee(state, hook="before_scene", scene=scene) is None
+    assert script.referee(state, hook="after_scene", scene=skipped_scene) is None
+    assert script.referee(state, hook="after_scene", scene=scene) == "结束"
 
 
 def test_validate_state_machine_requires_initial_state():

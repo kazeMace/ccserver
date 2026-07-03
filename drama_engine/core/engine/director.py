@@ -428,7 +428,7 @@ class Director:
 
                 # ── 裁判检查 ─────────────────────────────────────────────────
                 await self._wait_step()
-                verdict = self.script.referee(state)
+                verdict = self._call_referee(state, hook="after_scene", scene=scene)
                 if verdict is not None:
                     # 胜负已分，公布结果
                     print(f"\n{'='*60}")
@@ -482,6 +482,15 @@ class Director:
         """
         await self.setup(state)
         return await self.run_flow(state)
+
+    def _call_referee(self, state: State, hook: str, scene: Scene | None = None) -> str | None:
+        """Call referee with hook metadata while preserving legacy callables."""
+        try:
+            return self.script.referee(state, hook=hook, scene=scene)
+        except TypeError as exc:
+            if "unexpected keyword argument" not in str(exc):
+                raise
+            return self.script.referee(state)
 
     def _run_triggers_since(self, start_index: int, state: State, writer: StateWriter) -> None:
         """

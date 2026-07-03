@@ -8,12 +8,12 @@ runtime:
 extensions:
   story:
     enabled: true
-    version: "0.1"
+    version: '0.1'
     config:
       campaign: crystal_forest
   dice:
     enabled: true
-    version: "0.1"
+    version: '0.1'
     config:
       checks: d20
 rule_set:
@@ -45,12 +45,15 @@ concepts:
       description: 小队投票选择剧情分支。
       prompt: 结合风险和收益选择路线。
 roles:
-  - name: adventurer
-    display_name: 冒险者
-    faction: party
-    brief: 你是水晶森林小队成员，要协作完成章节目标。
-    scopes: [public]
-    abilities: [act, vote_path]
+- name: adventurer
+  display_name: 冒险者
+  faction: party
+  brief: 你是水晶森林小队成员，要协作完成章节目标。
+  scopes:
+  - public
+  abilities:
+  - act
+  - vote_path
 players:
   count: 4
   initial_attrs:
@@ -61,104 +64,109 @@ players:
     distribution:
       adventurer: 4
 scopes:
-  - name: public
-    members: all
+- name: public
+  members: all
 flow:
   loop: true
   scenes:
-    - name: chapter-open
-      display_name: 章节开场
-      scene_type: narration
-      scope: public
-      participants: all
-      dialogue_policy:
-        mode: none
-      response:
-        mode: none
-        cue: 水晶森林中的古树正在枯萎，小队需要找到污染源。
-      publication:
-        views:
-          - id: campaign-state
-            kind: key-value
-            title: 章节状态
-            audience: public
-            data:
-              rows:
-                - label: 成功次数
-                  value:
-                    ref: GAME.campaign_lite_successes
-                - label: 胜利方
-                  value:
-                    ref: GAME.winner
-    - name: choose-path
-      display_name: 选择调查路线
-      scene_type: vote
-      scope: public
-      participants: all
-      candidates:
-        extra: [river_path, old_shrine, hunter_camp]
-      action_policy:
-        kind: vote
-        target: required
-        input:
-          widget: choice
-      response:
-        mode: structured
-        schema: vote
-        include_reason: true
-        cue: 投票选择下一处调查地点。
-      resolution:
-        selection:
-          type: plurality
-          tie_policy: alphabetical
-        effects:
-          - type: record_target
-            attr: chosen_path
-            source: winner
-    - name: group-check
-      display_name: 团体检定
-      scene_type: action
-      scope: public
-      participants: all
-      action_policy:
-        kind: form
-        input:
-          widget: text
-      response:
-        mode: structured
-        schema: custom
-        fields:
-          action:
-            type: string
-            description: 行动描述
-          roll:
-            type: int
-            description: d20 点数
-        cue: 提交你的行动和 d20 点数，系统进行章节结算。
-      resolution:
-        effects:
-          - type: rule_set_apply
-            result_path: GAME.last_campaign_result
-      publication:
-        views:
-          - id: campaign-last-check
-            kind: key-value
-            title: 最近团体检定
-            audience: public
-            data:
-              rows:
-                - label: 结算
-                  value:
-                    ref: GAME.last_campaign_result
-    - name: chapter-summary
-      display_name: 章节结算
-      scene_type: narration
-      scope: public
-      participants: all
-      dialogue_policy:
-        mode: none
-      response:
-        mode: none
-        cue: 系统根据路线、检定结果和 story_memory 描述本章结局；累计 3 次成功时小队完成章节目标。
+  - name: chapter-open
+    display_name: 章节开场
+    scene_type: narration
+    scope: public
+    participants: all
+    dialogue_policy:
+      mode: none
+    response:
+      mode: none
+      cue: 水晶森林中的古树正在枯萎，小队需要找到污染源。
+    publication:
+      views:
+      - id: campaign-state
+        kind: key-value
+        title: 章节状态
+        audience: public
+        data:
+          rows:
+          - label: 成功次数
+            value:
+              ref: GAME.campaign_lite_successes
+          - label: 胜利方
+            value:
+              ref: GAME.winner
+  - name: choose-path
+    display_name: 选择调查路线
+    scene_type: vote
+    scope: public
+    participants: all
+    candidates:
+      extra:
+      - river_path
+      - old_shrine
+      - hunter_camp
+    action_policy:
+      kind: vote
+      target: required
+      input:
+        widget: choice
+    response:
+      mode: structured
+      schema: vote
+      include_reason: true
+      cue: 投票选择下一处调查地点。
+    resolution:
+      selection:
+        type: plurality
+        tie_policy: alphabetical
+      effects:
+      - type: record_target
+        attr: chosen_path
+        source: winner
+  - name: group-check
+    display_name: 团体检定
+    scene_type: action
+    scope: public
+    participants: all
+    action_policy:
+      kind: form
+      input:
+        widget: text
+    response:
+      mode: structured
+      schema: custom
+      fields:
+        action:
+          type: string
+          description: 行动描述
+        roll:
+          type: int
+          description: d20 点数
+      cue: 提交你的行动和 d20 点数，系统进行章节结算。
+    resolution:
+      effects:
+      - type: rule_set_apply
+        result_path: GAME.last_campaign_result
+    publication:
+      views:
+      - id: campaign-last-check
+        kind: key-value
+        title: 最近团体检定
+        audience: public
+        data:
+          rows:
+          - label: 结算
+            value:
+              ref: GAME.last_campaign_result
+  - name: chapter-summary
+    display_name: 章节结算
+    scene_type: narration
+    scope: public
+    participants: all
+    dialogue_policy:
+      mode: none
+    response:
+      mode: none
+      cue: 系统根据路线、检定结果和 story_memory 描述本章结局；累计 3 次成功时小队完成章节目标。
 referee:
-  win_conditions: []
+  conditions: []
+  check_on:
+  - after_scene

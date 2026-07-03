@@ -122,13 +122,68 @@ SCOPE_FIELD_SCHEMA = DslSchema(
 
 FLOW_FIELD_SCHEMA = DslSchema(
     name="flow",
-    description="脚本流程声明，支持 sequence 和 state_machine。",
+    description="脚本流程声明，支持 sequence 和 state_machine；sequence 是单状态 state_machine 的作者友好语法糖。",
     fields=(
         DslField("type", "string", False, "流程类型。", ("sequence", "state_machine")),
         DslField("loop", "boolean", False, "sequence 流程是否循环。"),
         DslField("scenes", "list[scene]", False, "sequence 流程场景列表。"),
         DslField("initial", "string", False, "state_machine 初始状态。"),
         DslField("states", "object", False, "state_machine 状态定义。"),
+    ),
+)
+
+CONDITION_FIELD_SCHEMA = DslSchema(
+    name="condition",
+    description="通用条件表达式，所有 when / until / referee 条件共享同一组件。",
+    fields=(
+        DslField("ref", "string", False, "推荐写法：左侧值引用，例如 GAME.round、actor.role、STORY.beat_count。"),
+        DslField("left", "any", False, "推荐写法：通用左侧值表达式，例如 {count: ...}。"),
+        DslField("op", "string", False, "推荐写法：比较操作符。", (
+            "equals",
+            "equal",
+            "not_equals",
+            "not_equal",
+            "greater_than",
+            "less_than",
+            "greater_than_equal",
+            "less_than_equal",
+            "in",
+            "not_in",
+            "is_null",
+            "not_null",
+        )),
+        DslField("value", "any", False, "推荐写法：比较目标值，可包含 {ref: ...}。"),
+        DslField("right", "any", False, "推荐写法：通用右侧值表达式，可包含 {ref: ...} 或 {count: ...}。"),
+        DslField("evaluator", "string", False, "可选 evaluator。primitive 为默认；code/http/llm/plugin 为扩展判断。", (
+            "primitive",
+            "code",
+            "http",
+            "llm",
+            "plugin",
+        )),
+        DslField("id", "string", False, "语义化 evaluator ID，例如 story_ending_judge。"),
+        DslField("runtime", "string", False, "code evaluator 运行环境，例如 python、shell、node、bun。"),
+        DslField("env", "object", False, "code evaluator 环境变量。"),
+        DslField("code", "string", False, "code evaluator 代码；condition 只能返回布尔结果。"),
+        DslField("endpoint", "string", False, "http/llm evaluator 的语义端点名，由后台映射真实 URL。"),
+        DslField("input", "object", False, "http/llm evaluator 输入，可包含 {ref: ...}。"),
+        DslField("pass_when", "condition", False, "http/llm evaluator 返回结构后的二次判断条件。"),
+        DslField("fallback", "boolean", False, "外部 evaluator 不可用或低置信度时的默认结果。"),
+        DslField("state", "string", False, "Legacy：旧状态路径写法，请改用 ref。"),
+        DslField("equals/not_equals/gte/lte/gt/lt", "any", False, "Legacy：旧比较字段，请改用 op/value。"),
+        DslField("python", "string|object", False, "Legacy：旧 Python 条件，请改用 evaluator: code。"),
+    ),
+)
+
+REFEREE_FIELD_SCHEMA = DslSchema(
+    name="referee",
+    description="通用结束/裁判条件。不同 runtime 在 check_on 指定的 hook 上调用同一组 conditions。",
+    fields=(
+        DslField("check_on", "list[string]", False, "检查时机，例如 after_scene、after_action、after_beat。"),
+        DslField("include", "object", False, "只在指定 scenes / scene_types / event_kinds 上检查。"),
+        DslField("exclude", "object", False, "排除指定 scenes / scene_types / event_kinds。"),
+        DslField("conditions", "list[object]", False, "推荐写法：通用 referee 条件列表，每项包含 id/message/when/result 等。"),
+        DslField("win_conditions", "list[object]", False, "Legacy：旧胜负条件字段，请改用 conditions。"),
     ),
 )
 
@@ -186,8 +241,10 @@ def build_core_dsl_schema() -> dict[str, Any]:
             "role": ROLE_FIELD_SCHEMA.to_dict(),
             "scope": SCOPE_FIELD_SCHEMA.to_dict(),
             "flow": FLOW_FIELD_SCHEMA.to_dict(),
+            "condition": CONDITION_FIELD_SCHEMA.to_dict(),
             "scene": SCENE_FIELD_SCHEMA.to_dict(),
             "publication": PUBLICATION_FIELD_SCHEMA.to_dict(),
+            "referee": REFEREE_FIELD_SCHEMA.to_dict(),
             "extensions": EXTENSIONS_FIELD_SCHEMA.to_dict(),
             "game_pack": GAME_PACK_FIELD_SCHEMA.to_dict(),
             "rule_set": RULE_SET_FIELD_SCHEMA.to_dict(),

@@ -11,7 +11,12 @@
 """
 
 from __future__ import annotations
+import json
 import logging
+import os
+import subprocess
+import urllib.error
+import urllib.request
 from typing import Any
 
 from drama_engine.core.engine import State
@@ -50,6 +55,27 @@ _CONDITION_KEYS = _NEW_OPERATOR_KEYS | _OLD_OPERATOR_KEYS | {
     "all",
     "any",
     "not",
+    # Preferred unified condition syntax.
+    "evaluator",
+    "id",
+    "ref",
+    "left",
+    "op",
+    "right",
+    "expected",
+    "pass_when",
+    "fallback",
+    "runtime",
+    "language",
+    "env",
+    "code",
+    "timeout_ms",
+    "endpoint",
+    "url",
+    "input",
+    "output_schema",
+    "min_confidence",
+    # Legacy condition syntax kept for old scripts.
     "state",
     "value",
     "count",
@@ -67,6 +93,9 @@ class ConditionEvaluator:
     条件原语求值器。
 
     支持的原语：
+      - 统一写法：{ref: GAME.round, op: greater_than_equal, value: 2}
+      - 通用比较：{left: {count: {...}}, op: equal, right: 0}
+      - 通用 evaluator：primitive / code / http / llm / plugin
       - value 比较：equal / not_equal / greater_than / less_than /
         greater_than_equal / less_than_equal / in / not_in
       - ref 引用：{value: {ref: GAME.round}, equal: 1}
@@ -128,6 +157,15 @@ class ConditionEvaluator:
             return not self.evaluate(
                 cond["not"], state, actor, candidate, responses, extra, entity
             )
+
+        # 统一 evaluator 入口。没有显式 evaluator 时，ref/op/value 和
+        # left/op/right 都是默认 primitive 写法；其他旧写法继续向下兼容。
+        if "evaluator" in cond:
+            return self._eval_by_evaluator(cond, state, actor, candidate, responses, extra, entity)
+        if "left" in cond and "op" in cond:
+            return self._eval_compare_condition(cond, state, actor, candidate, responses, extra, entity)
+        if "ref" in cond and "op" in cond:
+            return self._eval_ref_condition(cond, state, actor, candidate, responses, extra, entity)
 
         if "plugin" in cond:
             if self._plugins is None:
@@ -202,6 +240,186 @@ class ConditionEvaluator:
             return self._eval_state(cond, state, actor, candidate)
 
         raise ValueError(f"未知条件格式: {cond}")
+
+    def _eval_by_evaluator(
+        self,
+        cond: dict,
+        state: State,
+        actor: str | None,
+        candidate: str | None,
+        responses: list | None,
+        extra: dict | None,
+        entity: str | None,
+    ) -> bool:
+        """
+        按统一 evaluator 分发条件求值。
+
+        Args:
+            cond: 条件字典，必须包含 evaluator。
+            state: 当前世界状态。
+            actor: 当前行动者，可为空。
+            candidate: 当前候选对象，可为空。
+            responses: 当前响应列表。
+            extra: hook/runtime 注入的额外上下文。
+            entity: filter 上下文中的当前实体。
+
+        Returns:
+            bool: 条件是否成立。
+        """
+        evaluator = str(cond.get("evaluator") or "primitive")
+        if evaluator == "primitive":
+            if "left" in cond and "op" in cond:
+                return self._eval_compare_condition(cond, state, actor, candidate, responses, extra, entity)
+            if "ref" in cond and "op" in cond:
+                return self._eval_ref_condition(cond, state, actor, candidate, responses, extra, entity)
+            # primitive evaluator 也允许包一层旧条件，便于迁移。
+            nested = cond.get("condition") or cond.get("when")
+            if isinstance(nested, dict):
+                return self.evaluate(nested, state, actor, candidate, responses, extra, entity)
+            raise ValueError(f"primitive evaluator 缺少 ref/op 或 condition: {cond}")
+
+        if evaluator == "code":
+            return self._eval_code_condition(cond, state, actor, candidate, responses, extra, entity)
+
+        if evaluator in {"http", "llm"}:
+            return self._eval_http_condition(cond, state, actor, candidate, responses, extra, entity)
+
+        if evaluator == "plugin":
+            plugin_name = cond.get("plugin") or cond.get("id")
+            if self._plugins is None:
+                raise ValueError(f"未配置插件注册表，无法求值 plugin evaluator: {cond}")
+            if not plugin_name:
+                raise ValueError(f"plugin evaluator 缺少 id/plugin: {cond}")
+            return self._plugins.evaluate_condition(
+                str(plugin_name),
+                cond,
+                {
+                    "state": state,
+                    "actor": actor,
+                    "candidate": candidate,
+                    "responses": responses or [],
+                    "extra": extra or {},
+                    "entity": entity,
+                },
+            )
+
+        raise ValueError(f"未知 condition evaluator: {evaluator}")
+
+    def _eval_ref_condition(
+        self,
+        cond: dict,
+        state: State,
+        actor: str | None,
+        candidate: str | None,
+        responses: list | None,
+        extra: dict | None,
+        entity: str | None,
+    ) -> bool:
+        """
+        求值统一 ref/op/value 条件。
+
+        推荐写法：
+          when:
+            ref: GAME.round
+            op: greater_than_equal
+            value: 2
+        """
+        left = self._resolve_value_expr(
+            {"ref": cond["ref"]},
+            state=state,
+            actor=actor,
+            candidate=candidate,
+            responses=responses,
+            extra=extra,
+            entity=entity,
+            allow_entity_shorthand=False,
+        )
+        op = str(cond.get("op") or "equals")
+        expected_spec = cond.get("value", cond.get("expected"))
+        right = self._resolve_value_expr(
+            expected_spec,
+            state=state,
+            actor=actor,
+            candidate=candidate,
+            responses=responses,
+            extra=extra,
+            entity=entity,
+        )
+        return self._compare_operator(left, op, right)
+
+    def _eval_compare_condition(
+        self,
+        cond: dict,
+        state: State,
+        actor: str | None,
+        candidate: str | None,
+        responses: list | None,
+        extra: dict | None,
+        entity: str | None,
+    ) -> bool:
+        """
+        求值统一 left/op/right 条件。
+
+        该写法复用 ref/op/value 的比较器，但 left/right 可以是任意
+        value expression，例如 `{count: {filter: ...}}`。
+        """
+        left = self._resolve_value_expr(
+            cond["left"],
+            state=state,
+            actor=actor,
+            candidate=candidate,
+            responses=responses,
+            extra=extra,
+            entity=entity,
+        )
+        op = str(cond.get("op") or "equals")
+        right_spec = cond.get("right", cond.get("value", cond.get("expected")))
+        right = self._resolve_value_expr(
+            right_spec,
+            state=state,
+            actor=actor,
+            candidate=candidate,
+            responses=responses,
+            extra=extra,
+            entity=entity,
+        )
+        return self._compare_operator(left, op, right)
+
+    def _compare_operator(self, left: Any, op: str, right: Any = None) -> bool:
+        """统一比较操作符。"""
+        normalized = {
+            "equals": "equal",
+            "eq": "equal",
+            "not_equals": "not_equal",
+            "ne": "not_equal",
+            "gte": "greater_than_equal",
+            "lte": "less_than_equal",
+            "gt": "greater_than",
+            "lt": "less_than",
+        }.get(op, op)
+        if normalized == "equal":
+            if isinstance(right, bool) and left is None:
+                left = False
+            return left == right
+        if normalized == "not_equal":
+            return left != right
+        if normalized == "greater_than":
+            return left is not None and left > right
+        if normalized == "less_than":
+            return left is not None and left < right
+        if normalized == "greater_than_equal":
+            return left is not None and left >= right
+        if normalized == "less_than_equal":
+            return left is not None and left <= right
+        if normalized == "in":
+            return left in right
+        if normalized == "not_in":
+            return left not in right
+        if normalized == "is_null":
+            return (left is None) == bool(right)
+        if normalized == "not_null":
+            return (left is not None) == bool(True if right is None else right)
+        raise ValueError(f"未知比较操作符: {op}")
 
     def _eval_value_condition(
         self,
@@ -279,6 +497,234 @@ class ConditionEvaluator:
 
         raise ValueError(f"value 条件缺少比较操作符: {cond}")
 
+    def _eval_code_condition(
+        self,
+        cond: dict,
+        state: State,
+        actor: str | None,
+        candidate: str | None,
+        responses: list | None,
+        extra: dict | None,
+        entity: str | None,
+    ) -> bool:
+        """
+        求值统一 code evaluator。
+
+        Python 默认复用受限内联执行；shell/node/bun 使用子进程执行。
+        condition 代码只返回布尔，不直接修改 State。
+        """
+        runtime = str(cond.get("runtime") or cond.get("language") or "python")
+        timeout = int(cond.get("timeout_ms") or 1000) / 1000
+        env = {str(k): str(v) for k, v in dict(cond.get("env") or {}).items()}
+        code = cond.get("code")
+        if not code:
+            raise ValueError(f"code evaluator 缺少 code: {cond}")
+        if runtime == "python":
+            return self._eval_python(
+                {"code": code, "env": env},
+                state=state,
+                actor=actor,
+                candidate=candidate,
+            )
+        return self._eval_subprocess_code(
+            runtime=runtime,
+            code=str(code),
+            timeout=timeout,
+            env=env,
+            state=state,
+            actor=actor,
+            candidate=candidate,
+            responses=responses,
+            extra=extra,
+            entity=entity,
+        )
+
+    def _eval_subprocess_code(
+        self,
+        runtime: str,
+        code: str,
+        timeout: float,
+        env: dict[str, str],
+        state: State,
+        actor: str | None,
+        candidate: str | None,
+        responses: list | None,
+        extra: dict | None,
+        entity: str | None,
+    ) -> bool:
+        """运行 shell/node/bun 条件代码。"""
+        payload = {
+            "state": self._state_snapshot(state),
+            "actor": actor,
+            "candidate": candidate,
+            "responses": responses or [],
+            "extra": extra or {},
+            "entity": entity,
+        }
+        command = self._code_command(runtime, code)
+        process_env = os.environ.copy()
+        process_env.update(env)
+        process_env["DRAMA_CONDITION_CONTEXT"] = json.dumps(payload, ensure_ascii=False)
+        completed = subprocess.run(
+            command,
+            input=json.dumps(payload, ensure_ascii=False),
+            text=True,
+            capture_output=True,
+            timeout=timeout,
+            env=process_env,
+            check=False,
+        )
+        if runtime == "shell":
+            return completed.returncode == 0
+        if completed.returncode != 0:
+            raise ValueError(
+                f"{runtime} condition 退出码 {completed.returncode}: {completed.stderr.strip()}"
+            )
+        output = completed.stdout.strip()
+        if not output:
+            return False
+        try:
+            decoded = json.loads(output)
+        except json.JSONDecodeError:
+            return output.lower() in {"1", "true", "yes", "ok"}
+        if isinstance(decoded, dict):
+            return bool(decoded.get("result"))
+        return bool(decoded)
+
+    def _code_command(self, runtime: str, code: str) -> list[str]:
+        """返回 code evaluator 子进程命令。"""
+        if runtime == "shell":
+            return ["sh", "-c", code]
+        if runtime == "node":
+            return ["node", "-e", code]
+        if runtime == "bun":
+            return ["bun", "-e", code]
+        raise ValueError(f"code evaluator 不支持 runtime: {runtime}")
+
+    def _eval_http_condition(
+        self,
+        cond: dict,
+        state: State,
+        actor: str | None,
+        candidate: str | None,
+        responses: list | None,
+        extra: dict | None,
+        entity: str | None,
+    ) -> bool:
+        """
+        求值 http/llm evaluator。
+
+        `id` 是语义化能力名；`endpoint` 可映射到环境变量
+        DRAMA_EVALUATOR_ENDPOINT_<ID>，也可以直接用 `url`。
+        """
+        url = self._resolve_evaluator_url(cond)
+        if not url:
+            return bool(cond.get("fallback", False))
+        payload = {
+            "id": cond.get("id"),
+            "endpoint": cond.get("endpoint"),
+            "input": self._resolve_input_spec(cond.get("input") or {}, state, actor, candidate, responses, extra, entity),
+            "context": {
+                "actor": actor,
+                "candidate": candidate,
+                "entity": entity,
+                "responses": responses or [],
+                "extra": extra or {},
+            },
+        }
+        timeout = int(cond.get("timeout_ms") or 3000) / 1000
+        request = urllib.request.Request(
+            url,
+            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                result = json.loads(response.read().decode("utf-8"))
+        except (OSError, urllib.error.URLError, TimeoutError, json.JSONDecodeError):
+            return bool(cond.get("fallback", False))
+
+        confidence = result.get("confidence")
+        min_confidence = cond.get("min_confidence")
+        if min_confidence is not None and confidence is not None and float(confidence) < float(min_confidence):
+            return bool(cond.get("fallback", False))
+
+        pass_when = cond.get("pass_when")
+        if isinstance(pass_when, dict):
+            return self.evaluate(
+                pass_when,
+                state=state,
+                actor=actor,
+                candidate=candidate,
+                responses=responses,
+                extra={**(extra or {}), "result": result},
+                entity=entity,
+            )
+        if "result" in result:
+            return bool(result["result"])
+        if "passed" in result:
+            return bool(result["passed"])
+        if "ended" in result:
+            return bool(result["ended"])
+        return bool(cond.get("fallback", False))
+
+    def _resolve_evaluator_url(self, cond: dict) -> str:
+        """解析 http/llm evaluator 的 URL。"""
+        if cond.get("url"):
+            return str(cond["url"])
+        endpoint = str(cond.get("endpoint") or cond.get("id") or "")
+        if not endpoint:
+            return ""
+        env_name = "DRAMA_EVALUATOR_ENDPOINT_" + "".join(
+            ch if ch.isalnum() else "_"
+            for ch in endpoint.upper()
+        )
+        return os.environ.get(env_name, "")
+
+    def _resolve_input_spec(
+        self,
+        input_spec: Any,
+        state: State,
+        actor: str | None,
+        candidate: str | None,
+        responses: list | None,
+        extra: dict | None,
+        entity: str | None,
+    ) -> Any:
+        """递归解析 evaluator.input 中的 ref 表达式。"""
+        if isinstance(input_spec, dict):
+            if set(input_spec.keys()) == {"ref"}:
+                return self._resolve_value_expr(
+                    input_spec,
+                    state=state,
+                    actor=actor,
+                    candidate=candidate,
+                    responses=responses,
+                    extra=extra,
+                    entity=entity,
+                )
+            return {
+                key: self._resolve_input_spec(value, state, actor, candidate, responses, extra, entity)
+                for key, value in input_spec.items()
+            }
+        if isinstance(input_spec, list):
+            return [
+                self._resolve_input_spec(item, state, actor, candidate, responses, extra, entity)
+                for item in input_spec
+            ]
+        return input_spec
+
+    def _state_snapshot(self, state: State) -> dict[str, dict[str, Any]]:
+        """构建只读状态快照，供外部 evaluator 使用。"""
+        return {
+            entity: {
+                key: state.get_attr(entity, key)
+                for key in getattr(state, "_attrs", {}).get(entity, {})
+            }
+            for entity in sorted(state.all_entities())
+        }
+
     def _resolve_value_expr(
         self,
         expr: Any,
@@ -344,12 +790,14 @@ class ConditionEvaluator:
         code 形式必须给 result 变量赋值。这里是剧本生成器的兜底能力，
         不是用户输入沙箱；仍应只运行可信 script。
         """
+        extra_env = {}
         if isinstance(spec, str):
             expr = spec
             code = None
         elif isinstance(spec, dict):
             expr = spec.get("expr")
             code = spec.get("code")
+            extra_env = dict(spec.get("env") or {})
         else:
             raise ValueError(f"python 条件必须是字符串或字典，收到 {type(spec)}")
 
@@ -375,6 +823,16 @@ class ConditionEvaluator:
         def related(relation: str, who: str) -> set[str]:
             return state.related(relation, who)
 
+        def state_value(path: str, default: Any = None) -> Any:
+            if "." not in path:
+                return default
+            entity_name, attr_name = path.split(".", 1)
+            value = state.get_attr(entity_name, attr_name)
+            return default if value is None else value
+
+        def env_value(name: str, default: Any = None) -> Any:
+            return extra_env.get(name, default)
+
         safe_builtins = {
             "all": all,
             "any": any,
@@ -399,6 +857,8 @@ class ConditionEvaluator:
             "entities": entities,
             "having": having,
             "related": related,
+            "state": state_value,
+            "env": env_value,
         }
         globals_env = {"__builtins__": safe_builtins, **env}
 

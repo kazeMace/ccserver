@@ -38,24 +38,30 @@ concepts:
       description: 围绕主题发表观点。
       prompt: 发言要围绕主题，指出一个具体观点或问题。
 roles:
-  - name: moderator
-    display_name: 主持人
-    faction: room
-    brief: 你负责组织讨论，并在必要时追问。
-    scopes: [public]
-    abilities: [speak]
-  - name: designer
-    display_name: 设计师
-    faction: room
-    brief: 你关注玩法机制、交互体验和节奏。
-    scopes: [public]
-    abilities: [speak]
-  - name: tester
-    display_name: 测试员
-    faction: room
-    brief: 你关注规则漏洞、边界情况和实际可玩性。
-    scopes: [public]
-    abilities: [speak]
+- name: moderator
+  display_name: 主持人
+  faction: room
+  brief: 你负责组织讨论，并在必要时追问。
+  scopes:
+  - public
+  abilities:
+  - speak
+- name: designer
+  display_name: 设计师
+  faction: room
+  brief: 你关注玩法机制、交互体验和节奏。
+  scopes:
+  - public
+  abilities:
+  - speak
+- name: tester
+  display_name: 测试员
+  faction: room
+  brief: 你关注规则漏洞、边界情况和实际可玩性。
+  scopes:
+  - public
+  abilities:
+  - speak
 players:
   count: 3
   initial_attrs:
@@ -67,20 +73,22 @@ players:
       designer: 1
       tester: 1
 scopes:
-  - name: public
-    members: all
+- name: public
+  members: all
 flow:
   loop: false
   scenes:
-    - name: fallback-preview
-      display_name: 群聊预览
-      scene_type: narration
-      scope: public
-      participants: all
-      dialogue_policy:
-        mode: none
-      response:
-        mode: none
-        cue: group_chat 执行模型会根据 runtime.config 创建群聊房间并推进多轮消息。
+  - name: fallback-preview
+    display_name: 群聊预览
+    scene_type: narration
+    scope: public
+    participants: all
+    dialogue_policy:
+      mode: none
+    response:
+      mode: none
+      cue: group_chat 执行模型会根据 runtime.config 创建群聊房间并推进多轮消息。
 referee:
-  win_conditions: []
+  conditions: []
+  check_on:
+  - after_scene

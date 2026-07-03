@@ -18,6 +18,8 @@ from drama_engine.core.execution_models.dynamic_story.policy import (
     WorldConsistencyChecker,
 )
 from drama_engine.core.execution_models.dynamic_story.state import DynamicStoryState, WorldMemory
+from drama_engine.core.dsl.compiler import YamlCompiler
+from drama_engine.core.engine import State, Vocabulary
 from drama_engine.core.session.state import SESSION_ASSIGNED, SESSION_ENDED, SESSION_RUNNING
 from drama_engine.core.ports.memory import configure_runtime_memory_backend
 from drama_engine.core.runner.base import BasicGameRunner
@@ -42,6 +44,7 @@ class DynamicStoryRunner(BasicGameRunner):
         self._domain_runtime: DynamicStoryDomainRuntime | None = None
         self._loop: StoryLoop | None = None
         self._action_mode = "selected"
+        self._referee: Any = None
 
     async def reset_runtime_state(self) -> None:
         """Cancel current task and clear story memory."""
@@ -56,6 +59,7 @@ class DynamicStoryRunner(BasicGameRunner):
         self._state = None
         self._domain_runtime = None
         self._loop = None
+        self._referee = None
 
     async def assign(self) -> None:
         """Prepare story state and move session to assigned."""
@@ -73,6 +77,7 @@ class DynamicStoryRunner(BasicGameRunner):
             policy=self._build_policy(config),
             memory_store=self.context.memory_store,
         )
+        self._referee = self._build_referee()
         self._action_mode = self._story_action_mode(config)
         self.input_bridge.create_cast(
             actor_runtime=self.context.actor_runtime,
@@ -118,9 +123,10 @@ class DynamicStoryRunner(BasicGameRunner):
             emit_public=self._emit_public,
             emit_views=self._emit_views,
             action_mode=self._action_mode,
+            check_referee=self._check_referee,
         )
         try:
-            await self._loop.run()
+            verdict = await self._loop.run()
             self.session_state.metadata["dynamic_story"]["memory_size"] = len(self._state.memory)
             self.session_state.metadata["dynamic_story"]["world_memory"] = self._world.snapshot()
             self.session_state.metadata["dynamic_story"]["memory"] = list(self._state.memory)
@@ -129,6 +135,7 @@ class DynamicStoryRunner(BasicGameRunner):
                 "kind": "session_ended",
                 "runtime_type": "dynamic_story",
                 "result": "dynamic_story_completed",
+                "verdict": verdict,
             })
         except asyncio.CancelledError:
             raise
@@ -214,6 +221,67 @@ class DynamicStoryRunner(BasicGameRunner):
             actor_strategy=str(policy_spec.get("actor_strategy") or config.get("actor_strategy") or "round_robin"),
             max_context_items=int(policy_spec.get("max_context_items", config.get("max_context_items", 3))),
         )
+
+    def _build_referee(self) -> Any:
+        """Compile top-level referee for dynamic-story hooks."""
+        doc = self.config_parser.read_document(self.session_state.script_path)
+        referee_spec = doc.get("referee") or {}
+        if not isinstance(referee_spec, dict):
+            return None
+        return YamlCompiler()._compile_referee(referee_spec)
+
+    def _check_referee(self, hook: str, event: dict[str, Any]) -> str | None:
+        """Project dynamic-story memory to core State and run referee."""
+        if self._referee is None or self._state is None:
+            return None
+        state = self._referee_state(event)
+        return self._referee(state, hook=hook, event=event)
+
+    def _referee_state(self, event: dict[str, Any]) -> State:
+        """Build a read-only core State projection for referee conditions."""
+        assert self._state is not None, "dynamic story state 不能为空"
+        vocab = Vocabulary(
+            roles=frozenset(),
+            factions=frozenset(),
+            scopes=frozenset(),
+            abilities=frozenset(),
+        )
+        state = State(vocab)
+        story_attrs = dict(self._world.state)
+        story_attrs.update({
+            "world_name": self._state.world_name,
+            "premise": self._state.premise,
+            "memory_size": len(self._state.memory),
+            "beat_count": self._max_event_index("dynamic_story_beat"),
+            "action_count": self._event_count("dynamic_story_action"),
+            "last_event_kind": event.get("kind"),
+            "last_event_index": event.get("index"),
+            "last_actor": event.get("actor"),
+            "last_intent": event.get("intent"),
+        })
+        state.register_entity("STORY", story_attrs)
+        state.register_entity("GAME", {
+            "winner": story_attrs.get("winner"),
+            "ended": story_attrs.get("ended"),
+        })
+        for player in self._state.players:
+            state.register_entity(str(player), {"alive": True})
+        return state
+
+    def _event_count(self, kind: str) -> int:
+        """Count dynamic-story memory events by kind."""
+        assert self._state is not None, "dynamic story state 不能为空"
+        return sum(1 for event in self._state.memory if event.get("kind") == kind)
+
+    def _max_event_index(self, kind: str) -> int:
+        """Return the max event index for a kind."""
+        assert self._state is not None, "dynamic story state 不能为空"
+        indexes = [
+            int(event.get("index") or 0)
+            for event in self._state.memory
+            if event.get("kind") == kind
+        ]
+        return max(indexes, default=0)
 
     def _build_dm_policy(self, dm_spec: dict[str, Any], policy_spec: dict[str, Any]) -> DMPolicy:
         """Build DM policy, optionally backed by an injected LLM client."""

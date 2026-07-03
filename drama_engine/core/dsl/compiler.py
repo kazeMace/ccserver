@@ -1603,12 +1603,25 @@ class YamlCompiler:
         loop = flow_spec.get("loop", True)
         scenes_spec = flow_spec.get("scenes", [])
 
-        scenes = []
-        for scene_spec in scenes_spec:
-            scene = self._compile_scene(scene_spec)
-            scenes.append(scene)
-
-        return Sequence(scenes=scenes, loop=loop)
+        scenes = [self._compile_scene(scene_spec) for scene_spec in scenes_spec]
+        states = {
+            "main": {
+                "scenes": scenes,
+                "entry": None,
+                "exit": None,
+                "transitions": [{"to": "main" if loop else "end", "when": None}],
+                "terminal": False,
+            }
+        }
+        if not loop:
+            states["end"] = {
+                "scenes": [],
+                "entry": None,
+                "exit": None,
+                "transitions": [],
+                "terminal": True,
+            }
+        return StateMachineFlow(initial="main", states=states)
 
     def _compile_state_machine_flow(self, flow_spec: dict) -> StateMachineFlow:
         """
@@ -1804,6 +1817,7 @@ class YamlCompiler:
             when=when_fn,
             until=until_fn,
             display_name=display_name,
+            scene_type=scene_type,
             announce_response_cue=self._scene_announce_cue(spec),
             response_messages=None,
             publication=publication_spec,
@@ -2536,46 +2550,92 @@ class YamlCompiler:
         返回：
           Callable[[State], str | None]
         """
-        win_conditions = referee_spec.get("win_conditions", [])
+        check_on = referee_spec.get("check_on") or ["after_scene"]
+        if isinstance(check_on, str):
+            check_on = [check_on]
+        assert isinstance(check_on, list), "referee.check_on 必须是字符串或列表"
+        include = referee_spec.get("include", {}) or {}
+        exclude = referee_spec.get("exclude", {}) or {}
+        # `conditions` 是新版通用写法；`win_conditions` 是 legacy 兼容字段。
+        win_conditions = list(referee_spec.get("conditions") or referee_spec.get("win_conditions", []) or [])
         evaluator = self._evaluator
 
-        def referee_fn(state: State) -> Any:
-            """
-            检查所有胜利条件，返回第一个满足条件的公告文本，否则返回 None。
+        class CompiledReferee:
+            """Runtime referee with hook/lifespan metadata."""
 
-            参数：
-              state — 当前游戏状态
+            def __init__(self) -> None:
+                self.check_on = set(str(item) for item in check_on)
+                self.include = include if isinstance(include, dict) else {}
+                self.exclude = exclude if isinstance(exclude, dict) else {}
+                self.conditions = win_conditions
 
-            返回：
-              str 或 None
-            """
-            for win_cond in win_conditions:
-                # 支持两种字段名风格：
-                #   旧风格：condition / announcement
-                #   YAML 剧本风格：when / message
-                if "condition" in win_cond:
-                    raise ValueError("referee.win_conditions[].condition 已删除，请改用 when")
-                condition = win_cond.get("when")
-                announcement = (
-                    win_cond.get("announcement")
-                    or win_cond.get("message")
-                    or "游戏结束"
-                )
+            def __call__(
+                self,
+                state: State,
+                hook: str = "after_scene",
+                scene: Any = None,
+                event: dict | None = None,
+            ) -> Any:
+                """检查所有 referee 条件，返回第一个满足条件的公告文本。"""
+                if not self.should_check(hook=hook, scene=scene, event=event):
+                    return None
+                extra = {"hook": hook, "scene": scene, "event": event or {}}
+                for win_cond in self.conditions:
+                    if "condition" in win_cond:
+                        raise ValueError("referee.conditions[].condition 已删除，请改用 when")
+                    condition = win_cond.get("when")
+                    announcement = (
+                        win_cond.get("announcement")
+                        or win_cond.get("message")
+                        or "游戏结束"
+                    )
+                    if condition is None:
+                        continue
+                    try:
+                        if evaluator.evaluate(condition, state, actor=None, extra=extra):
+                            print(f"[Referee] 条件满足：{announcement}")
+                            return announcement
+                    except Exception as exc:
+                        print(f"[Referee] 条件求值失败：{exc}，条件：{condition}")
+                return None
 
-                if condition is None:
-                    continue
+            def should_check(self, hook: str, scene: Any = None, event: dict | None = None) -> bool:
+                """根据 check_on/include/exclude 判断当前 hook 是否需要检查。"""
+                if hook not in self.check_on:
+                    return False
+                scene_name = getattr(scene, "name", None)
+                scene_type = getattr(scene, "scene_type", None)
+                event_kind = (event or {}).get("kind")
+                if not self._included(scene_name, scene_type, event_kind):
+                    return False
+                if self._excluded(scene_name, scene_type, event_kind):
+                    return False
+                return True
 
-                try:
-                    if evaluator.evaluate(condition, state, actor=None):
-                        print(f"[Referee] 胜利条件满足：{announcement}")
-                        return announcement
-                except Exception as exc:
-                    # 裁判条件求值失败，记录日志但不崩溃
-                    print(f"[Referee] 条件求值失败：{exc}，条件：{condition}")
+            def _included(self, scene_name: str | None, scene_type: str | None, event_kind: str | None) -> bool:
+                if not self.include:
+                    return True
+                return self._matches_scope(self.include, scene_name, scene_type, event_kind)
 
-            return None
+            def _excluded(self, scene_name: str | None, scene_type: str | None, event_kind: str | None) -> bool:
+                if not self.exclude:
+                    return False
+                return self._matches_scope(self.exclude, scene_name, scene_type, event_kind)
 
-        return referee_fn
+            @staticmethod
+            def _matches_scope(scope: dict, scene_name: str | None, scene_type: str | None, event_kind: str | None) -> bool:
+                scenes = scope.get("scenes")
+                scene_types = scope.get("scene_types")
+                event_kinds = scope.get("event_kinds")
+                if scenes is not None and scene_name not in scenes:
+                    return False
+                if scene_types is not None and scene_type not in scene_types:
+                    return False
+                if event_kinds is not None and event_kind not in event_kinds:
+                    return False
+                return True
+
+        return CompiledReferee()
 
     def _compile_until(self, until_spec: Any) -> Callable:
         """

@@ -195,6 +195,7 @@ class Scene:
     when: Any = None      # Callable[[State], bool] 或 None
     until: Any = None     # Callable[[State], bool] 或 None
     display_name: str = "" # 给用户和 Agent 看的幕名；为空时使用 name
+    scene_type: str = "" # DSL scene_type 元数据，供 hook/referee/前端筛选使用
     announce_response_cue: bool = True # 是否把 cue 作为主持人喊话投递到 scene.scope
     response_messages: Any = None  # Actor 响应如何渲染并投递到 self/scope/observer/debug
     publication: dict | None = None # 主持人公告、前端视图、披露声明

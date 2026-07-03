@@ -8,7 +8,7 @@ runtime:
 extensions:
   board:
     enabled: true
-    version: "0.1"
+    version: '0.1'
     config:
       boards:
         main:
@@ -45,18 +45,22 @@ concepts:
       description: 移动一枚棋子，能跳吃时优先跳吃。
       prompt: 提交 from/to 坐标，并说明是否跳吃。
 roles:
-  - name: dark
-    display_name: 深色方
-    faction: dark_side
-    brief: 你操作深色棋子，目标吃掉或封锁对方所有棋子。
-    scopes: [public]
-    abilities: [move_piece]
-  - name: light
-    display_name: 浅色方
-    faction: light_side
-    brief: 你操作浅色棋子，目标吃掉或封锁对方所有棋子。
-    scopes: [public]
-    abilities: [move_piece]
+- name: dark
+  display_name: 深色方
+  faction: dark_side
+  brief: 你操作深色棋子，目标吃掉或封锁对方所有棋子。
+  scopes:
+  - public
+  abilities:
+  - move_piece
+- name: light
+  display_name: 浅色方
+  faction: light_side
+  brief: 你操作浅色棋子，目标吃掉或封锁对方所有棋子。
+  scopes:
+  - public
+  abilities:
+  - move_piece
 players:
   count: 2
   initial_attrs:
@@ -67,99 +71,101 @@ players:
       dark: 1
       light: 1
 scopes:
-  - name: public
-    members: all
+- name: public
+  members: all
 flow:
   loop: true
   scenes:
-    - name: checkers-setup
-      display_name: 摆放跳棋
-      scene_type: narration
-      scope: public
-      participants: all
-      dialogue_policy:
-        mode: none
-      response:
-        mode: none
-        cue: 系统在 8x8 棋盘上摆放双方跳棋。手动运行时可把棋盘写入 GAME.checkers_board，key 为 row,col，value 为 D/L/DK/LK。
-      publication:
-        views:
-          - id: checkers-board
-            kind: board
-            title: 跳棋棋盘
-            audience: public
-            data:
-              board:
-                ref: GAME.checkers_board
-              size: 8
-          - id: checkers-status
-            kind: key-value
-            title: 跳棋状态
-            audience: public
-            data:
-              rows:
-                - label: 最近吃子
-                  value:
-                    ref: GAME.last_captured
-    - name: dark-action
-      display_name: 深色方行动
-      scene_type: board
-      scope: public
-      participants:
-        filter:
-          role: dark
-      action_policy:
-        kind: board_move
-        input:
-          widget: board_move
-      response:
-        mode: structured
-        schema: move
-        cue: 深色方提交移动或跳吃，例如 from=[5,0], to=[4,1] 斜走一格，或 from=[5,0], to=[3,2] 跳吃中间棋子。
-      resolution:
-        effects:
-          - type: rule_set_apply
-            result_path: GAME.last_checkers_rule_result
-      publication:
-        views:
-          - id: checkers-last-result
-            kind: key-value
-            title: 最近行动
-            audience: public
-            data:
-              rows:
-                - label: 结算
-                  value:
-                    ref: GAME.last_checkers_rule_result
-    - name: light-action
-      display_name: 浅色方行动
-      scene_type: board
-      scope: public
-      participants:
-        filter:
-          role: light
-      action_policy:
-        kind: board_move
-        input:
-          widget: board_move
-      response:
-        mode: structured
-        schema: move
-        cue: 浅色方提交移动或跳吃，例如 from=[2,1], to=[3,0] 斜走一格，或 from=[2,1], to=[4,3] 跳吃中间棋子。
-      resolution:
-        effects:
-          - type: rule_set_apply
-            result_path: GAME.last_checkers_rule_result
-      publication:
-        views:
-          - id: checkers-last-result
-            kind: key-value
-            title: 最近行动
-            audience: public
-            data:
-              rows:
-                - label: 结算
-                  value:
-                    ref: GAME.last_checkers_rule_result
+  - name: checkers-setup
+    display_name: 摆放跳棋
+    scene_type: narration
+    scope: public
+    participants: all
+    dialogue_policy:
+      mode: none
+    response:
+      mode: none
+      cue: 系统在 8x8 棋盘上摆放双方跳棋。手动运行时可把棋盘写入 GAME.checkers_board，key 为 row,col，value 为 D/L/DK/LK。
+    publication:
+      views:
+      - id: checkers-board
+        kind: board
+        title: 跳棋棋盘
+        audience: public
+        data:
+          board:
+            ref: GAME.checkers_board
+          size: 8
+      - id: checkers-status
+        kind: key-value
+        title: 跳棋状态
+        audience: public
+        data:
+          rows:
+          - label: 最近吃子
+            value:
+              ref: GAME.last_captured
+  - name: dark-action
+    display_name: 深色方行动
+    scene_type: board
+    scope: public
+    participants:
+      filter:
+        role: dark
+    action_policy:
+      kind: board_move
+      input:
+        widget: board_move
+    response:
+      mode: structured
+      schema: move
+      cue: 深色方提交移动或跳吃，例如 from=[5,0], to=[4,1] 斜走一格，或 from=[5,0], to=[3,2] 跳吃中间棋子。
+    resolution:
+      effects:
+      - type: rule_set_apply
+        result_path: GAME.last_checkers_rule_result
+    publication:
+      views:
+      - id: checkers-last-result
+        kind: key-value
+        title: 最近行动
+        audience: public
+        data:
+          rows:
+          - label: 结算
+            value:
+              ref: GAME.last_checkers_rule_result
+  - name: light-action
+    display_name: 浅色方行动
+    scene_type: board
+    scope: public
+    participants:
+      filter:
+        role: light
+    action_policy:
+      kind: board_move
+      input:
+        widget: board_move
+    response:
+      mode: structured
+      schema: move
+      cue: 浅色方提交移动或跳吃，例如 from=[2,1], to=[3,0] 斜走一格，或 from=[2,1], to=[4,3] 跳吃中间棋子。
+    resolution:
+      effects:
+      - type: rule_set_apply
+        result_path: GAME.last_checkers_rule_result
+    publication:
+      views:
+      - id: checkers-last-result
+        kind: key-value
+        title: 最近行动
+        audience: public
+        data:
+          rows:
+          - label: 结算
+            value:
+              ref: GAME.last_checkers_rule_result
 referee:
-  win_conditions: []
+  conditions: []
+  check_on:
+  - after_scene

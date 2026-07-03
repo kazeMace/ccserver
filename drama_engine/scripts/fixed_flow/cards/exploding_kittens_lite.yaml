@@ -8,7 +8,7 @@ runtime:
 extensions:
   cards:
     enabled: true
-    version: "0.1"
+    version: '0.1'
     config:
       decks:
         main:
@@ -50,12 +50,17 @@ concepts:
       description: 抽到炸弹猫时使用拆除牌保命。
       prompt: 如果你有拆除牌，使用它并决定把炸弹放回牌堆的位置。
 roles:
-  - name: cat_player
-    display_name: 猫牌玩家
-    faction: solo
-    brief: 你要用功能牌控制摸牌风险，避免抽到炸弹猫，成为最后存活者。
-    scopes: [public, hand]
-    abilities: [play_card, draw_card, defuse]
+- name: cat_player
+  display_name: 猫牌玩家
+  faction: solo
+  brief: 你要用功能牌控制摸牌风险，避免抽到炸弹猫，成为最后存活者。
+  scopes:
+  - public
+  - hand
+  abilities:
+  - play_card
+  - draw_card
+  - defuse
 players:
   count: 3
   initial_attrs:
@@ -67,113 +72,117 @@ players:
     distribution:
       cat_player: 3
 scopes:
-  - name: public
-    members: all
-  - name: hand
-    members: all
+- name: public
+  members: all
+- name: hand
+  members: all
 flow:
   loop: true
   scenes:
-    - name: setup
-      display_name: 发牌与洗入炸弹
-      scene_type: narration
-      scope: public
-      participants: all
-      dialogue_policy:
-        mode: none
-      response:
-        mode: none
-        cue: 系统发放初始手牌和拆除牌，将炸弹猫洗入牌堆。手动运行时可把抽牌堆写入 GAME.kitten_draw_pile，例如 exploding-kitten、skip、attack、see-the-future。
-      publication:
-        views:
-          - id: kitten-table-state
-            kind: key-value
-            title: 炸弹猫牌桌状态
-            audience: public
-            data:
-              rows:
-                - label: 最近爆炸
-                  value:
-                    ref: GAME.last_exploded_player
-                - label: 攻击状态
-                  value:
-                    ref: GAME.kitten_attack_next
-    - name: play-function-card
-      display_name: 出功能牌
-      scene_type: card
-      scope: public
-      participants:
-        filter:
-          alive: true
-      action_policy:
-        kind: card_action
-        input:
-          widget: card_select
-      response:
-        mode: structured
-        schema: card_action
-        include_reason: true
-        cue: |
-          当前玩家可以出一张功能牌，也可以选择不出牌。
-          提交 type=play, card=skip 可跳过摸牌；card=attack 可让下一名承受攻击；card=see-the-future 可查看牌堆前三张。
-      resolution:
-        effects:
-          - type: rule_set_apply
-            result_path: GAME.last_card_rule_result
-      publication:
-        views:
-          - id: kitten-last-card
-            kind: key-value
-            title: 最近功能牌
-            audience: public
-            data:
-              rows:
-                - label: 结算
-                  value:
-                    ref: GAME.last_card_rule_result
-    - name: draw-or-defuse
-      display_name: 摸牌与拆除
-      scene_type: card
-      scope: public
-      participants:
-        filter:
-          alive: true
-      action_policy:
-        kind: card_action
-        input:
-          widget: card_select
-      response:
-        mode: structured
-        schema: card_action
-        include_reason: true
-        cue: 回合结束提交 type=draw 摸牌；如果抽到 exploding-kitten，系统会优先消耗 hand 中的 defuse 或 defuse_count，否则该玩家 alive=false。
-      resolution:
-        effects:
-          - type: rule_set_apply
-            result_path: GAME.last_draw_rule_result
-      publication:
-        views:
-          - id: kitten-last-draw
-            kind: key-value
-            title: 最近摸牌
-            audience: public
-            data:
-              rows:
-                - label: 结算
-                  value:
-                    ref: GAME.last_draw_rule_result
-                - label: 最近爆炸
-                  value:
-                    ref: GAME.last_exploded_player
-    - name: survival-summary
-      display_name: 存活摘要
-      scene_type: narration
-      scope: public
-      participants: all
-      dialogue_policy:
-        mode: none
-      response:
-        mode: none
-        cue: 系统公布本回合是否有人爆炸、拆除是否成功、剩余牌堆风险和下一名玩家。若只剩一名 alive 玩家，该玩家获胜。
+  - name: setup
+    display_name: 发牌与洗入炸弹
+    scene_type: narration
+    scope: public
+    participants: all
+    dialogue_policy:
+      mode: none
+    response:
+      mode: none
+      cue: 系统发放初始手牌和拆除牌，将炸弹猫洗入牌堆。手动运行时可把抽牌堆写入 GAME.kitten_draw_pile，例如 exploding-kitten、skip、attack、see-the-future。
+    publication:
+      views:
+      - id: kitten-table-state
+        kind: key-value
+        title: 炸弹猫牌桌状态
+        audience: public
+        data:
+          rows:
+          - label: 最近爆炸
+            value:
+              ref: GAME.last_exploded_player
+          - label: 攻击状态
+            value:
+              ref: GAME.kitten_attack_next
+  - name: play-function-card
+    display_name: 出功能牌
+    scene_type: card
+    scope: public
+    participants:
+      filter:
+        alive: true
+    action_policy:
+      kind: card_action
+      input:
+        widget: card_select
+    response:
+      mode: structured
+      schema: card_action
+      include_reason: true
+      cue: '当前玩家可以出一张功能牌，也可以选择不出牌。
+
+        提交 type=play, card=skip 可跳过摸牌；card=attack 可让下一名承受攻击；card=see-the-future 可查看牌堆前三张。
+
+        '
+    resolution:
+      effects:
+      - type: rule_set_apply
+        result_path: GAME.last_card_rule_result
+    publication:
+      views:
+      - id: kitten-last-card
+        kind: key-value
+        title: 最近功能牌
+        audience: public
+        data:
+          rows:
+          - label: 结算
+            value:
+              ref: GAME.last_card_rule_result
+  - name: draw-or-defuse
+    display_name: 摸牌与拆除
+    scene_type: card
+    scope: public
+    participants:
+      filter:
+        alive: true
+    action_policy:
+      kind: card_action
+      input:
+        widget: card_select
+    response:
+      mode: structured
+      schema: card_action
+      include_reason: true
+      cue: 回合结束提交 type=draw 摸牌；如果抽到 exploding-kitten，系统会优先消耗 hand 中的 defuse 或 defuse_count，否则该玩家 alive=false。
+    resolution:
+      effects:
+      - type: rule_set_apply
+        result_path: GAME.last_draw_rule_result
+    publication:
+      views:
+      - id: kitten-last-draw
+        kind: key-value
+        title: 最近摸牌
+        audience: public
+        data:
+          rows:
+          - label: 结算
+            value:
+              ref: GAME.last_draw_rule_result
+          - label: 最近爆炸
+            value:
+              ref: GAME.last_exploded_player
+  - name: survival-summary
+    display_name: 存活摘要
+    scene_type: narration
+    scope: public
+    participants: all
+    dialogue_policy:
+      mode: none
+    response:
+      mode: none
+      cue: 系统公布本回合是否有人爆炸、拆除是否成功、剩余牌堆风险和下一名玩家。若只剩一名 alive 玩家，该玩家获胜。
 referee:
-  win_conditions: []
+  conditions: []
+  check_on:
+  - after_scene

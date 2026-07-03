@@ -18,6 +18,7 @@ class StoryLoop:
         emit_public: Any,
         emit_views: Any,
         action_mode: str = "selected",
+        check_referee: Any = None,
     ) -> None:
         assert domain_runtime is not None, "domain_runtime 不能为空"
         assert cast is not None, "cast 不能为空"
@@ -30,8 +31,9 @@ class StoryLoop:
         self.emit_public = emit_public
         self.emit_views = emit_views
         self.action_mode = action_mode
+        self.check_referee = check_referee
 
-    async def run(self) -> None:
+    async def run(self) -> str | None:
         """Run configured story beats and record memory events."""
         state = self.domain_runtime.state
         self.emit_public({
@@ -106,8 +108,21 @@ class StoryLoop:
                     self.domain_runtime.remember(ruling)
                     self.domain_runtime.remember_world()
                     self.emit_public(ruling)
+                    verdict = self._check_referee("after_action", ruling)
+                    if verdict is not None:
+                        return verdict
             self.emit_views()
+            verdict = self._check_referee("after_beat", event)
+            if verdict is not None:
+                return verdict
             await asyncio.sleep(0)
+        return None
+
+    def _check_referee(self, hook: str, event: dict[str, Any]) -> str | None:
+        """Call optional runtime referee hook."""
+        if self.check_referee is None:
+            return None
+        return self.check_referee(hook=hook, event=event)
 
     async def actor_free_action(self, beat_index: int, action_hint: str, actor_name: str) -> str:
         """Ask one selected actor to provide a free story action."""

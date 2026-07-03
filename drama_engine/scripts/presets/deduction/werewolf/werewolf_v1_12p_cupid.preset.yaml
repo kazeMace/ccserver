@@ -1,7 +1,6 @@
-name: "狼人杀v1 12人丘比特局"
-description: "4狼3民1预1女1猎1白痴1丘比特，支持情侣、人狼恋第三方、情侣殉情"
+name: 狼人杀v1 12人丘比特局
+description: 4狼3民1预1女1猎1白痴1丘比特，支持情侣、人狼恋第三方、情侣殉情
 script: fixed_flow/deduction/werewolf_v1_cupid.yaml
-
 params:
   total_players: 12
   werewolf_count: 4

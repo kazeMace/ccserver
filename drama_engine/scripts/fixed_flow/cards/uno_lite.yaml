@@ -8,7 +8,7 @@ runtime:
 extensions:
   cards:
     enabled: true
-    version: "0.1"
+    version: '0.1'
     config:
       decks:
         main:
@@ -47,12 +47,16 @@ concepts:
       description: 从牌堆摸一张牌。
       prompt: 无法出牌时摸牌并结束行动。
 roles:
-  - name: player
-    display_name: 玩家
-    faction: solo
-    brief: 你要通过出牌、摸牌和保留功能牌，尽快清空手牌。
-    scopes: [public, hand]
-    abilities: [play_card, draw_card]
+- name: player
+  display_name: 玩家
+  faction: solo
+  brief: 你要通过出牌、摸牌和保留功能牌，尽快清空手牌。
+  scopes:
+  - public
+  - hand
+  abilities:
+  - play_card
+  - draw_card
 players:
   count: 4
   initial_attrs:
@@ -63,93 +67,100 @@ players:
     distribution:
       player: 4
 scopes:
-  - name: public
-    members: all
-  - name: hand
-    members: all
+- name: public
+  members: all
+- name: hand
+  members: all
 flow:
   loop: true
   scenes:
-    - name: deal-cards
-      display_name: 发牌与翻开首牌
-      scene_type: narration
-      scope: public
-      participants: all
-      dialogue_policy:
-        mode: none
-      response:
-        mode: none
-        cue: 系统洗牌、每人发 7 张手牌，翻开弃牌堆首牌 red-5，并准备抽牌堆。若接入真实牌库，主持端应把每名玩家的 hand 写入私密状态，把 GAME.uno_top_card 写为首牌。
-      publication:
-        views:
-          - id: uno-table-state
-            kind: key-value
-            title: UNO 牌桌状态
-            audience: public
-            data:
-              rows:
-                - label: 弃牌堆顶
-                  value:
-                    ref: GAME.uno_top_card
-                - label: 当前方向
-                  value:
-                    ref: GAME.uno_direction
-                - label: 待摸牌数
-                  value:
-                    ref: GAME.uno_pending_draw
-    - name: play-or-draw
-      display_name: 玩家顺序出牌或摸牌
-      scene_type: card
-      scope: public
-      participants:
-        filter:
-          alive: true
-      dialogue_policy:
-        mode: sequential
-      action_policy:
-        kind: card_action
-        input:
-          widget: card_select
-      response:
-        mode: structured
-        schema: card_action
-        include_reason: true
-        cue: |
-          轮到你时只能做一个动作：
-          1. 出牌：提交 type=play, card=red-7；这张牌必须在你的 hand 中，并且颜色/点数/功能与 GAME.uno_top_card 匹配；wild 任意可出。
-          2. 摸牌：提交 type=draw；系统从 GAME.uno_draw_pile 摸一张加入你的 hand。
-          功能牌效果：reverse 改变方向，skip 跳过下一名，draw-2 让下一名待摸 2，wild-draw-4 让下一名待摸 4；手牌清空时直接获胜。
-      resolution:
-        effects:
-          - type: rule_set_apply
-            result_path: GAME.last_card_rule_result
-      publication:
-        views:
-          - id: uno-last-result
-            kind: key-value
-            title: 本轮 UNO 结算
-            audience: public
-            data:
-              rows:
-                - label: 最后动作
-                  value:
-                    ref: GAME.last_card_rule_result
-                - label: 胜利玩家
-                  value:
-                    ref: GAME.winner
-    - name: round-summary
-      display_name: 回合摘要
-      scene_type: narration
-      scope: public
-      participants: all
-      dialogue_policy:
-        mode: none
-      response:
-        mode: none
-        cue: 系统公布本轮所有玩家动作、弃牌堆顶牌、方向、待摸牌数和是否有人清空手牌。若 GAME.winner 不为空，本局结束；否则继续下一轮。
+  - name: deal-cards
+    display_name: 发牌与翻开首牌
+    scene_type: narration
+    scope: public
+    participants: all
+    dialogue_policy:
+      mode: none
+    response:
+      mode: none
+      cue: 系统洗牌、每人发 7 张手牌，翻开弃牌堆首牌 red-5，并准备抽牌堆。若接入真实牌库，主持端应把每名玩家的 hand 写入私密状态，把 GAME.uno_top_card 写为首牌。
+    publication:
+      views:
+      - id: uno-table-state
+        kind: key-value
+        title: UNO 牌桌状态
+        audience: public
+        data:
+          rows:
+          - label: 弃牌堆顶
+            value:
+              ref: GAME.uno_top_card
+          - label: 当前方向
+            value:
+              ref: GAME.uno_direction
+          - label: 待摸牌数
+            value:
+              ref: GAME.uno_pending_draw
+  - name: play-or-draw
+    display_name: 玩家顺序出牌或摸牌
+    scene_type: card
+    scope: public
+    participants:
+      filter:
+        alive: true
+    dialogue_policy:
+      mode: sequential
+    action_policy:
+      kind: card_action
+      input:
+        widget: card_select
+    response:
+      mode: structured
+      schema: card_action
+      include_reason: true
+      cue: '轮到你时只能做一个动作：
+
+        1. 出牌：提交 type=play, card=red-7；这张牌必须在你的 hand 中，并且颜色/点数/功能与 GAME.uno_top_card 匹配；wild 任意可出。
+
+        2. 摸牌：提交 type=draw；系统从 GAME.uno_draw_pile 摸一张加入你的 hand。
+
+        功能牌效果：reverse 改变方向，skip 跳过下一名，draw-2 让下一名待摸 2，wild-draw-4 让下一名待摸 4；手牌清空时直接获胜。
+
+        '
+    resolution:
+      effects:
+      - type: rule_set_apply
+        result_path: GAME.last_card_rule_result
+    publication:
+      views:
+      - id: uno-last-result
+        kind: key-value
+        title: 本轮 UNO 结算
+        audience: public
+        data:
+          rows:
+          - label: 最后动作
+            value:
+              ref: GAME.last_card_rule_result
+          - label: 胜利玩家
+            value:
+              ref: GAME.winner
+  - name: round-summary
+    display_name: 回合摘要
+    scene_type: narration
+    scope: public
+    participants: all
+    dialogue_policy:
+      mode: none
+    response:
+      mode: none
+      cue: 系统公布本轮所有玩家动作、弃牌堆顶牌、方向、待摸牌数和是否有人清空手牌。若 GAME.winner 不为空，本局结束；否则继续下一轮。
 referee:
-  win_conditions:
-    - faction: solo
-      when:
-        state: actor.hand_count
-        less_than_equal: 0
+  conditions:
+  - faction: solo
+    when:
+      ref: actor.hand_count
+      op: less_than_equal
+      value: 0
+  check_on:
+  - after_scene

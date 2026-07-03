@@ -8,7 +8,7 @@ runtime:
 extensions:
   story:
     enabled: true
-    version: "0.1"
+    version: '0.1'
     config:
       mode: solo_text_adventure
 rule_set:
@@ -38,12 +38,15 @@ concepts:
       description: 输入一个具体行动。
       prompt: 行动要具体，说明使用物品或目标。
 roles:
-  - name: protagonist
-    display_name: 主角
-    faction: hero
-    brief: 你在陌生房间醒来，需要通过观察和行动逃出去。
-    scopes: [public]
-    abilities: [inspect, act]
+- name: protagonist
+  display_name: 主角
+  faction: hero
+  brief: 你在陌生房间醒来，需要通过观察和行动逃出去。
+  scopes:
+  - public
+  abilities:
+  - inspect
+  - act
 players:
   count: 1
   initial_attrs:
@@ -53,108 +56,110 @@ players:
     distribution:
       protagonist: 1
 scopes:
-  - name: public
-    members: all
+- name: public
+  members: all
 flow:
   loop: true
   scenes:
-    - name: room-description
-      display_name: 房间描述
-      scene_type: narration
-      scope: public
-      participants: all
-      dialogue_policy:
-        mode: none
-      response:
-        mode: none
-        cue: 你醒在一间锁住的旧书房，桌上有油灯、信件和一把生锈钥匙。
-      publication:
-        views:
-          - id: text-adventure-state
-            kind: key-value
-            title: 文字冒险状态
-            audience: public
-            data:
-              rows:
-                - label: 冒险日志
-                  value:
-                    ref: GAME.adventure_log
-                - label: 胜利玩家
-                  value:
-                    ref: GAME.winner
-    - name: inspect-object
-      display_name: 观察对象
-      scene_type: action
-      scope: public
-      participants: all
-      action_policy:
-        kind: form
-        input:
-          widget: text
-      response:
-        mode: structured
-        schema: custom
-        fields:
-          target:
-            type: string
-            description: 观察对象
-        cue: 选择一个对象进行观察。
-      resolution:
-        effects:
-          - type: rule_set_apply
-            result_path: GAME.last_inspection
-      publication:
-        views:
-          - id: text-last-inspection
-            kind: key-value
-            title: 最近观察
-            audience: public
-            data:
-              rows:
-                - label: 结算
-                  value:
-                    ref: GAME.last_inspection
-    - name: choose-action
-      display_name: 输入行动
-      scene_type: action
-      scope: public
-      participants: all
-      action_policy:
-        kind: form
-        input:
-          widget: text
-      response:
-        mode: structured
-        schema: custom
-        fields:
-          action:
-            type: string
-            description: 具体行动
-        cue: 输入你要采取的行动。
-      resolution:
-        effects:
-          - type: rule_set_apply
-            result_path: GAME.last_action_result
-      publication:
-        views:
-          - id: text-last-action
-            kind: key-value
-            title: 最近行动
-            audience: public
-            data:
-              rows:
-                - label: 结算
-                  value:
-                    ref: GAME.last_action_result
-    - name: ending
-      display_name: 固定结局
-      scene_type: narration
-      scope: public
-      participants: all
-      dialogue_policy:
-        mode: none
-      response:
-        mode: none
-        cue: 系统根据 adventure_log 给出逃脱、失败或隐藏结局；如果 GAME.winner 不为空，说明玩家已经逃脱。
+  - name: room-description
+    display_name: 房间描述
+    scene_type: narration
+    scope: public
+    participants: all
+    dialogue_policy:
+      mode: none
+    response:
+      mode: none
+      cue: 你醒在一间锁住的旧书房，桌上有油灯、信件和一把生锈钥匙。
+    publication:
+      views:
+      - id: text-adventure-state
+        kind: key-value
+        title: 文字冒险状态
+        audience: public
+        data:
+          rows:
+          - label: 冒险日志
+            value:
+              ref: GAME.adventure_log
+          - label: 胜利玩家
+            value:
+              ref: GAME.winner
+  - name: inspect-object
+    display_name: 观察对象
+    scene_type: action
+    scope: public
+    participants: all
+    action_policy:
+      kind: form
+      input:
+        widget: text
+    response:
+      mode: structured
+      schema: custom
+      fields:
+        target:
+          type: string
+          description: 观察对象
+      cue: 选择一个对象进行观察。
+    resolution:
+      effects:
+      - type: rule_set_apply
+        result_path: GAME.last_inspection
+    publication:
+      views:
+      - id: text-last-inspection
+        kind: key-value
+        title: 最近观察
+        audience: public
+        data:
+          rows:
+          - label: 结算
+            value:
+              ref: GAME.last_inspection
+  - name: choose-action
+    display_name: 输入行动
+    scene_type: action
+    scope: public
+    participants: all
+    action_policy:
+      kind: form
+      input:
+        widget: text
+    response:
+      mode: structured
+      schema: custom
+      fields:
+        action:
+          type: string
+          description: 具体行动
+      cue: 输入你要采取的行动。
+    resolution:
+      effects:
+      - type: rule_set_apply
+        result_path: GAME.last_action_result
+    publication:
+      views:
+      - id: text-last-action
+        kind: key-value
+        title: 最近行动
+        audience: public
+        data:
+          rows:
+          - label: 结算
+            value:
+              ref: GAME.last_action_result
+  - name: ending
+    display_name: 固定结局
+    scene_type: narration
+    scope: public
+    participants: all
+    dialogue_policy:
+      mode: none
+    response:
+      mode: none
+      cue: 系统根据 adventure_log 给出逃脱、失败或隐藏结局；如果 GAME.winner 不为空，说明玩家已经逃脱。
 referee:
-  win_conditions: []
+  conditions: []
+  check_on:
+  - after_scene

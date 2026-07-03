@@ -8,7 +8,7 @@ runtime:
 extensions:
   board:
     enabled: true
-    version: "0.1"
+    version: '0.1'
     config:
       boards:
         map:
@@ -16,13 +16,13 @@ extensions:
           nodes: 12
   dice:
     enabled: true
-    version: "0.1"
+    version: '0.1'
     config:
       dice:
         travel: d6
   story:
     enabled: true
-    version: "0.1"
+    version: '0.1'
     config:
       setting: island_expedition
 rule_set:
@@ -53,12 +53,15 @@ concepts:
       description: 选择如何处理地图事件。
       prompt: 根据角色状态和目标选择事件处理方式。
 roles:
-  - name: explorer
-    display_name: 探险者
-    faction: party
-    brief: 你要和队友协作探索岛屿地图，找到宝藏并安全返回。
-    scopes: [public]
-    abilities: [travel, resolve_event]
+- name: explorer
+  display_name: 探险者
+  faction: party
+  brief: 你要和队友协作探索岛屿地图，找到宝藏并安全返回。
+  scopes:
+  - public
+  abilities:
+  - travel
+  - resolve_event
 players:
   count: 4
   initial_attrs:
@@ -70,90 +73,92 @@ players:
     distribution:
       explorer: 4
 scopes:
-  - name: public
-    members: all
+- name: public
+  members: all
 flow:
   loop: true
   scenes:
-    - name: map-intro
-      display_name: 岛屿地图公开
-      scene_type: narration
-      scope: public
-      participants: all
-      dialogue_policy:
-        mode: none
-      response:
-        mode: none
-        cue: 系统公开 12 节点岛屿地图，宝藏位于节点 11。每次移动消耗 1 点 supplies；到达宝藏节点后 GAME.winner=party。
-      publication:
-        views:
-          - id: map-status
-            kind: key-value
-            title: 地图冒险状态
-            audience: public
-            data:
-              rows:
-                - label: 胜利方
-                  value:
-                    ref: GAME.winner
-                - label: 胜利条件
-                  value:
-                    ref: GAME.winning_condition
-    - name: travel-roll
-      display_name: 掷骰探索
-      scene_type: board
-      scope: public
-      participants:
-        filter:
-          alive: true
-      action_policy:
-        kind: board_move
-        input:
-          widget: board_move
-      response:
-        mode: structured
-        schema: move
-        include_reason: true
-        cue: 提交骰点、当前位置和目标节点，例如 roll=3, from=4, to=7；如果不填 to，系统按当前 node + roll 推进。
-      resolution:
-        effects:
-          - type: rule_set_apply
-            result_path: GAME.last_map_adventure_result
-      publication:
-        views:
-          - id: map-last-result
-            kind: key-value
-            title: 最近探索结算
-            audience: public
-            data:
-              rows:
-                - label: 结算
-                  value:
-                    ref: GAME.last_map_adventure_result
-    - name: event-choice
-      display_name: 地图事件选择
-      scene_type: action
-      scope: public
-      participants: all
-      dialogue_policy:
-        mode: openchat
-        rounds: 1
-        speakers_per_round: 4
-      action_policy:
-        kind: form
-        input:
-          widget: choice
-      response:
-        mode: structured
-        schema: custom
-        fields:
-          option:
-            type: string
-            description: 选择的事件应对方案
-        cue: 讨论并提交事件应对方案。事件可影响 supplies、路线选择或下一轮风险；当前版本由主持人按讨论结果写入状态。
-      resolution:
-        effects:
-          - type: rule_set_apply
-            result_path: GAME.last_event_result
+  - name: map-intro
+    display_name: 岛屿地图公开
+    scene_type: narration
+    scope: public
+    participants: all
+    dialogue_policy:
+      mode: none
+    response:
+      mode: none
+      cue: 系统公开 12 节点岛屿地图，宝藏位于节点 11。每次移动消耗 1 点 supplies；到达宝藏节点后 GAME.winner=party。
+    publication:
+      views:
+      - id: map-status
+        kind: key-value
+        title: 地图冒险状态
+        audience: public
+        data:
+          rows:
+          - label: 胜利方
+            value:
+              ref: GAME.winner
+          - label: 胜利条件
+            value:
+              ref: GAME.winning_condition
+  - name: travel-roll
+    display_name: 掷骰探索
+    scene_type: board
+    scope: public
+    participants:
+      filter:
+        alive: true
+    action_policy:
+      kind: board_move
+      input:
+        widget: board_move
+    response:
+      mode: structured
+      schema: move
+      include_reason: true
+      cue: 提交骰点、当前位置和目标节点，例如 roll=3, from=4, to=7；如果不填 to，系统按当前 node + roll 推进。
+    resolution:
+      effects:
+      - type: rule_set_apply
+        result_path: GAME.last_map_adventure_result
+    publication:
+      views:
+      - id: map-last-result
+        kind: key-value
+        title: 最近探索结算
+        audience: public
+        data:
+          rows:
+          - label: 结算
+            value:
+              ref: GAME.last_map_adventure_result
+  - name: event-choice
+    display_name: 地图事件选择
+    scene_type: action
+    scope: public
+    participants: all
+    dialogue_policy:
+      mode: openchat
+      rounds: 1
+      speakers_per_round: 4
+    action_policy:
+      kind: form
+      input:
+        widget: choice
+    response:
+      mode: structured
+      schema: custom
+      fields:
+        option:
+          type: string
+          description: 选择的事件应对方案
+      cue: 讨论并提交事件应对方案。事件可影响 supplies、路线选择或下一轮风险；当前版本由主持人按讨论结果写入状态。
+    resolution:
+      effects:
+      - type: rule_set_apply
+        result_path: GAME.last_event_result
 referee:
-  win_conditions: []
+  conditions: []
+  check_on:
+  - after_scene
