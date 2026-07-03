@@ -102,4 +102,5 @@ def build_default_runtime_registry() -> RuntimeRegistry:
     registry.register("game_session", "固定剧本/派对/桌游流程 Runtime")
     registry.register("group_chat", "多 Agent 群聊互动 Runtime")
     registry.register("dynamic_story", "用户驱动动态剧情 Runtime")
+    registry.register("interactive_session", "统一互动场景 Runtime，支持多 Agent 玩法与动态剧情")
     return registry

@@ -1,0 +1,143 @@
+meta:
+  title: Interactive Session Dynamic Schedule Discussion
+  description: 新版 interactive_session 多 agent 动态子调度示例
+
+runtime:
+  type: interactive_session
+
+players:
+  count: 4
+  ids: [A, B, C, D]
+  initial_attrs:
+    alive: true
+
+flow:
+  type: state_machine
+  initial: discussion
+  states:
+    discussion:
+      scenes:
+        - day_discussion
+      transitions:
+        - to: vote
+          when:
+            left: SCENE.ready_to_vote
+            op: equal
+            right: true
+        - to: vote
+    vote:
+      scenes:
+        - day_vote
+      terminal: true
+
+scenes:
+  day_discussion:
+    type: scene
+    scope:
+      id: public_room
+      visibility: public
+    participants:
+      filter:
+        source: GAME.players
+        where:
+          left: alive
+          op: equal
+          right: true
+    schedule:
+      mode: openchat
+      max_turns: 1
+      dynamic:
+        enabled: true
+        check_on: after_message
+        detector:
+          evaluator: plugin
+          name: detect_schedule_request
+          patch:
+            type: push_schedule
+            mode: openchat
+            participants: [B, C]
+            scope:
+              id: private_b_c
+              visibility: private
+              members: [B, C]
+            max_turns: 1
+        allowed:
+          modes: [single, sequential, openchat]
+          participant_count:
+            min: 2
+            max: 4
+          scope_visibility: [private]
+          max_turns:
+            default: 1
+            max: 4
+        patch:
+          type: push_schedule
+          return_to_parent: true
+        merge_back:
+          mode: summary
+          to: SCENE.private_talk_summary
+    participant_action:
+      kind: speak
+      response:
+        mode: text
+      cue: "请围绕当前局势发言。"
+    controller_action:
+      enabled: false
+    resolution:
+      effects:
+        - type: set_state
+          path: SCENE.ready_to_vote
+          value: true
+
+  day_vote:
+    type: scene
+    scope:
+      id: public_room
+      visibility: public
+    participants:
+      filter:
+        source: GAME.players
+        where:
+          left: alive
+          op: equal
+          right: true
+    schedule:
+      mode: simultaneous
+      timeout_ms: 30000
+    participant_action:
+      kind: vote
+      target: required
+      candidates:
+        filter:
+          source: GAME.players
+          where:
+            left: alive
+            op: equal
+            right: true
+      response:
+        mode: structured
+        schema: vote
+        include_reason: true
+    controller_action:
+      enabled: false
+    resolution:
+      selection:
+        source: responses
+        field: vote
+        tie_policy: alphabetical
+      effects:
+        - type: set_state
+          path: GAME.last_vote_target
+          value:
+            ref: RESOLUTION.selected
+
+referee:
+  enabled: true
+  check_on: after_scene
+  rules:
+    - when:
+        left: GAME.last_vote_target
+        op: not_equal
+        right: null
+      result:
+        end: vote_completed

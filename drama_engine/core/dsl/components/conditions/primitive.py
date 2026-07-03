@@ -319,7 +319,32 @@ class PrimitiveConditionEvaluator:
 
     def resolve_count(self, count_spec: dict, state: State) -> int:
         """Count entities matching the given filter spec."""
-        filter_spec = count_spec.get("filter", {})
+        if "ref" in count_spec:
+            source = self.resolve_value_expr(
+                {"ref": count_spec["ref"]},
+                state=state,
+                actor=None,
+                candidate=None,
+                responses=None,
+                extra=None,
+                entity=None,
+            )
+            if source is None:
+                entities = []
+            elif isinstance(source, (list, tuple, set)):
+                entities = [str(item) for item in source]
+            else:
+                entities = [str(source)]
+            where_spec = count_spec.get("where") or count_spec.get("filter") or {}
+            if not where_spec:
+                return len([entity for entity in entities if state.has_entity(entity)])
+            count = 0
+            for entity in entities:
+                if state.has_entity(entity) and self.entity_matches_filter(entity, where_spec, state):
+                    count += 1
+            return count
+
+        filter_spec = count_spec.get("where") or count_spec.get("filter", {})
         count = 0
         for entity in state.all_entities():
             if entity == "GAME":
@@ -353,6 +378,23 @@ class PrimitiveConditionEvaluator:
 
     def filter_entities(self, filter_spec: dict, state: State) -> set:
         """Return entity names matching a filter spec."""
+        source = filter_spec.get("source") if isinstance(filter_spec, dict) else None
+        where_spec = filter_spec.get("where") if isinstance(filter_spec, dict) else None
+        if source is not None or where_spec is not None:
+            if source in {"GAME.players", "players"}:
+                value = state.get_attr("GAME", "players") or []
+                entities = [str(item) for item in value]
+            elif isinstance(source, str) and "." in source:
+                entity_name, attr_name = source.split(".", 1)
+                value = state.get_attr(entity_name, attr_name) or []
+                entities = [str(item) for item in value] if isinstance(value, (list, tuple, set)) else [str(value)]
+            else:
+                entities = [entity for entity in state.all_entities() if entity != "GAME"]
+            return {
+                entity
+                for entity in entities
+                if state.has_entity(entity) and self.entity_matches_filter(entity, where_spec or {}, state)
+            }
         result = set()
         for entity in state.all_entities():
             if entity == "GAME":

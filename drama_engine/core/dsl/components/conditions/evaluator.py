@@ -188,8 +188,8 @@ class ConditionEvaluator:
         entity: str | None,
     ) -> bool:
         """Dispatch an explicit evaluator condition."""
-        evaluator = str(cond.get("evaluator") or "primitive")
-        if evaluator == "primitive":
+        evaluator = str(cond.get("evaluator") or "builtin")
+        if evaluator in {"builtin", "primitive"}:
             if "left" in cond and "op" in cond:
                 return self._primitive.evaluate_compare_condition(
                     cond,
@@ -221,7 +221,7 @@ class ConditionEvaluator:
                     extra,
                     entity,
                 )
-            raise ValueError(f"primitive evaluator 缺少 ref/op 或 condition: {cond}")
+            raise ValueError(f"builtin evaluator 缺少 left/op 或 condition: {cond}")
         if evaluator == "code":
             return self._code.evaluate(
                 cond,
@@ -243,9 +243,9 @@ class ConditionEvaluator:
                 entity,
             )
         if evaluator == "plugin":
-            plugin_name = cond.get("plugin") or cond.get("id")
+            plugin_name = cond.get("plugin") or cond.get("name") or cond.get("id")
             if not plugin_name:
-                raise ValueError(f"plugin evaluator 缺少 id/plugin: {cond}")
+                raise ValueError(f"plugin evaluator 缺少 name/id/plugin: {cond}")
             return self._plugin.evaluate(
                 str(plugin_name),
                 cond,

@@ -16,6 +16,7 @@ import yaml
 from drama_engine.core.dsl.compiler import YamlCompiler
 from drama_engine.core.dsl.extensions import build_default_domain_extension_registry
 from drama_engine.core.dsl.validator.issue import ValidationIssue, ValidationReport
+from drama_engine.core.runtime.interactive_session.compiler import InteractiveSessionCompiler
 from drama_engine.core.dsl.game_packs import (
     build_default_game_pack_registry,
     build_default_rule_set_registry,
@@ -110,12 +111,40 @@ class DslValidator:
         if not isinstance(doc, dict):
             return report
 
+        if self._is_interactive_session(doc):
+            report.extend(self._interactive_session_issues(doc))
+            return report
+
         report.extend(self._schema_issues(doc))
         report.extend(self._reference_issues(doc))
         report.extend(self._state_issues(doc))
         report.extend(self._runtime_risk_issues(doc))
         report.extend(self._compiler_issues(doc, params=params))
         return report
+
+    def _is_interactive_session(self, doc: dict[str, Any]) -> bool:
+        """Return whether the script declares interactive_session runtime."""
+        runtime = doc.get("runtime")
+        if isinstance(runtime, str):
+            return runtime == "interactive_session"
+        if isinstance(runtime, dict):
+            return runtime.get("type") == "interactive_session"
+        return False
+
+    def _interactive_session_issues(self, doc: dict[str, Any]) -> list[ValidationIssue]:
+        """Validate interactive_session scripts with their own compiler."""
+        issues: list[ValidationIssue] = []
+        compiler = InteractiveSessionCompiler()
+        errors = compiler.validate(doc)
+        for message in errors:
+            issues.append(ValidationIssue(
+                level="error",
+                code="INTERACTIVE_SESSION_VALIDATE_ERROR",
+                message=str(message),
+                path="$",
+                source="compile_check",
+            ))
+        return issues
 
     def _expand_param_templates(
         self,

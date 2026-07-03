@@ -28,6 +28,7 @@ from typing import Any
 
 from drama_engine.core.dsl.compiler import YamlCompiler
 from drama_engine.core.dsl.validator import DslValidator, ValidationReport
+from drama_engine.core.runtime.interactive_session.compiler import InteractiveSessionCompiler
 from drama_engine.application.script_inspector import ScriptInspector
 from drama_engine.run_script import parse_cli_params
 
@@ -200,12 +201,31 @@ def simulate_script(script_path: str | Path, params: dict[str, Any] | None = Non
         result["warnings"].append("validation failed; compile simulation skipped")
         return result
 
-    compiler = YamlCompiler()
     compile_params = dict(params or {})
     compile_params["dry_run"] = True
+    runtime_type = _runtime_type_from_file(path)
+    if runtime_type == "interactive_session":
+        script = InteractiveSessionCompiler().compile(str(path), params=compile_params)
+        scenes = list(script.scenes.values())
+        result["runtime_type"] = runtime_type
+        result["scene_count"] = len(scenes)
+        result["action_scene_count"] = sum(
+            1 for scene in scenes
+            if scene.participant_action.kind not in {"none", "narration"}
+            or scene.controller_action.enabled
+        )
+        result["narration_scene_count"] = sum(
+            1 for scene in scenes
+            if scene.controller_action.kind == "narration"
+            or scene.participant_action.kind == "narration"
+        )
+        result["passed"] = True
+        return result
+
+    compiler = YamlCompiler()
     script = compiler.compile(str(path), params=compile_params)
     scenes = list(getattr(script.flow, "scenes", []) or [])
-    runtime_type = getattr(getattr(script, "runtime", None), "type", "game_session")
+    runtime_type = getattr(getattr(script, "runtime", None), "type", runtime_type)
     result["runtime_type"] = runtime_type
     result["scene_count"] = len(scenes)
     result["action_scene_count"] = sum(1 for scene in scenes if scene.response_model is not None)
@@ -214,11 +234,24 @@ def simulate_script(script_path: str | Path, params: dict[str, Any] | None = Non
         if scene.__class__.__name__ == "Scene"
         and scene.dialogue_policy.__class__.__name__ == "Narration"
     )
-    if runtime_type not in {"game_session", "group_chat", "dynamic_story"}:
+    if runtime_type not in {"game_session", "group_chat", "dynamic_story", "interactive_session"}:
         result["warnings"].append(f"runtime {runtime_type} is recognized but not supported by simulation")
         return result
     result["passed"] = True
     return result
+
+
+def _runtime_type_from_file(path: Path) -> str:
+    """Read runtime.type from a YAML file without full compilation."""
+    import yaml
+
+    doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    runtime = doc.get("runtime")
+    if isinstance(runtime, str):
+        return runtime
+    if isinstance(runtime, dict):
+        return str(runtime.get("type") or "game_session")
+    return "game_session"
 
 
 def package_script(

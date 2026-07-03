@@ -1,0 +1,96 @@
+meta:
+  title: Interactive Session Text Adventure
+  description: 新版 interactive_session 文字冒险示例
+
+runtime:
+  type: interactive_session
+
+players:
+  count: 1
+  ids: [Player_1]
+  initial_attrs:
+    alive: true
+
+state:
+  STORY:
+    started: true
+    risk: 0
+
+flow:
+  type: sequence
+  scenes:
+    - intro
+    - first_choice
+
+scenes:
+  intro:
+    type: scene
+    scope:
+      id: story
+      visibility: public
+    participants:
+      static: []
+    schedule:
+      mode: none
+    participant_action:
+      kind: none
+      response:
+        mode: none
+    controller_action:
+      enabled: true
+      controller:
+        type: system
+      kind: narration
+    publication:
+      messages:
+        - audience:
+            scope: story
+          content:
+            text: "雨夜，你站在旧宅门口。"
+
+  first_choice:
+    type: scene
+    scope:
+      id: story
+      visibility: public
+    when:
+      left: STORY.started
+      op: equal
+      right: true
+    participants:
+      static: []
+    schedule:
+      mode: none
+    participant_action:
+      kind: none
+      response:
+        mode: none
+    controller_action:
+      enabled: true
+      controller:
+        type: human
+      kind: choice
+      choices:
+        - id: enter_house
+          text: 进入旧宅
+          to: enter_house_scene
+        - id: leave
+          text: 转身离开
+          to: leave_scene
+      free_input:
+        enabled: true
+        mode: choose_mapping
+        mapper:
+          evaluator: plugin
+          name: map_free_text_to_choice
+
+referee:
+  enabled: true
+  check_on: after_scene
+  rules:
+    - when:
+        left: GAME.ended
+        op: equal
+        right: true
+      result:
+        end: story_finished

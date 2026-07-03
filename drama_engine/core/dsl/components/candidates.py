@@ -105,6 +105,17 @@ class CandidateResolver:
             matched = self._eval.filter_entities(spec["filter"], state)
             candidates = sorted(matched)
 
+        # 模式 4b：source/where - 新版通用 selector 写法
+        elif "source" in spec or "where" in spec:
+            matched = self._eval.filter_entities(
+                {
+                    "source": spec.get("source"),
+                    "where": spec.get("where") or {},
+                },
+                state,
+            )
+            candidates = sorted(matched)
+
         # 模式 5：无约束 - 返回所有玩家（非 GAME）
         else:
             candidates = sorted(e for e in state.all_entities() if e != "GAME")

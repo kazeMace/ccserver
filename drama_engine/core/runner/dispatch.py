@@ -78,6 +78,10 @@ def build_runner_for_session(runtime: Any, dry_run: bool = True) -> BasicGameRun
         from drama_engine.core.execution_models.dynamic_story import DynamicStoryExecutionModel
 
         return DynamicStoryExecutionModel(runtime=runtime, declaration=declaration, dry_run=dry_run)
+    if declaration.type == "interactive_session":
+        from drama_engine.core.runtime.interactive_session import InteractiveSessionExecutionModel
+
+        return InteractiveSessionExecutionModel(runtime=runtime, declaration=declaration, dry_run=dry_run)
     return UnsupportedRuntimeRunner(runtime=runtime, declaration=declaration)
 
 
