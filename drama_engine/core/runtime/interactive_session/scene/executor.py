@@ -67,7 +67,8 @@ class SceneExecutor:
         self._run_hooks(ctx, scene, "on_after_action")
         controller_result = await self._controller.execute(ctx, scene.controller_action)
         if isinstance(controller_result, dict) and controller_result.get("beat"):
-            result = self._check_referee_events(ctx, scene, "after_generated_beat", [controller_result])
+            beat_events = self._publish_generated_beats(ctx, scene, controller_result)
+            result = self._check_referee_events(ctx, scene, "after_generated_beat", beat_events)
             if result is not None:
                 return self._finish_scene(ctx, scene, responses, result)
         self._apply_resolution(ctx, scene, responses, controller_result)
@@ -94,6 +95,33 @@ class SceneExecutor:
             "result": result,
         })
         return result
+
+    def _publish_generated_beats(
+        self,
+        ctx: InteractiveExecutionContext,
+        scene: SceneSpec,
+        controller_result: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        """Emit generated beat events and return referee events."""
+        beat = controller_result.get("beat") or {}
+        beat_items = list(beat.get("beats") or [])
+        if not beat_items:
+            beat_items = [beat]
+        events = []
+        for index, item in enumerate(beat_items):
+            text = item.get("text") if isinstance(item, dict) else str(item)
+            event = {
+                "kind": "generated_beat",
+                "runtime_type": "interactive_session",
+                "scene": scene.id,
+                "index": index,
+                "text": text or "",
+                "beat": item,
+                "controller_result": controller_result,
+            }
+            events.append(event)
+            ctx.emit_public(event)
+        return events
 
     def _check_referee_events(
         self,

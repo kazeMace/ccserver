@@ -129,6 +129,8 @@ class ParticipantActionExecutor:
                 "message": f"候选集解析失败: {exc}",
                 "scene": ctx.current_scene_id,
             })
+            if action.target == "required" or action.kind in {"vote", "choose"}:
+                raise ValueError(f"候选集解析失败，无法执行 {action.kind}: {exc}") from exc
             return []
 
     def _build_prompt(

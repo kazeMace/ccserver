@@ -38,6 +38,9 @@ class ExternalConditionEvaluator:
         """Evaluate an `evaluator: http` or `evaluator: llm` condition."""
         url = self._resolve_evaluator_url(cond)
         if not url and cond.get("evaluator") == "llm" and str(cond.get("provider") or "inside") == "inside":
+            client_result = self._call_inside_client(cond, state, actor, candidate, responses, extra, entity)
+            if client_result is not None:
+                return self._result_passes(cond, client_result, state, actor, candidate, responses, extra, entity)
             result = {
                 "result": bool(cond.get("fallback", False)),
                 "provider": "inside",
@@ -88,8 +91,8 @@ class ExternalConditionEvaluator:
         request = urllib.request.Request(
             url,
             data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="POST",
+            headers={**dict(cond.get("headers") or {}), "Content-Type": "application/json"},
+            method=str(cond.get("method") or "POST").upper(),
         )
         try:
             with urllib.request.urlopen(request, timeout=timeout) as response:
@@ -97,6 +100,20 @@ class ExternalConditionEvaluator:
         except (OSError, urllib.error.URLError, TimeoutError, json.JSONDecodeError):
             return bool(cond.get("fallback", False))
 
+        return self._result_passes(cond, result, state, actor, candidate, responses, extra, entity)
+
+    def _result_passes(
+        self,
+        cond: dict,
+        result: dict,
+        state: State,
+        actor: str | None,
+        candidate: str | None,
+        responses: list | None,
+        extra: dict | None,
+        entity: str | None,
+    ) -> bool:
+        """Evaluate an external result payload."""
         confidence = result.get("confidence")
         min_confidence = cond.get("min_confidence")
         if (
@@ -105,7 +122,6 @@ class ExternalConditionEvaluator:
             and float(confidence) < float(min_confidence)
         ):
             return bool(cond.get("fallback", False))
-
         pass_when = cond.get("pass_when")
         if isinstance(pass_when, dict):
             return self._evaluate(
@@ -124,6 +140,41 @@ class ExternalConditionEvaluator:
         if "ended" in result:
             return bool(result["ended"])
         return bool(cond.get("fallback", False))
+
+    def _call_inside_client(
+        self,
+        cond: dict,
+        state: State,
+        actor: str | None,
+        candidate: str | None,
+        responses: list | None,
+        extra: dict | None,
+        entity: str | None,
+    ) -> dict | None:
+        """Call a synchronous inside LLM client when one is provided."""
+        metadata = (extra or {}).get("metadata") or {}
+        client = (extra or {}).get("llm_client") or metadata.get("llm_client") or metadata.get("llm_provider")
+        if client is None:
+            return None
+        payload = self._default_input(state, actor, candidate, responses, extra, entity)
+        prompt = cond.get("prompt") or json.dumps(payload, ensure_ascii=False)
+        if hasattr(client, "generate_ruling"):
+            value = client.generate_ruling(prompt=prompt, action=cond.get("semantic_id"), world=payload)
+        elif hasattr(client, "complete"):
+            value = client.complete(prompt)
+        elif callable(client):
+            value = client({"condition": cond, "payload": payload})
+        else:
+            return None
+        if isinstance(value, dict):
+            return value
+        if isinstance(value, str):
+            try:
+                decoded = json.loads(value)
+            except json.JSONDecodeError:
+                return {"result": value.lower() in {"1", "true", "yes", "ok"}, "text": value}
+            return decoded if isinstance(decoded, dict) else {"result": bool(decoded)}
+        return {"result": bool(value)}
 
     def _resolve_evaluator_url(self, cond: dict) -> str:
         """Resolve the HTTP endpoint URL from DSL or environment."""

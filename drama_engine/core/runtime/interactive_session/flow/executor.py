@@ -37,25 +37,16 @@ class FlowExecutor:
                     ctx.ended = True
                     ctx.result = result
                     return result
-                forced_target = ctx.session_metadata.pop("interactive_next_target", None)
-                if forced_target:
-                    if forced_target in ctx.script.scenes:
-                        result = await self._execute_scene_id(ctx, forced_target)
-                        if result:
-                            ctx.ended = True
-                            ctx.result = result
-                            return result
-                        if forced_target in ctx.script.flow.states[current_state_id].scenes:
-                            index = ctx.script.flow.states[current_state_id].scenes.index(forced_target) + 1
-                    elif forced_target in ctx.script.flow.states:
-                        jump_state = forced_target
-                        break
-                    else:
-                        ctx.emit_host({
-                            "kind": "interactive_session_warning",
-                            "message": f"未知 flow target: {forced_target}",
-                            "scene": ctx.current_scene_id,
-                        })
+                drain_result = await self._drain_targets(ctx, current_state_id, index)
+                result = drain_result["result"]
+                index = drain_result["index"]
+                jump_state = drain_result["jump_state"]
+                if result:
+                    ctx.ended = True
+                    ctx.result = result
+                    return result
+                if jump_state:
+                    break
             self._apply_state_effects(ctx, state_spec.exit_effects)
             flow = ctx.script.flow
             state_spec = flow.states[current_state_id]
@@ -76,6 +67,53 @@ class FlowExecutor:
         """Execute one scene by id."""
         scene = ctx.script.scenes[scene_id]
         return await self._scene_executor.execute(ctx, scene)
+
+    async def _drain_targets(
+        self,
+        ctx: InteractiveExecutionContext,
+        current_state_id: str,
+        index: int,
+    ) -> dict:
+        """Consume chained scene/state targets and return stack entries."""
+        result = None
+        jump_state = None
+        guard = 0
+        forced_target = self._pop_next_target(ctx)
+        while forced_target and guard < self._max_steps:
+            guard += 1
+            if forced_target in ctx.script.scenes:
+                result = await self._execute_scene_id(ctx, forced_target)
+                if result:
+                    break
+                if forced_target in ctx.script.flow.states[current_state_id].scenes:
+                    index = ctx.script.flow.states[current_state_id].scenes.index(forced_target) + 1
+                forced_target = self._pop_next_target(ctx)
+                continue
+            if forced_target in ctx.script.flow.states:
+                jump_state = forced_target
+                break
+            ctx.emit_host({
+                "kind": "interactive_session_warning",
+                "message": f"未知 flow target: {forced_target}",
+                "scene": ctx.current_scene_id,
+            })
+            forced_target = self._pop_next_target(ctx)
+        if guard >= self._max_steps:
+            result = "interactive_session_max_steps_reached"
+        return {"result": result, "index": index, "jump_state": jump_state}
+
+    def _pop_next_target(self, ctx: InteractiveExecutionContext) -> str | None:
+        """Pop explicit target or return-stack target."""
+        target = ctx.session_metadata.pop("interactive_next_target", None)
+        if target:
+            return str(target)
+        stack = ctx.session_metadata.get("interactive_return_stack") or []
+        if not stack:
+            return None
+        item = stack.pop()
+        if isinstance(item, dict):
+            return str(item.get("id") or item.get("scene") or item.get("state") or "")
+        return str(item)
 
     def _next_state(
         self,

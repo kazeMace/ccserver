@@ -52,13 +52,29 @@ class ScheduleExecutor:
             )
             responses.extend(round_responses)
             ctx.last_responses = list(responses)
-            for response in round_responses:
+            if schedule.dynamic.check_on == "after_message":
+                for response in round_responses:
+                    child_responses = await self._dynamic.maybe_run(
+                        ctx=ctx,
+                        dynamic=schedule.dynamic,
+                        parent_action=action,
+                        parent_participants=participants,
+                        source_response=response,
+                    )
+                    if child_responses:
+                        responses.extend(child_responses)
+                        ctx.last_responses = list(responses)
+            elif schedule.dynamic.check_on == "after_round":
                 child_responses = await self._dynamic.maybe_run(
                     ctx=ctx,
                     dynamic=schedule.dynamic,
                     parent_action=action,
                     parent_participants=participants,
-                    source_response=response,
+                    source_response={
+                        "kind": "round_completed",
+                        "data": {"responses": list(round_responses)},
+                        "text": "",
+                    },
                 )
                 if child_responses:
                     responses.extend(child_responses)

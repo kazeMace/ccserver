@@ -16,6 +16,7 @@ from drama_engine.core.runtime.interactive_session.context import InteractiveExe
 from drama_engine.core.runtime.interactive_session.flow.executor import FlowExecutor
 from drama_engine.core.runtime.interactive_session.patch.journal import PatchJournal
 from drama_engine.core.runtime.interactive_session.patch.materializer import FlowMaterializer
+from drama_engine.core.runtime.interactive_session.services.plugin_loader import InteractivePluginLoader
 from drama_engine.core.runtime_spec.registry import RuntimeSpec
 from drama_engine.core.session.state import SESSION_ASSIGNED, SESSION_ENDED, SESSION_RUNNING
 
@@ -64,6 +65,7 @@ class InteractiveSessionRunner(BasicGameRunner):
         )
         state = self._build_state(script, player_names)
         plugins = build_default_plugin_registry()
+        InteractivePluginLoader().load(plugins, script.plugins)
         evaluator = ConditionEvaluator(plugins)
         ctx = InteractiveExecutionContext(
             script=script,

@@ -113,6 +113,7 @@ class RefereeSpec:
     exclude: Any = None
     rules: list[dict[str, Any]] = field(default_factory=list)
     evaluator: dict[str, Any] | None = None
+    result: Any = None
 
 
 @dataclass(slots=True)

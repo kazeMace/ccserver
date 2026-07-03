@@ -231,6 +231,17 @@ class ValueResolver:
         if ref.startswith("result."):
             return self._resolve_nested_path(extra.get("result"), ref.split(".", 1)[1], state)
 
+        if ref == "EVENT":
+            return extra.get("event")
+        if ref.startswith("EVENT."):
+            return self._resolve_nested_path(extra.get("event"), ref.split(".", 1)[1], state)
+
+        if ref == "MESSAGE":
+            return extra.get("message") or extra.get("event")
+        if ref.startswith("MESSAGE."):
+            message = extra.get("message") or extra.get("event")
+            return self._resolve_nested_path(message, ref.split(".", 1)[1], state)
+
         if ":" in ref and self._plugins is not None:
             prefix = ref.split(":", 1)[0]
             if self._plugins.has_value_resolver(prefix):
@@ -296,6 +307,10 @@ class ValueResolver:
             return actor
         if path == "candidate":
             return candidate
+        if path == "EVENT":
+            return None
+        if path == "MESSAGE":
+            return None
         parts = path.split(".", 1)
         if len(parts) != 2:
             return None

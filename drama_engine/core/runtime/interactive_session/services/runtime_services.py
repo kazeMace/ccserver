@@ -41,12 +41,8 @@ class RuntimeServiceCaller:
             ValueError: When the provider type is unknown or response shape is invalid.
         """
         service_spec = dict(spec or {})
-        provider = str(
-            service_spec.get("provider")
-            or service_spec.get("evaluator")
-            or service_spec.get("type")
-            or "builtin"
-        )
+        evaluator = service_spec.get("evaluator") or service_spec.get("type")
+        provider = str(evaluator or service_spec.get("provider") or "builtin")
         if provider in {"builtin", "inside"}:
             return self._call_builtin(ctx, service_spec, purpose, payload)
         if provider == "plugin":
@@ -113,7 +109,7 @@ class RuntimeServiceCaller:
         request = urllib.request.Request(
             url,
             data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
+            headers={**dict(spec.get("headers") or {}), "Content-Type": "application/json"},
             method=str(spec.get("method") or "POST").upper(),
         )
         try:
@@ -240,7 +236,7 @@ class RuntimeServiceCaller:
         payload: dict[str, Any],
     ) -> dict[str, Any]:
         """Generate one story beat or temporary branch with deterministic fallback."""
-        text = str(payload.get("text") or spec.get("text") or "")
+        text = str(spec.get("text") or payload.get("text") or "")
         if not text:
             text = "剧情继续向前推进。"
         return {

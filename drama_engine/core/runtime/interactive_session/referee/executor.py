@@ -37,6 +37,10 @@ class RefereeExecutor:
                 extra={**ctx.runtime_extra(), "hook": hook, "event": event or {}},
             )
             if passed:
+                if isinstance(referee.result, dict):
+                    return self._apply_result(ctx, referee.result, scene, event)
+                if referee.result is not None:
+                    return str(referee.result)
                 return "referee_passed"
 
         for rule in referee.rules:
@@ -62,7 +66,10 @@ class RefereeExecutor:
             if passed:
                 result = rule.get("result") or {}
                 if isinstance(result, dict):
-                    return self._apply_result(ctx, result, scene, event)
+                    applied = self._apply_result(ctx, result, scene, event)
+                    if applied is not None:
+                        return applied
+                    continue
                 return str(result or rule.get("message") or "session_ended")
         return None
 

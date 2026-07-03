@@ -48,6 +48,10 @@ def compare_operator(left: Any, op: str, right: Any = None) -> bool:
         return left in right
     if normalized == "not_in":
         return left not in right
+    if normalized == "contains":
+        return right in left if left is not None else False
+    if normalized == "not_contains":
+        return right not in left if left is not None else True
     if normalized == "is_null":
         return (left is None) == bool(right)
     if normalized == "not_null":

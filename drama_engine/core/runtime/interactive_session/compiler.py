@@ -209,13 +209,18 @@ class InteractiveSessionCompiler:
             exclude=spec.get("exclude"),
             rules=list(spec.get("rules") or []),
             evaluator=self._explicit_evaluator_spec(spec),
+            result=spec.get("result"),
         )
 
     def _explicit_evaluator_spec(self, spec: dict[str, Any]) -> dict[str, Any] | None:
         """Extract direct evaluator declaration from a referee-like object."""
         if "evaluator" not in spec:
             return None
-        result = {key: value for key, value in spec.items() if key not in {"rules", "enabled", "check_on", "include", "exclude"}}
+        result = {
+            key: value
+            for key, value in spec.items()
+            if key not in {"rules", "enabled", "check_on", "include", "exclude", "result"}
+        }
         return result
 
     def _assert_scene_refs(self, scene_ids: list[str], scenes: dict[str, SceneSpec]) -> None:

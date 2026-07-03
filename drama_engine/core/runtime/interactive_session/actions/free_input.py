@@ -94,7 +94,17 @@ class FreeInputExecutor:
             "return_to": spec.get("return_to") or {},
         }
         ctx.patch_journal.append("branch_patch", branch, {"scene": ctx.current_scene_id})
-        return {"kind": "branch_then_return", "branch": branch}
+        flow_patch = self._branch_flow_patch(ctx, spec, generator_result, branch)
+        errors = self._validator.validate_flow_patch(flow_patch)
+        if errors:
+            raise ValueError(f"branch flow_patch 校验失败: {errors}")
+        ctx.patch_journal.append("flow_patch", flow_patch, {"scene": ctx.current_scene_id, "branch": True})
+        self._patch_applier.apply(ctx, flow_patch)
+        return_to = spec.get("return_to") or {}
+        if return_to:
+            ctx.session_metadata.setdefault("interactive_return_stack", []).append(return_to)
+        ctx.session_metadata["interactive_next_target"] = flow_patch["scene"]["id"]
+        return {"kind": "branch_then_return", "branch": branch, "flow_patch": flow_patch}
 
     def _generated_beat(
         self,
@@ -105,31 +115,35 @@ class FreeInputExecutor:
     ) -> dict[str, Any]:
         """Record one generated beat."""
         service_spec = spec.get("generator") or {"name": "story_generator"}
-        generator_result = self._services.call_sync(
-            ctx,
-            service_spec,
-            "story_generator",
-            {
-                **ctx.full_context_payload(),
-                "text": controller_response.get("text", ""),
-                "constrained": constrained,
-                "ending": spec.get("ending"),
-            },
-        )
-        ending = spec.get("ending")
-        if constrained and not ending:
-            ending_result = self._services.call_sync(
+        max_beats = int(spec.get("max_beats") or spec.get("max_turns") or 1)
+        generated_beats = []
+        ending = self._resolve_ending(ctx, spec) if constrained else None
+        for index in range(max(1, max_beats)):
+            generator_result = self._services.call_sync(
                 ctx,
-                spec.get("ending_selector") or {"name": "choose_ending_by_progress"},
-                "ending_selector",
-                ctx.full_context_payload(),
+                service_spec,
+                "story_generator",
+                {
+                    **ctx.full_context_payload(),
+                    "text": controller_response.get("text", ""),
+                    "constrained": constrained,
+                    "ending": ending,
+                    "beat_index": index,
+                },
             )
-            ending = ending_result.get("ending")
+            items = list(generator_result.get("beats") or [])
+            if not items:
+                items = [{"text": generator_result.get("text") or controller_response.get("text", "")}]
+            generated_beats.extend(items)
+            if not spec.get("loop", max_beats > 1):
+                break
+        if not generated_beats:
+            generated_beats = [{"text": controller_response.get("text", "") or "(generated beat)"}]
         beat = {
             "type": "generated_beat",
             "constrained": constrained,
-            "text": generator_result.get("text") or controller_response.get("text", "") or "(generated beat)",
-            "beats": list(generator_result.get("beats") or []),
+            "text": str(generated_beats[-1].get("text") or ""),
+            "beats": generated_beats,
             "ending": ending if constrained else None,
         }
         ctx.patch_journal.append("story_beat", beat, {"scene": ctx.current_scene_id})
@@ -160,6 +174,69 @@ class FreeInputExecutor:
         ctx.patch_journal.append("flow_patch", patch, {"scene": ctx.current_scene_id})
         self._patch_applier.apply(ctx, patch)
         return {"kind": "grow_flow", "flow_patch": patch}
+
+    def _branch_flow_patch(
+        self,
+        ctx: InteractiveExecutionContext,
+        spec: dict[str, Any],
+        generator_result: dict[str, Any],
+        branch: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Build a temporary branch scene patch."""
+        patch = generator_result.get("patch") or generator_result.get("flow_patch") or spec.get("patch")
+        if isinstance(patch, dict):
+            patch.setdefault("after", ctx.current_scene_id)
+            return patch
+        scene_id = f"branch_{len(ctx.patch_journal.by_type('branch_patch')) + 1}"
+        text = branch.get("text") or "支线剧情展开。"
+        return {
+            "type": "add_scene",
+            "after": ctx.current_scene_id,
+            "scene": {
+                "id": scene_id,
+                "type": "scene",
+                "scope": {"id": "story", "visibility": "public"},
+                "participants": {"static": []},
+                "schedule": {"mode": "none"},
+                "participant_action": {"kind": "none", "response": {"mode": "none"}},
+                "controller_action": {"enabled": False, "kind": "none"},
+                "publication": {
+                    "messages": [
+                        {
+                            "audience": {"scope": "story"},
+                            "content": {"text": text},
+                        }
+                    ]
+                },
+            },
+        }
+
+    def _resolve_ending(
+        self,
+        ctx: InteractiveExecutionContext,
+        spec: dict[str, Any],
+    ) -> Any:
+        """Resolve constrained ending using ending.selector or ending_selector."""
+        ending_spec = spec.get("ending")
+        if isinstance(ending_spec, dict):
+            selector = ending_spec.get("selector") or spec.get("ending_selector")
+            selector = selector or {"name": "choose_ending_by_progress"}
+            result = self._services.call_sync(
+                ctx,
+                selector,
+                "ending_selector",
+                {**ctx.full_context_payload(), "ending": ending_spec},
+            )
+            return result.get("ending") or result.get("selected") or ending_spec.get("default")
+        if ending_spec:
+            return ending_spec
+        result = self._services.call_sync(
+            ctx,
+            spec.get("ending_selector") or {"name": "choose_ending_by_progress"},
+            "ending_selector",
+            ctx.full_context_payload(),
+        )
+        return result.get("ending")
 
     def _choice_by_id(
         self,

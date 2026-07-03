@@ -205,7 +205,7 @@ class CodeConditionEvaluator:
             return ["sh", "-c", code]
         if runtime == "node":
             return ["node", "-e", code]
-        if runtime == "bun":
+        if runtime in {"bun", "bun_js"}:
             return ["bun", "-e", code]
         raise ValueError(f"code evaluator 不支持 runtime: {runtime}")
 

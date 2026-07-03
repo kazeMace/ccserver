@@ -425,3 +425,260 @@ async def test_referee_result_can_apply_effects_and_jump(tmp_path):
     await runtime.runtime_state.task
 
     assert runtime.session.metadata["interactive_session"]["result"] == "jumped"
+
+
+@pytest.mark.asyncio
+async def test_script_declared_runtime_service_maps_choice(tmp_path):
+    """Script plugins should register runtime services used by free_input."""
+    script_path = tmp_path / "plugin_mapper.yaml"
+    script_path.write_text(yaml.safe_dump({
+        "runtime": {"type": "interactive_session"},
+        "plugins": [
+            {
+                "runtime_services": {
+                    "map_free_text_to_choice": {"result": {"selected_choice": "leave"}}
+                }
+            }
+        ],
+        "players": {"ids": ["P1"]},
+        "flow": {"type": "sequence", "scenes": ["choice"]},
+        "scenes": {
+            "choice": {
+                "participants": {"static": []},
+                "schedule": {"mode": "none"},
+                "participant_action": {"kind": "none", "response": {"mode": "none"}},
+                "controller_action": {
+                    "enabled": True,
+                    "controller": {"type": "system"},
+                    "kind": "choice",
+                    "choices": [
+                        {"id": "stay", "text": "stay", "to": "stay"},
+                        {"id": "leave", "text": "leave", "to": "leave"},
+                    ],
+                    "free_input": {
+                        "enabled": True,
+                        "mode": "choose_mapping",
+                        "mapper": {"evaluator": "plugin", "name": "map_free_text_to_choice"},
+                    },
+                },
+            },
+            "stay": {
+                "participants": {"static": []},
+                "schedule": {"mode": "none"},
+                "participant_action": {"kind": "none", "response": {"mode": "none"}},
+                "resolution": {"effects": [{"type": "set_state", "path": "GAME.result", "value": "stay"}]},
+            },
+            "leave": {
+                "participants": {"static": []},
+                "schedule": {"mode": "none"},
+                "participant_action": {"kind": "none", "response": {"mode": "none"}},
+                "resolution": {"effects": [{"type": "set_state", "path": "GAME.result", "value": "leave"}]},
+            },
+        },
+        "referee": {
+            "enabled": True,
+            "check_on": "after_scene",
+            "rules": [
+                {"when": {"left": "GAME.result", "op": "equal", "right": "leave"}, "result": {"end": "leave_done"}}
+            ],
+        },
+    }, allow_unicode=True), encoding="utf-8")
+    runtime = _runtime_for(str(script_path))
+    runner = build_runner_for_session(runtime, dry_run=True)
+
+    await runner.assign()
+    await runner.start()
+    await runtime.runtime_state.task
+
+    assert runtime.session.metadata["interactive_session"]["result"] == "leave_done"
+
+
+@pytest.mark.asyncio
+async def test_referee_evaluator_uses_result_effects(tmp_path):
+    """Direct referee evaluator should apply its configured result."""
+    script_path = tmp_path / "referee_evaluator.yaml"
+    script_path.write_text(yaml.safe_dump({
+        "runtime": {"type": "interactive_session"},
+        "plugins": [{"conditions": {"always_end": {"result": True}}}],
+        "players": {"ids": ["P1"]},
+        "flow": {"type": "sequence", "scenes": ["start"]},
+        "scenes": {
+            "start": {
+                "participants": {"static": []},
+                "schedule": {"mode": "none"},
+                "participant_action": {"kind": "none", "response": {"mode": "none"}},
+            }
+        },
+        "referee": {
+            "enabled": True,
+            "check_on": "after_scene",
+            "evaluator": "plugin",
+            "name": "always_end",
+            "result": {
+                "effects": [{"type": "set_state", "path": "GAME.evaluator_effect", "value": True}],
+                "end": "plugin_end",
+            },
+        },
+    }, allow_unicode=True), encoding="utf-8")
+    runtime = _runtime_for(str(script_path))
+    runner = build_runner_for_session(runtime, dry_run=True)
+
+    await runner.assign()
+    await runner.start()
+    await runtime.runtime_state.task
+
+    assert runtime.session.metadata["interactive_session"]["result"] == "plugin_end"
+
+
+@pytest.mark.asyncio
+async def test_branch_then_return_executes_branch_and_return_target(tmp_path):
+    """branch_then_return should execute generated branch then return to target."""
+    script_path = tmp_path / "branch_return.yaml"
+    script_path.write_text(yaml.safe_dump({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["P1"]},
+        "flow": {"type": "sequence", "scenes": ["start"]},
+        "scenes": {
+            "start": {
+                "participants": {"static": []},
+                "schedule": {"mode": "none"},
+                "participant_action": {"kind": "none", "response": {"mode": "none"}},
+                "controller_action": {
+                    "enabled": True,
+                    "controller": {"type": "system"},
+                    "kind": "free_text",
+                    "free_input": {
+                        "enabled": True,
+                        "mode": "branch_then_return",
+                        "return_to": {"type": "scene", "id": "main"},
+                    },
+                },
+            },
+            "main": {
+                "participants": {"static": []},
+                "schedule": {"mode": "none"},
+                "participant_action": {"kind": "none", "response": {"mode": "none"}},
+                "resolution": {"effects": [{"type": "set_state", "path": "GAME.returned", "value": True}]},
+            },
+        },
+        "referee": {
+            "enabled": True,
+            "check_on": "after_scene",
+            "rules": [
+                {"when": {"left": "GAME.returned", "op": "equal", "right": True}, "result": {"end": "returned"}}
+            ],
+        },
+    }, allow_unicode=True), encoding="utf-8")
+    runtime = _runtime_for(str(script_path))
+    runner = build_runner_for_session(runtime, dry_run=True)
+
+    await runner.assign()
+    await runner.start()
+    await runtime.runtime_state.task
+
+    assert runtime.session.metadata["interactive_session"]["result"] == "returned"
+    patches = runtime.session.metadata["interactive_session"]["patches"]
+    assert any(item["patch_type"] == "branch_patch" for item in patches)
+
+
+@pytest.mark.asyncio
+async def test_message_alias_hook_and_generated_beat_referee(tmp_path):
+    """MESSAGE alias and generated beat checks should be usable in DSL."""
+    script_path = tmp_path / "message_alias.yaml"
+    script_path.write_text(yaml.safe_dump({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["A"]},
+        "flow": {"type": "sequence", "scenes": ["talk", "generate"]},
+        "scenes": {
+            "talk": {
+                "participants": {"static": ["A"]},
+                "schedule": {"mode": "single", "actor": "A"},
+                "participant_action": {"kind": "speak", "response": {"mode": "text"}},
+                "hooks": {
+                    "on_message": [
+                        {
+                            "when": {"left": "MESSAGE.text", "op": "contains", "right": "dry-run"},
+                            "do": [{"type": "set_state", "path": "GAME.heard", "value": True}],
+                        }
+                    ]
+                },
+            },
+            "generate": {
+                "participants": {"static": []},
+                "schedule": {"mode": "none"},
+                "participant_action": {"kind": "none", "response": {"mode": "none"}},
+                "controller_action": {
+                    "enabled": True,
+                    "controller": {"type": "system"},
+                    "kind": "free_text",
+                    "free_input": {
+                        "enabled": True,
+                        "mode": "free_continue",
+                        "max_beats": 2,
+                        "generator": {"text": "剧情继续"},
+                    },
+                },
+            },
+        },
+        "referee": {
+            "enabled": True,
+            "check_on": ["after_scene", "after_generated_beat"],
+            "rules": [
+                {"when": {"left": "GAME.heard", "op": "equal", "right": True}, "result": {"jump": "generate"}},
+                {"when": {"left": "MESSAGE.text", "op": "contains", "right": "剧情继续"}, "result": {"end": "beat_end"}},
+            ],
+        },
+    }, allow_unicode=True), encoding="utf-8")
+    runtime = _runtime_for(str(script_path))
+    runner = build_runner_for_session(runtime, dry_run=True)
+
+    await runner.assign()
+    await runner.start()
+    await runtime.runtime_state.task
+
+    assert runtime.session.metadata["interactive_session"]["result"] == "beat_end"
+
+
+@pytest.mark.asyncio
+async def test_dynamic_schedule_respects_after_round_check_on(tmp_path):
+    """dynamic.check_on=after_round should trigger once after the round."""
+    script_path = tmp_path / "dynamic_after_round.yaml"
+    script_path.write_text(yaml.safe_dump({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["A", "B"]},
+        "flow": {"type": "sequence", "scenes": ["talk"]},
+        "scenes": {
+            "talk": {
+                "participants": {"static": ["A", "B"]},
+                "schedule": {
+                    "mode": "sequential",
+                    "dynamic": {
+                        "enabled": True,
+                        "check_on": "after_round",
+                        "detector": {
+                            "patch": {
+                                "type": "push_schedule",
+                                "mode": "single",
+                                "participants": ["A"],
+                                "max_turns": 1,
+                            }
+                        },
+                    },
+                },
+                "participant_action": {"kind": "speak", "response": {"mode": "text"}},
+            }
+        },
+    }, allow_unicode=True), encoding="utf-8")
+    runtime = _runtime_for(str(script_path))
+    runner = build_runner_for_session(runtime, dry_run=True)
+
+    await runner.assign()
+    await runner.start()
+    await runtime.runtime_state.task
+
+    patches = runtime.session.metadata["interactive_session"]["patches"]
+    pushed = [
+        item for item in patches
+        if item["patch_type"] == "schedule_patch" and item["payload"].get("type") == "push_schedule"
+    ]
+    assert len(pushed) == 1
