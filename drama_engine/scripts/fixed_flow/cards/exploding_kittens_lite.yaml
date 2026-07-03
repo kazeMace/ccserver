@@ -109,7 +109,9 @@ flow:
     scope: public
     participants:
       filter:
-        alive: true
+        left: alive
+        op: equal
+        right: true
     action_policy:
       kind: card_action
       input:
@@ -144,7 +146,9 @@ flow:
     scope: public
     participants:
       filter:
-        alive: true
+        left: alive
+        op: equal
+        right: true
     action_policy:
       kind: card_action
       input:

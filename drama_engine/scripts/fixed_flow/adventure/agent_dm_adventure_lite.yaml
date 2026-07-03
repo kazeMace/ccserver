@@ -112,7 +112,9 @@ flow:
     scope: public
     participants:
       filter:
-        role: hero
+        left: role
+        op: equal
+        right: hero
     dialogue_policy:
       mode: sequential
     action_policy:
@@ -151,7 +153,9 @@ flow:
     scope: public
     participants:
       filter:
-        role: dm
+        left: role
+        op: equal
+        right: dm
     dialogue_policy:
       mode: single
     response:

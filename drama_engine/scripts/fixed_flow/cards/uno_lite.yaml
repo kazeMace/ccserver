@@ -107,7 +107,9 @@ flow:
     scope: public
     participants:
       filter:
-        alive: true
+        left: alive
+        op: equal
+        right: true
     dialogue_policy:
       mode: sequential
     action_policy:
@@ -159,8 +161,8 @@ referee:
   conditions:
   - faction: solo
     when:
-      ref: actor.hand_count
       op: less_than_equal
-      value: 0
+      left: actor.hand_count
+      right: 0
   check_on:
   - after_scene

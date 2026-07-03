@@ -319,6 +319,60 @@ def test_unified_left_op_right_condition_with_count():
     ) is True
 
 
+def test_canonical_left_right_supports_plain_ref_strings():
+    """left/right 是统一比较语法，裸路径字符串按 ref 解析。"""
+    players = {
+        "P1": {"alive": True, "faction": "good"},
+        "P2": {"alive": True, "faction": "wolf"},
+    }
+    state = _make_state_with_players(players)
+    writer = StateWriter(state)
+    writer.apply(SetAttr("GAME", "round", 3))
+
+    assert evaluator.evaluate(
+        {"left": "GAME.round", "op": "greater_than_equal", "right": 2},
+        state,
+        actor=None,
+    ) is True
+    assert evaluator.evaluate(
+        {"left": "candidate.faction", "op": "not_equal", "right": "actor.faction"},
+        state,
+        actor="P1",
+        candidate="P2",
+    ) is True
+
+
+def test_canonical_left_right_supports_count_on_both_sides():
+    """left/right 两侧都可以使用 count value expression。"""
+    players = {
+        "P1": {"alive": True, "faction": "wolf"},
+        "P2": {"alive": True, "faction": "wolf"},
+        "P3": {"alive": True, "faction": "good"},
+    }
+    state = _make_state_with_players(players)
+
+    assert evaluator.evaluate(
+        {
+            "left": {"count": {"filter": {"left": "faction", "op": "equal", "right": "wolf"}}},
+            "op": "greater_than",
+            "right": {"count": {"filter": {"left": "faction", "op": "equal", "right": "good"}}},
+        },
+        state,
+        actor=None,
+    ) is True
+
+
+def test_canonical_left_right_literal_escape():
+    """@ 前缀用于在比较语境中强制表达字符串字面量。"""
+    state = _make_state(target="GAME.round")
+
+    assert evaluator.evaluate(
+        {"left": "GAME.target", "op": "equal", "right": "@GAME.round"},
+        state,
+        actor=None,
+    ) is True
+
+
 def test_code_evaluator_python_with_env():
     """code evaluator 支持指定 runtime/env/code。"""
     state = _make_state(round=4)

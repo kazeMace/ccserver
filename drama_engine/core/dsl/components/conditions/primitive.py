@@ -77,6 +77,8 @@ class PrimitiveConditionEvaluator:
             responses=responses,
             extra=extra,
             entity=entity,
+            allow_entity_shorthand=entity is not None,
+            prefer_ref=True,
         )
         op = str(cond.get("op") or "equals")
         right_spec = cond.get("right", cond.get("value", cond.get("expected")))
@@ -88,6 +90,7 @@ class PrimitiveConditionEvaluator:
             responses=responses,
             extra=extra,
             entity=entity,
+            prefer_ref=True,
         )
         return compare_operator(left, op, right)
 
@@ -257,6 +260,7 @@ class PrimitiveConditionEvaluator:
         extra: dict | None = None,
         entity: str | None = None,
         allow_entity_shorthand: bool = False,
+        prefer_ref: bool = False,
     ) -> Any:
         """Resolve a DSL value expression."""
         context = dict(extra or {})
@@ -273,6 +277,15 @@ class PrimitiveConditionEvaluator:
                 candidate=candidate,
                 extra=context,
             )
+        if prefer_ref and isinstance(expr, str) and self._looks_like_ref_string(expr):
+            return self._values.resolve(
+                {"ref": expr},
+                state=state,
+                responses=responses,
+                actor=actor,
+                candidate=candidate,
+                extra=context,
+            )
         if allow_entity_shorthand and isinstance(expr, str):
             return state.get_attr(entity, expr)
         return self._values.resolve(
@@ -283,6 +296,26 @@ class PrimitiveConditionEvaluator:
             candidate=candidate,
             extra=context,
         )
+
+    def _looks_like_ref_string(self, value: str) -> bool:
+        """Return whether a plain string should be treated as a ref in comparisons."""
+        if value.startswith("@"):
+            return False
+        if value in {
+            "actor",
+            "candidate",
+            "entity",
+            "winner",
+            "data",
+            "responses",
+            "selection_result",
+            "item",
+            "result",
+        }:
+            return True
+        if "." in value:
+            return True
+        return ":" in value
 
     def resolve_count(self, count_spec: dict, state: State) -> int:
         """Count entities matching the given filter spec."""

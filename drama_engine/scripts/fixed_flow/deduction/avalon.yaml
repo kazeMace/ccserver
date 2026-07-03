@@ -148,15 +148,21 @@ scopes:
 - name: evil-den
   members:
     filter:
-      faction: evil
+      left: faction
+      op: equal
+      right: evil
 - name: merlin-vision
   members:
     filter:
-      role: merlin
+      left: role
+      op: equal
+      right: merlin
 - name: percival-vision
   members:
     filter:
-      role: percival
+      left: role
+      op: equal
+      right: percival
 flow:
   type: state_machine
   initial: setup
@@ -205,14 +211,15 @@ flow:
         scope: public
         participants:
           filter:
-            ref: entity.seat_index
             op: equal
-            value:
-              ref: GAME.leader_index
+            left: entity.seat_index
+            right: GAME.leader_index
           min: 1
         candidates:
           filter:
-            in_game: true
+            left: in_game
+            op: equal
+            right: true
           count:
             state: GAME.current_team_size
           distinct: true
@@ -257,9 +264,9 @@ flow:
           - type: avalon_resolve_team_vote
             ifs:
             - when:
-                ref: GAME.evil_score
                 op: greater_than_equal
-                value: 3
+                left: GAME.evil_score
+                right: 3
               state: evil_win
             default: mission
     mission:
@@ -290,14 +297,14 @@ flow:
           - type: avalon_resolve_mission
             ifs:
             - when:
-                ref: GAME.good_score
                 op: greater_than_equal
-                value: 3
+                left: GAME.good_score
+                right: 3
               state: assassination
             - when:
-                ref: GAME.evil_score
                 op: greater_than_equal
-                value: 3
+                left: GAME.evil_score
+                right: 3
               state: evil_win
             default: team_building
     assassination:
@@ -308,12 +315,19 @@ flow:
         scope: public
         participants:
           filter:
-            role: assassin
+            left: role
+            op: equal
+            right: assassin
           min: 1
         candidates:
           filter:
-            faction: good
-            in_game: true
+            all:
+            - left: faction
+              op: equal
+              right: good
+            - left: in_game
+              op: equal
+              right: true
         action_policy:
           kind: choose_one
           target: required
@@ -356,13 +370,13 @@ referee:
   conditions:
   - faction: good
     when:
-      ref: GAME.good_score
       op: greater_than_equal
-      value: 3
+      left: GAME.good_score
+      right: 3
   - faction: evil
     when:
-      ref: GAME.evil_score
       op: greater_than_equal
-      value: 3
+      left: GAME.evil_score
+      right: 3
   check_on:
   - after_scene

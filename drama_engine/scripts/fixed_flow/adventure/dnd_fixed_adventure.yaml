@@ -231,8 +231,8 @@ referee:
   conditions:
   - faction: party
     when:
-      ref: GAME.relic_activated
-      op: equals
-      value: true
+      op: equal
+      left: GAME.relic_activated
+      right: true
   check_on:
   - after_scene

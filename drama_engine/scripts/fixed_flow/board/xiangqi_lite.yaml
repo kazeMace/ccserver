@@ -115,7 +115,9 @@ flow:
     scope: public
     participants:
       filter:
-        role: red
+        left: role
+        op: equal
+        right: red
     action_policy:
       kind: board_move
       input:
@@ -145,7 +147,9 @@ flow:
     scope: public
     participants:
       filter:
-        role: black
+        left: role
+        op: equal
+        right: black
     action_policy:
       kind: board_move
       input:

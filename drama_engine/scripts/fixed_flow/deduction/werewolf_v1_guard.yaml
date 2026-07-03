@@ -263,48 +263,57 @@ scopes:
   display_name: 城镇（存活）
   members:
     filter:
-      value: alive
-      equal: true
+      left: alive
+      op: equal
+      right: true
   delivery: immediate
 - name: wolf-den
   display_name: 狼人密室
   members:
     filter:
       all:
-      - value: alive
-        equal: true
-      - value: role
-        equal: werewolf
+      - left: alive
+        op: equal
+        right: true
+      - left: role
+        op: equal
+        right: werewolf
   delivery: immediate
 - name: whisper:seer
   display_name: 预言家私语
   members:
     filter:
       all:
-      - value: alive
-        equal: true
-      - value: role
-        equal: seer
+      - left: alive
+        op: equal
+        right: true
+      - left: role
+        op: equal
+        right: seer
   delivery: immediate
 - name: whisper:witch
   display_name: 女巫私语
   members:
     filter:
       all:
-      - value: alive
-        equal: true
-      - value: role
-        equal: witch
+      - left: alive
+        op: equal
+        right: true
+      - left: role
+        op: equal
+        right: witch
   delivery: immediate
 - name: whisper:guard
   display_name: 守卫私语
   members:
     filter:
       all:
-      - value: alive
-        equal: true
-      - value: role
-        equal: guard
+      - left: alive
+        op: equal
+        right: true
+      - left: role
+        op: equal
+        right: guard
   delivery: immediate
 initial_state:
   GAME:
@@ -335,8 +344,9 @@ flow:
     scope: town
     participants:
       filter:
-        value: alive
-        equal: true
+        left: alive
+        op: equal
+        right: true
     dialogue_policy:
       mode: none
     response:
@@ -383,10 +393,12 @@ flow:
     participants:
       filter:
         all:
-        - value: alive
-          equal: true
-        - value: role
-          equal: guard
+        - left: alive
+          op: equal
+          right: true
+        - left: role
+          op: equal
+          right: guard
     dialogue_policy:
       mode: single
     action_policy:
@@ -394,13 +406,13 @@ flow:
       target: required
     candidates:
       filter:
-        value: alive
-        equal: true
+        left: alive
+        op: equal
+        right: true
       when:
-        ref: candidate
-        op: not_equals
-        value:
-          ref: GAME.last_guarded_target
+        op: not_equal
+        left: candidate
+        right: GAME.last_guarded_target
     response:
       mode: structured
       schema: target
@@ -423,10 +435,12 @@ flow:
     participants:
       filter:
         all:
-        - value: alive
-          equal: true
-        - value: role
-          equal: seer
+        - left: alive
+          op: equal
+          right: true
+        - left: role
+          op: equal
+          right: seer
     dialogue_policy:
       mode: single
     action_policy:
@@ -434,13 +448,13 @@ flow:
       target: required
     candidates:
       filter:
-        value: alive
-        equal: true
+        left: alive
+        op: equal
+        right: true
       when:
-        ref: candidate
-        op: not_equals
-        value:
-          ref: actor
+        op: not_equal
+        left: candidate
+        right: actor
     response:
       mode: structured
       schema: target
@@ -460,10 +474,12 @@ flow:
     participants:
       filter:
         all:
-        - value: alive
-          equal: true
-        - value: role
-          equal: werewolf
+        - left: alive
+          op: equal
+          right: true
+        - left: role
+          op: equal
+          right: werewolf
     dialogue_policy:
       mode: sequential
     response:
@@ -475,10 +491,12 @@ flow:
             entities:
               filter:
                 all:
-                - value: alive
-                  equal: true
-                - value: faction
-                  equal: good
+                - left: alive
+                  op: equal
+                  right: true
+                - left: faction
+                  op: equal
+                  right: good
             format: names
   - name: wolf-vote
     display_name: 狼人投票
@@ -487,10 +505,12 @@ flow:
     participants:
       filter:
         all:
-        - value: alive
-          equal: true
-        - value: role
-          equal: werewolf
+        - left: alive
+          op: equal
+          right: true
+        - left: role
+          op: equal
+          right: werewolf
     dialogue_policy:
       mode: simultaneous
     action_policy:
@@ -498,8 +518,9 @@ flow:
       target: required
     candidates:
       filter:
-        value: alive
-        equal: true
+        left: alive
+        op: equal
+        right: true
       extra:
       - '@NO_KILL'
     response:
@@ -512,9 +533,9 @@ flow:
         attr: wolf_target
         source: winner
         when:
-          ref: winner
-          op: not_equals
-          value: NO_KILL
+          op: not_equal
+          left: winner
+          right: NO_KILL
   - name: witch-save
     display_name: 女巫救人
     scene_type: action
@@ -522,22 +543,23 @@ flow:
     participants:
       filter:
         all:
-        - value: alive
-          equal: true
-        - value: role
-          equal: witch
+        - left: alive
+          op: equal
+          right: true
+        - left: role
+          op: equal
+          right: witch
       when:
         all:
         - item_available:
             entity: actor
             item: heal_potion
-        - ref: GAME.wolf_target
-          op: not_null
-          value: true
-        - ref: GAME.wolf_target
-          op: not_equals
-          value:
-            ref: actor
+        - op: not_null
+          left: GAME.wolf_target
+          right: true
+        - op: not_equal
+          left: GAME.wolf_target
+          right: actor
     dialogue_policy:
       mode: single
     action_policy:
@@ -555,16 +577,16 @@ flow:
         attr: saved
         value: true
         when:
-          ref: data.action
-          op: equals
-          value: true
+          op: equal
+          left: data.action
+          right: true
       - type: consume_item
         entity: actor
         item: heal_potion
         when:
-          ref: data.action
-          op: equals
-          value: true
+          op: equal
+          left: data.action
+          right: true
   - name: witch-poison
     display_name: 女巫毒人
     scene_type: action
@@ -572,18 +594,20 @@ flow:
     participants:
       filter:
         all:
-        - value: alive
-          equal: true
-        - value: role
-          equal: witch
+        - left: alive
+          op: equal
+          right: true
+        - left: role
+          op: equal
+          right: witch
       when:
         all:
         - item_available:
             entity: actor
             item: poison_potion
-        - ref: GAME.saved
-          op: equals
-          value: false
+        - op: equal
+          left: GAME.saved
+          right: false
     dialogue_policy:
       mode: single
     action_policy:
@@ -591,8 +615,9 @@ flow:
       target: optional
     candidates:
       filter:
-        value: alive
-        equal: true
+        left: alive
+        op: equal
+        right: true
     response:
       mode: structured
       schema: action
@@ -606,23 +631,23 @@ flow:
         value: data.target
         when:
           all:
-          - ref: data.action
-            op: equals
-            value: true
-          - ref: data.target
-            op: not_null
-            value: true
+          - op: equal
+            left: data.action
+            right: true
+          - op: not_null
+            left: data.target
+            right: true
       - type: consume_item
         entity: actor
         item: poison_potion
         when:
           all:
-          - ref: data.action
-            op: equals
-            value: true
-          - ref: data.target
-            op: not_null
-            value: true
+          - op: equal
+            left: data.action
+            right: true
+          - op: not_null
+            left: data.target
+            right: true
   - name: dawn-resolve
     display_name: 黎明结算
     scene_type: narration
@@ -633,8 +658,9 @@ flow:
       mode: none
     participants:
       filter:
-        value: alive
-        equal: true
+        left: alive
+        op: equal
+        right: true
     resolution:
       effects:
       - type: kill
@@ -643,46 +669,45 @@ flow:
         cause: wolf
         when:
           all:
-          - ref: GAME.wolf_target
-            op: not_null
-            value: true
+          - op: not_null
+            left: GAME.wolf_target
+            right: true
           - any:
             - all:
-              - ref: GAME.saved
-                op: equals
-                value: false
-              - ref: GAME.guarded_target
-                op: not_equals
-                value:
-                  ref: GAME.wolf_target
+              - op: equal
+                left: GAME.saved
+                right: false
+              - op: not_equal
+                left: GAME.guarded_target
+                right: GAME.wolf_target
             - all:
-              - ref: GAME.saved
-                op: equals
-                value: true
-              - ref: GAME.guarded_target
-                op: equals
-                value:
-                  ref: GAME.wolf_target
+              - op: equal
+                left: GAME.saved
+                right: true
+              - op: equal
+                left: GAME.guarded_target
+                right: GAME.wolf_target
       - type: kill
         target:
           ref: GAME.poison_target
         cause: poison
         when:
-          ref: GAME.poison_target
           op: not_null
-          value: true
+          left: GAME.poison_target
+          right: true
   - name: sheriff-election-reset
     display_name: 警长竞选开始
     scene_type: narration
     scope: town
     participants:
       filter:
-        value: alive
-        equal: true
+        left: alive
+        op: equal
+        right: true
     when:
-      ref: GAME.round
       op: less_than_equal
-      value: 1
+      left: GAME.round
+      right: 1
     dialogue_policy:
       mode: none
     response:
@@ -712,12 +737,13 @@ flow:
     scope: town
     participants:
       filter:
-        value: alive
-        equal: true
+        left: alive
+        op: equal
+        right: true
     when:
-      ref: GAME.round
       op: less_than_equal
-      value: 1
+      left: GAME.round
+      right: 1
     dialogue_policy:
       mode: simultaneous
     action_policy:
@@ -738,9 +764,9 @@ flow:
           path: GAME.sheriff_candidates
           value: item.actor
           when:
-            ref: item.data.action
-            op: equals
-            value: true
+            op: equal
+            left: item.data.action
+            right: true
   - name: sheriff-speech
     display_name: 警上发言
     scene_type: speak
@@ -749,9 +775,9 @@ flow:
       from_state: GAME.sheriff_candidates
     when:
       all:
-      - ref: GAME.round
-        op: less_than_equal
-        value: 1
+      - op: less_than_equal
+        left: GAME.round
+        right: 1
       - evaluator: code
         runtime: python
         code: result = bool(len(attr('GAME', 'sheriff_candidates', [])) > 0)
@@ -768,9 +794,9 @@ flow:
       from_state: GAME.sheriff_candidates
     when:
       all:
-      - ref: GAME.round
-        op: less_than_equal
-        value: 1
+      - op: less_than_equal
+        left: GAME.round
+        right: 1
       - evaluator: code
         runtime: python
         code: result = bool(len(attr('GAME', 'sheriff_candidates', [])) > 0)
@@ -794,26 +820,27 @@ flow:
           path: GAME.sheriff_candidates
           value: item.actor
           when:
-            ref: item.data.action
-            op: equals
-            value: true
+            op: equal
+            left: item.data.action
+            right: true
   - name: sheriff-vote
     display_name: 警长投票
     scene_type: vote
     scope: town
     participants:
       filter:
-        value: alive
-        equal: true
+        left: alive
+        op: equal
+        right: true
       when:
         evaluator: code
         runtime: python
         code: result = bool(actor not in attr('GAME', 'sheriff_candidates', []))
     when:
       all:
-      - ref: GAME.round
-        op: less_than_equal
-        value: 1
+      - op: less_than_equal
+        left: GAME.round
+        right: 1
       - evaluator: code
         runtime: python
         code: result = bool(len(attr('GAME', 'sheriff_candidates', [])) > 0)
@@ -839,33 +866,33 @@ flow:
         attr: sheriff
         value: winner
         when:
-          ref: selection_result.has_winner
-          op: equals
-          value: true
+          op: equal
+          left: selection_result.has_winner
+          right: true
       - type: set_state
         entity: GAME
         attr: has_sheriff
         value: true
         when:
-          ref: selection_result.has_winner
-          op: equals
-          value: true
+          op: equal
+          left: selection_result.has_winner
+          right: true
       - type: set_state
         entity: winner
         attr: vote_weight
         value: 1.5
         when:
-          ref: selection_result.has_winner
-          op: equals
-          value: true
+          op: equal
+          left: selection_result.has_winner
+          right: true
       - type: set_state
         entity: GAME
         attr: need_sheriff_pk
         value: true
         when:
-          ref: selection_result.is_tie
-          op: equals
-          value: true
+          op: equal
+          left: selection_result.is_tie
+          right: true
       - type: for_each
         items: selection_result.tied_candidates
         as: item
@@ -881,12 +908,12 @@ flow:
       from_state: GAME.sheriff_pk_candidates
     when:
       all:
-      - ref: GAME.round
-        op: less_than_equal
-        value: 1
-      - ref: GAME.need_sheriff_pk
-        op: equals
-        value: true
+      - op: less_than_equal
+        left: GAME.round
+        right: 1
+      - op: equal
+        left: GAME.need_sheriff_pk
+        right: true
     dialogue_policy:
       mode: sequential
     response:
@@ -898,20 +925,21 @@ flow:
     scope: town
     participants:
       filter:
-        value: alive
-        equal: true
+        left: alive
+        op: equal
+        right: true
       when:
         evaluator: code
         runtime: python
         code: result = bool(actor not in attr('GAME', 'sheriff_pk_candidates', []))
     when:
       all:
-      - ref: GAME.round
-        op: less_than_equal
-        value: 1
-      - ref: GAME.need_sheriff_pk
-        op: equals
-        value: true
+      - op: less_than_equal
+        left: GAME.round
+        right: 1
+      - op: equal
+        left: GAME.need_sheriff_pk
+        right: true
     dialogue_policy:
       mode: simultaneous
     action_policy:
@@ -932,25 +960,25 @@ flow:
         attr: sheriff
         value: winner
         when:
-          ref: selection_result.has_winner
-          op: equals
-          value: true
+          op: equal
+          left: selection_result.has_winner
+          right: true
       - type: set_state
         entity: GAME
         attr: has_sheriff
         value: true
         when:
-          ref: selection_result.has_winner
-          op: equals
-          value: true
+          op: equal
+          left: selection_result.has_winner
+          right: true
       - type: set_state
         entity: winner
         attr: vote_weight
         value: 1.5
         when:
-          ref: selection_result.has_winner
-          op: equals
-          value: true
+          op: equal
+          left: selection_result.has_winner
+          right: true
       - type: set_state
         entity: GAME
         attr: need_sheriff_pk
@@ -967,8 +995,9 @@ flow:
       mode: none
     participants:
       filter:
-        value: alive
-        equal: true
+        left: alive
+        op: equal
+        right: true
     resolution:
       effects:
       - type: record_current_deaths
@@ -1026,16 +1055,18 @@ flow:
     participants:
       filter:
         all:
-        - value: alive
-          equal: false
-        - value: role
-          equal: hunter
+        - left: alive
+          op: equal
+          right: false
+        - left: role
+          op: equal
+          right: hunter
       when:
         all:
         - just_died: actor
-        - ref: actor.death_cause
-          op: not_equals
-          value: poison
+        - op: not_equal
+          left: actor.death_cause
+          right: poison
     dialogue_policy:
       mode: single
     action_policy:
@@ -1043,8 +1074,9 @@ flow:
       target: optional
     candidates:
       filter:
-        value: alive
-        equal: true
+        left: alive
+        op: equal
+        right: true
     response:
       mode: structured
       schema: action
@@ -1057,12 +1089,12 @@ flow:
         cause: shot
         when:
           all:
-          - ref: data.action
-            op: equals
-            value: true
-          - ref: data.target
-            op: not_null
-            value: true
+          - op: equal
+            left: data.action
+            right: true
+          - op: not_null
+            left: data.target
+            right: true
     publication:
       announce_cue: false
   - name: sheriff-badge-transfer-night
@@ -1073,9 +1105,9 @@ flow:
       from_state: GAME.sheriff
       when:
         all:
-        - ref: GAME.has_sheriff
-          op: equals
-          value: true
+        - op: equal
+          left: GAME.has_sheriff
+          right: true
         - just_died: actor
     dialogue_policy:
       mode: single
@@ -1084,8 +1116,9 @@ flow:
       target: optional
     candidates:
       filter:
-        value: alive
-        equal: true
+        left: alive
+        op: equal
+        right: true
     response:
       mode: structured
       schema: action
@@ -1103,52 +1136,52 @@ flow:
         value: data.target
         when:
           all:
-          - ref: data.action
-            op: equals
-            value: true
-          - ref: data.target
-            op: not_null
-            value: true
+          - op: equal
+            left: data.action
+            right: true
+          - op: not_null
+            left: data.target
+            right: true
       - type: set_state
         entity: GAME
         attr: has_sheriff
         value: true
         when:
           all:
-          - ref: data.action
-            op: equals
-            value: true
-          - ref: data.target
-            op: not_null
-            value: true
+          - op: equal
+            left: data.action
+            right: true
+          - op: not_null
+            left: data.target
+            right: true
       - type: set_state
         entity: data.target
         attr: vote_weight
         value: 1.5
         when:
           all:
-          - ref: data.action
-            op: equals
-            value: true
-          - ref: data.target
-            op: not_null
-            value: true
+          - op: equal
+            left: data.action
+            right: true
+          - op: not_null
+            left: data.target
+            right: true
       - type: set_state
         entity: GAME
         attr: sheriff
         value: null
         when:
-          ref: data.action
-          op: equals
-          value: false
+          op: equal
+          left: data.action
+          right: false
       - type: set_state
         entity: GAME
         attr: has_sheriff
         value: false
         when:
-          ref: data.action
-          op: equals
-          value: false
+          op: equal
+          left: data.action
+          right: false
   - name: sheriff-set-speech-order
     display_name: 警长指定发言方向
     scene_type: choose
@@ -1156,9 +1189,9 @@ flow:
     participants:
       from_state: GAME.sheriff
     when:
-      ref: GAME.has_sheriff
-      op: equals
-      value: true
+      op: equal
+      left: GAME.has_sheriff
+      right: true
     dialogue_policy:
       mode: single
     action_policy:
@@ -1184,8 +1217,9 @@ flow:
             ref: GAME.sheriff
         direction: data.target
         filter:
-          value: alive
-          equal: true
+          left: alive
+          op: equal
+          right: true
   - name: day-discuss-sheriff-order
     display_name: 白天讨论（警长顺序）
     scene_type: speak
@@ -1194,14 +1228,14 @@ flow:
       from_state: GAME.day_speech_order
       ordered: true
       when:
-        ref: actor.alive
-        op: equals
-        value: true
+        op: equal
+        left: actor.alive
+        right: true
     when:
       all:
-      - ref: GAME.has_sheriff
-        op: equals
-        value: true
+      - op: equal
+        left: GAME.has_sheriff
+        right: true
       - evaluator: code
         runtime: python
         code: result = bool(len(attr('GAME', 'day_speech_order', [])) > 0)
@@ -1215,8 +1249,9 @@ flow:
           alive_players:
             entities:
               filter:
-                value: alive
-                equal: true
+                left: alive
+                op: equal
+                right: true
             format: names
   - name: day-discuss
     display_name: 白天讨论（随机顺序）
@@ -1224,13 +1259,14 @@ flow:
     scope: town
     participants:
       filter:
-        value: alive
-        equal: true
+        left: alive
+        op: equal
+        right: true
     when:
       any:
-      - ref: GAME.has_sheriff
-        op: equals
-        value: false
+      - op: equal
+        left: GAME.has_sheriff
+        right: false
       - evaluator: code
         runtime: python
         code: result = bool(len(attr('GAME', 'day_speech_order', [])) == 0)
@@ -1244,8 +1280,9 @@ flow:
           alive_players:
             entities:
               filter:
-                value: alive
-                equal: true
+                left: alive
+                op: equal
+                right: true
             format: names
   - name: sheriff-lead-speech
     display_name: 警长最后总结发言
@@ -1254,9 +1291,9 @@ flow:
     participants:
       from_state: GAME.sheriff
     when:
-      ref: GAME.has_sheriff
-      op: equals
-      value: true
+      op: equal
+      left: GAME.has_sheriff
+      right: true
     dialogue_policy:
       mode: single
     response:
@@ -1268,17 +1305,18 @@ flow:
     scope: town
     participants:
       filter:
-        value: alive
-        equal: true
+        left: alive
+        op: equal
+        right: true
       when:
         not:
           all:
-          - ref: actor.role
-            op: equals
-            value: idiot
-          - ref: actor.revealed_idiot
-            op: equals
-            value: true
+          - op: equal
+            left: actor.role
+            right: idiot
+          - op: equal
+            left: actor.revealed_idiot
+            right: true
     dialogue_policy:
       mode: simultaneous
     action_policy:
@@ -1286,17 +1324,18 @@ flow:
       target: required
     candidates:
       filter:
-        value: alive
-        equal: true
+        left: alive
+        op: equal
+        right: true
       when:
         not:
           all:
-          - ref: candidate.role
-            op: equals
-            value: idiot
-          - ref: candidate.revealed_idiot
-            op: equals
-            value: true
+          - op: equal
+            left: candidate.role
+            right: idiot
+          - op: equal
+            left: candidate.revealed_idiot
+            right: true
     response:
       mode: structured
       schema: vote
@@ -1321,42 +1360,42 @@ flow:
         value: true
         when:
           all:
-          - ref: selection_result.has_winner
-            op: equals
-            value: true
-          - ref: winner.role
-            op: equals
-            value: idiot
-          - ref: winner.revealed_idiot
-            op: not_equals
-            value: true
+          - op: equal
+            left: selection_result.has_winner
+            right: true
+          - op: equal
+            left: winner.role
+            right: idiot
+          - op: not_equal
+            left: winner.revealed_idiot
+            right: true
       - type: kill
         target: winner
         cause: vote
         when:
           all:
-          - ref: selection_result.has_winner
-            op: equals
-            value: true
-          - ref: winner.role
-            op: not_equals
-            value: idiot
+          - op: equal
+            left: selection_result.has_winner
+            right: true
+          - op: not_equal
+            left: winner.role
+            right: idiot
       - type: set_state
         entity: GAME
         attr: last_vote_target
         value: winner
         when:
-          ref: selection_result.has_winner
-          op: equals
-          value: true
+          op: equal
+          left: selection_result.has_winner
+          right: true
       - type: set_state
         entity: GAME
         attr: need_day_pk
         value: true
         when:
-          ref: selection_result.is_tie
-          op: equals
-          value: true
+          op: equal
+          left: selection_result.is_tie
+          right: true
       - type: for_each
         items: selection_result.tied_candidates
         as: item
@@ -1371,9 +1410,9 @@ flow:
     participants:
       from_state: GAME.day_pk_candidates
     when:
-      ref: GAME.need_day_pk
-      op: equals
-      value: true
+      op: equal
+      left: GAME.need_day_pk
+      right: true
     dialogue_policy:
       mode: sequential
     response:
@@ -1385,16 +1424,17 @@ flow:
     scope: town
     participants:
       filter:
-        value: alive
-        equal: true
+        left: alive
+        op: equal
+        right: true
       when:
         evaluator: code
         runtime: python
         code: result = bool(actor not in attr('GAME', 'day_pk_candidates', []))
     when:
-      ref: GAME.need_day_pk
-      op: equals
-      value: true
+      op: equal
+      left: GAME.need_day_pk
+      right: true
     dialogue_policy:
       mode: simultaneous
     action_policy:
@@ -1419,25 +1459,25 @@ flow:
         cause: vote
         when:
           all:
-          - ref: selection_result.has_winner
-            op: equals
-            value: true
+          - op: equal
+            left: selection_result.has_winner
+            right: true
       - type: set_state
         entity: GAME
         attr: last_vote_target
         value: winner
         when:
-          ref: selection_result.has_winner
-          op: equals
-          value: true
+          op: equal
+          left: selection_result.has_winner
+          right: true
       - type: set_state
         entity: GAME
         attr: last_vote_target
         value: null
         when:
-          ref: selection_result.has_winner
-          op: equals
-          value: false
+          op: equal
+          left: selection_result.has_winner
+          right: false
       - type: set_state
         entity: GAME
         attr: need_day_pk
@@ -1450,13 +1490,13 @@ flow:
     scope: town
     participants:
       filter:
-        value: alive
-        equal: false
+        left: alive
+        op: equal
+        right: false
       when:
-        ref: actor
-        op: equals
-        value:
-          ref: GAME.last_vote_target
+        op: equal
+        left: actor
+        right: GAME.last_vote_target
     dialogue_policy:
       mode: single
     response:
@@ -1469,15 +1509,16 @@ flow:
     participants:
       filter:
         all:
-        - value: alive
-          equal: false
-        - value: role
-          equal: hunter
+        - left: alive
+          op: equal
+          right: false
+        - left: role
+          op: equal
+          right: hunter
       when:
-        ref: actor
-        op: equals
-        value:
-          ref: GAME.last_vote_target
+        op: equal
+        left: actor
+        right: GAME.last_vote_target
     dialogue_policy:
       mode: single
     action_policy:
@@ -1485,8 +1526,9 @@ flow:
       target: optional
     candidates:
       filter:
-        value: alive
-        equal: true
+        left: alive
+        op: equal
+        right: true
     response:
       mode: structured
       schema: action
@@ -1499,12 +1541,12 @@ flow:
         cause: shot
         when:
           all:
-          - ref: data.action
-            op: equals
-            value: true
-          - ref: data.target
-            op: not_null
-            value: true
+          - op: equal
+            left: data.action
+            right: true
+          - op: not_null
+            left: data.target
+            right: true
     publication:
       announce_cue: false
   - name: sheriff-badge-transfer-day
@@ -1515,9 +1557,9 @@ flow:
       from_state: GAME.sheriff
       when:
         all:
-        - ref: GAME.has_sheriff
-          op: equals
-          value: true
+        - op: equal
+          left: GAME.has_sheriff
+          right: true
         - just_died: actor
     dialogue_policy:
       mode: single
@@ -1526,8 +1568,9 @@ flow:
       target: optional
     candidates:
       filter:
-        value: alive
-        equal: true
+        left: alive
+        op: equal
+        right: true
     response:
       mode: structured
       schema: action
@@ -1545,52 +1588,52 @@ flow:
         value: data.target
         when:
           all:
-          - ref: data.action
-            op: equals
-            value: true
-          - ref: data.target
-            op: not_null
-            value: true
+          - op: equal
+            left: data.action
+            right: true
+          - op: not_null
+            left: data.target
+            right: true
       - type: set_state
         entity: GAME
         attr: has_sheriff
         value: true
         when:
           all:
-          - ref: data.action
-            op: equals
-            value: true
-          - ref: data.target
-            op: not_null
-            value: true
+          - op: equal
+            left: data.action
+            right: true
+          - op: not_null
+            left: data.target
+            right: true
       - type: set_state
         entity: data.target
         attr: vote_weight
         value: 1.5
         when:
           all:
-          - ref: data.action
-            op: equals
-            value: true
-          - ref: data.target
-            op: not_null
-            value: true
+          - op: equal
+            left: data.action
+            right: true
+          - op: not_null
+            left: data.target
+            right: true
       - type: set_state
         entity: GAME
         attr: sheriff
         value: null
         when:
-          ref: data.action
-          op: equals
-          value: false
+          op: equal
+          left: data.action
+          right: false
       - type: set_state
         entity: GAME
         attr: has_sheriff
         value: false
         when:
-          ref: data.action
-          op: equals
-          value: false
+          op: equal
+          left: data.action
+          right: false
 referee:
   conditions:
   - winner: good
@@ -1601,10 +1644,12 @@ referee:
         count:
           filter:
             all:
-            - value: alive
-              equal: true
-            - value: faction
-              equal: wolf
+            - left: alive
+              op: equal
+              right: true
+            - left: faction
+              op: equal
+              right: wolf
       op: equal
       right: 0
   - winner: wolf
@@ -1616,10 +1661,12 @@ referee:
           count:
             filter:
               all:
-              - value: alive
-                equal: true
-              - value: role
-                equal: villager
+              - left: alive
+                op: equal
+                right: true
+              - left: role
+                op: equal
+                right: villager
         op: equal
         right: 0
       - evaluator: code

@@ -99,7 +99,9 @@ flow:
     scope: public
     participants:
       filter:
-        alive: true
+        left: alive
+        op: equal
+        right: true
       ordered: true
     dialogue_policy:
       mode: sequential
@@ -112,7 +114,9 @@ flow:
     scope: public
     participants:
       filter:
-        alive: true
+        left: alive
+        op: equal
+        right: true
     dialogue_policy:
       mode: openchat
       rounds: 2
@@ -126,15 +130,18 @@ flow:
     scope: public
     participants:
       filter:
-        alive: true
+        left: alive
+        op: equal
+        right: true
     candidates:
       filter:
-        alive: true
+        left: alive
+        op: equal
+        right: true
       when:
-        ref: candidate
-        op: not_equals
-        value:
-          ref: actor
+        op: not_equal
+        left: candidate
+        right: actor
     action_policy:
       kind: vote
       target: required
@@ -162,8 +169,13 @@ flow:
     scope: public
     participants:
       filter:
-        role: undercover
-        alive: false
+        all:
+        - left: role
+          op: equal
+          right: undercover
+        - left: alive
+          op: equal
+          right: false
       min: 0
     dialogue_policy:
       mode: single
@@ -183,8 +195,8 @@ referee:
   conditions:
   - faction: civilian_team
     when:
-      ref: GAME.voted_out_player.role
-      op: equals
-      value: undercover
+      op: equal
+      left: GAME.voted_out_player.role
+      right: undercover
   check_on:
   - after_scene

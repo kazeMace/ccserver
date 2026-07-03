@@ -146,7 +146,9 @@ flow:
     scope: public
     participants:
       filter:
-        alive: true
+        left: alive
+        op: equal
+        right: true
     action_policy:
       kind: board_move
       input:
@@ -182,7 +184,9 @@ flow:
     scope: public
     participants:
       filter:
-        alive: true
+        left: alive
+        op: equal
+        right: true
     dialogue_policy:
       mode: sequential
     response:

@@ -136,12 +136,9 @@ CONDITION_FIELD_SCHEMA = DslSchema(
     name="condition",
     description="通用条件表达式，所有 when / until / referee 条件共享同一组件。",
     fields=(
-        DslField("ref", "string", False, "推荐写法：左侧值引用，例如 GAME.round、actor.role、STORY.beat_count。"),
-        DslField("left", "any", False, "推荐写法：通用左侧值表达式，例如 {count: ...}。"),
+        DslField("left", "any", False, "推荐写法：通用左侧值表达式，例如 GAME.round、actor.role、{count: ...}。"),
         DslField("op", "string", False, "推荐写法：比较操作符。", (
-            "equals",
             "equal",
-            "not_equals",
             "not_equal",
             "greater_than",
             "less_than",
@@ -152,8 +149,9 @@ CONDITION_FIELD_SCHEMA = DslSchema(
             "is_null",
             "not_null",
         )),
-        DslField("value", "any", False, "推荐写法：比较目标值，可包含 {ref: ...}。"),
-        DslField("right", "any", False, "推荐写法：通用右侧值表达式，可包含 {ref: ...} 或 {count: ...}。"),
+        DslField("right", "any", False, "推荐写法：通用右侧值表达式，例如字面量、GAME.round、actor.role、{count: ...}。"),
+        DslField("ref", "string", False, "Legacy alias：旧 ref/op/value 左侧引用，请改用 left。"),
+        DslField("value", "any", False, "Legacy alias：旧 ref/op/value 或 value/operator 写法，请改用 right。"),
         DslField("evaluator", "string", False, "可选 evaluator。primitive 为默认；code/http/llm/plugin 为扩展判断。", (
             "primitive",
             "code",
@@ -169,8 +167,8 @@ CONDITION_FIELD_SCHEMA = DslSchema(
         DslField("input", "object", False, "http/llm evaluator 输入，可包含 {ref: ...}。"),
         DslField("pass_when", "condition", False, "http/llm evaluator 返回结构后的二次判断条件。"),
         DslField("fallback", "boolean", False, "外部 evaluator 不可用或低置信度时的默认结果。"),
-        DslField("state", "string", False, "Legacy：旧状态路径写法，请改用 ref。"),
-        DslField("equals/not_equals/gte/lte/gt/lt", "any", False, "Legacy：旧比较字段，请改用 op/value。"),
+        DslField("state", "string", False, "Legacy：旧状态路径写法，请改用 left。"),
+        DslField("equals/not_equals/gte/lte/gt/lt", "any", False, "Legacy：旧比较字段，请改用 op/right。"),
         DslField("python", "string|object", False, "Legacy：旧 Python 条件，请改用 evaluator: code。"),
     ),
 )
