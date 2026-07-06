@@ -12,6 +12,7 @@ import yaml
 logger = logging.getLogger(__name__)
 
 from drama_engine.core.dsl.registry import build_default_dsl_registry
+from drama_engine.core.moderation.models import GuardRailSpec
 from drama_engine.core.runtime.interactive_session.models import (
     ControllerActionSpec,
     DynamicScheduleSpec,
@@ -70,6 +71,7 @@ class InteractiveSessionCompiler:
         flow = self._compile_flow(canonical["flow"], scenes)
         referee = self._compile_referee(canonical.get("referee") or {})
         visibility = self._compile_visibility(canonical.get("visibility") or {})
+        guardrail = self._compile_guardrail(canonical.get("guardrail") or {})
         state = dict(canonical.get("state") or canonical.get("initial_state") or {})
         players = dict(canonical.get("players") or {})
         self._validate_script_contract(scenes, flow, scopes, referee)
@@ -84,6 +86,7 @@ class InteractiveSessionCompiler:
             scopes=scopes,
             referee=referee,
             visibility=visibility,
+            guardrail=guardrail,
             plugins=list(canonical.get("plugins") or []),
             game_pack=canonical.get("game_pack") or {},
             rule_set=canonical.get("rule_set") or {},
@@ -125,6 +128,20 @@ class InteractiveSessionCompiler:
             self_visible=[str(item) for item in spec.get("self_visible", []) or []],
         )
 
+    def _compile_guardrail(self, spec: dict[str, Any]) -> GuardRailSpec:
+        """Compile guardrail 块 → GuardRailSpec（全局或 scene 级共用）。
+
+        spec 为空 dict 时返回默认（未启用）守卫。on_violation 的枚举校验在
+        GuardRailSpec.__post_init__ 里做，拼写错误会在 validate 阶段被捕获。
+        """
+        assert isinstance(spec, dict), "guardrail 块必须是 dict"
+        return GuardRailSpec(
+            enabled=bool(spec.get("enabled", False)),
+            checks=[str(item) for item in spec.get("checks", []) or []],
+            on_violation=str(spec.get("on_violation") or "soft_warn"),
+            evaluator=dict(spec.get("evaluator") or {}),
+        )
+
     def _compile_scene(self, scene_id: str, spec: dict[str, Any]) -> SceneSpec:
         """Compile one scene."""
         assert isinstance(spec, dict), "scene spec 必须是 dict"
@@ -143,6 +160,7 @@ class InteractiveSessionCompiler:
             resolution=dict(spec.get("resolution") or {}),
             publication=dict(spec.get("publication") or {}),
             referee=self._compile_referee(spec.get("referee") or {}),
+            guardrail=self._compile_guardrail(spec.get("guardrail") or {}),
             hooks=dict(spec.get("hooks") or {}),
             raw=dict(spec),
         )

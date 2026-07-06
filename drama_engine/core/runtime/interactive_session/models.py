@@ -9,6 +9,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from drama_engine.core.moderation.models import GuardRailSpec
+
 
 @dataclass(slots=True)
 class ScopeSpec:
@@ -176,6 +178,8 @@ class SceneSpec:
     resolution: dict[str, Any] = field(default_factory=dict)
     publication: dict[str, Any] = field(default_factory=dict)
     referee: RefereeSpec = field(default_factory=RefereeSpec)
+    # scene 级 OOC 内容守卫；覆盖全局 guardrail。默认未启用。
+    guardrail: GuardRailSpec = field(default_factory=GuardRailSpec)
     hooks: dict[str, Any] = field(default_factory=dict)
     raw: dict[str, Any] = field(default_factory=dict)
 
@@ -233,6 +237,8 @@ class InteractiveScript:
     referee: RefereeSpec = field(default_factory=RefereeSpec)
     # 实体属性级可见性策略（哪些属性对他人隐藏），由顶层 visibility: 块编译而来。
     visibility: VisibilityPolicy = field(default_factory=VisibilityPolicy)
+    # 全局 OOC 内容守卫，由顶层 guardrail: 块编译而来。scene 级可覆盖。
+    guardrail: GuardRailSpec = field(default_factory=GuardRailSpec)
     plugins: list[dict[str, Any]] = field(default_factory=list)
     # 机制集合引用：{"plugin": "builtin.board", "config": {...}}，或其列表（引入多个集合）；
     # 不含规则本体。

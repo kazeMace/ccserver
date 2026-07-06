@@ -56,8 +56,44 @@ class ParticipantActionExecutor:
         )
         response.setdefault("actor", actor_name)
         response.setdefault("data", None)
+        # OOC 内容守卫：发言写入前判定是否越界/离题/泄密，按策略处理。
+        response = await self._apply_guardrail(ctx, response)
+        if response is None:
+            # 被 block 策略拦截：不投递，返回一个空发言占位（不进入他人感知/事件流）。
+            logger.info("[ParticipantActionExecutor] 发言被 GuardRail 拦截 actor=%s", actor_name)
+            return {"actor": actor_name, "text": "", "data": None, "blocked": True}
         await self._deliver_response(ctx, response, scope, participants)
         return response
+
+    async def _apply_guardrail(
+        self,
+        ctx: InteractiveExecutionContext,
+        response: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """对发言应用 OOC 内容守卫。
+
+        返回：
+          - 放行：返回（可能被改写过的）发言 dict。
+          - 拦截：返回 None。
+        守卫未启用或判定异常时原样放行。
+        """
+        guardrail = ctx.resolve_guardrail()
+        if guardrail is None or not guardrail.enabled:
+            return response
+        outcome = await guardrail.check(ctx, response)
+        # 被打标时给 host 发一条观测事件（不影响投递）。
+        if outcome.flagged:
+            ctx.emit_host({
+                "kind": "guardrail_flag",
+                "runtime_type": "interactive_session",
+                "scene": ctx.current_scene_id,
+                "actor": response.get("actor"),
+                "allow": outcome.allow,
+                "note": outcome.note,
+            })
+        if not outcome.allow:
+            return None
+        return outcome.response
 
     async def _act_with_validation(
         self,

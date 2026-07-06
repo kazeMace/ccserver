@@ -174,3 +174,18 @@ class InteractiveExecutionContext:
             purpose=purpose,
             disclosed_facts=disclosed,
         )
+
+    def resolve_guardrail(self) -> Any:
+        """返回当前 scene 生效的 OOC 内容守卫 GuardRail；未启用时返回 None。
+
+        优先取当前 scene 的 guardrail 声明，未启用则回退到全局 guardrail。
+        构建结果不缓存（scene 会切换），但仅在启用时才创建实例。
+        """
+        from drama_engine.core.moderation.guardrail import build_guardrail
+
+        scene = self.script.scenes.get(self.current_scene_id) if self.script else None
+        scene_spec = getattr(scene, "guardrail", None) if scene is not None else None
+        if scene_spec is not None and getattr(scene_spec, "enabled", False):
+            return build_guardrail(scene_spec)
+        global_spec = getattr(self.script, "guardrail", None) if self.script else None
+        return build_guardrail(global_spec)
