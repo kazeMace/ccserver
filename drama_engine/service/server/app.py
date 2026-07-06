@@ -15,13 +15,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import StreamingResponse
 
 from drama_engine.application.catalog import GameCatalog
+from drama_engine.core.game_instance.instance import GameInstance
 from drama_engine.core.session.persistence import JsonSessionStore
 from drama_engine.core.session.registry import SessionRegistry
-from drama_engine.core.session.view_projection import (
-    build_host_snapshot,
-    build_player_snapshot,
-    build_public_snapshot,
-)
 from drama_engine.service.server.schemas import (
     ClaimSeatRequest,
     CreateSessionRequest,
@@ -43,6 +39,24 @@ def create_app(
     app.state.frontend_dir = frontend_dir
     app.state.registry = registry or SessionRegistry(store=JsonSessionStore())
     app.state.catalog = catalog or GameCatalog()
+
+    async def _instance(session_id: str) -> GameInstance:
+        """按 session_id 取 GameInstance（service 层唯一入口）。
+
+        GameInstance 缓存在其 runtime 上，保证同一局的 SnapshotManager / checkpoint
+        在多次请求间保持一致（否则每次请求新建实例会丢失 checkpoint）。
+        """
+        try:
+            runtime = await app.state.registry.get_session(session_id)
+        except AssertionError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        instance = getattr(runtime, "_game_instance", None)
+        if instance is None:
+            instance = GameInstance(runtime)
+            setattr(runtime, "_game_instance", instance)
+        return instance
+
+    app.state.instance_for = _instance
 
     @app.get("/api/health")
     async def health() -> dict[str, str]:
@@ -220,20 +234,14 @@ def create_app(
     @app.get("/api/sessions/{session_id}/view/host")
     async def host_view(session_id: str) -> dict[str, Any]:
         """返回主持人视图快照。"""
-        try:
-            runtime = await app.state.registry.get_session(session_id)
-        except AssertionError as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
-        return build_host_snapshot(runtime).to_dict()
+        instance = await _instance(session_id)
+        return instance.host_view()
 
     @app.get("/api/sessions/{session_id}/view/public")
     async def public_view(session_id: str) -> dict[str, Any]:
         """返回公开观众视图快照。"""
-        try:
-            runtime = await app.state.registry.get_session(session_id)
-        except AssertionError as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
-        return build_public_snapshot(runtime).to_dict()
+        instance = await _instance(session_id)
+        return instance.public_view()
 
     @app.get("/api/player/view")
     async def player_view(token: str) -> dict[str, Any]:
@@ -241,8 +249,8 @@ def create_app(
         claim = app.state.registry.token_service.validate(token)
         if claim is None:
             raise HTTPException(status_code=404, detail="invalid token")
-        runtime = await app.state.registry.get_session(claim.session_id)
-        return build_player_snapshot(runtime, claim.seat_id, claim.user_id).to_dict()
+        instance = await _instance(claim.session_id)
+        return instance.player_view(claim.seat_id, claim.user_id)
 
     @app.get("/api/sessions/{session_id}/seats")
     async def get_seats(session_id: str, http_request: Request) -> list[dict[str, Any]]:
@@ -256,11 +264,8 @@ def create_app(
     @app.get("/api/sessions/{session_id}/pending-actions")
     async def get_pending_actions(session_id: str) -> list[dict[str, Any]]:
         """获取 session pending actions。"""
-        try:
-            runtime = await app.state.registry.get_session(session_id)
-        except AssertionError as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
-        return _pending_actions(runtime)
+        instance = await _instance(session_id)
+        return instance.pending_actions()
 
     @app.post("/api/sessions/{session_id}/moderator/takeover")
     async def moderator_takeover(session_id: str, seat: str) -> dict[str, bool]:
@@ -302,14 +307,13 @@ def create_app(
     @app.post("/api/sessions/{session_id}/moderator/submit")
     async def moderator_submit(session_id: str, seat: str, body: dict[str, Any]) -> dict[str, Any]:
         """主持人代玩家提交当前 pending action。"""
-        try:
-            runtime = await app.state.registry.get_session(session_id)
-        except AssertionError as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
-        submission = await _submit_to_current_action(runtime, seat, source="moderator", data=body.get("data"), text=body.get("text", ""))
+        instance = await _instance(session_id)
+        submission = await instance.submit_action(
+            seat_id=seat, payload=body.get("data"), source="moderator", text=body.get("text", ""),
+        )
         if submission is None:
             raise HTTPException(status_code=409, detail="no pending action")
-        return _submission_response(runtime, seat, submission)
+        return _submission_response(instance.session_id, seat, submission)
 
     @app.post("/api/sessions/{session_id}/terminate")
     async def terminate_session(session_id: str) -> dict[str, bool]:
@@ -320,30 +324,46 @@ def create_app(
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         return {"ok": True}
 
+    @app.post("/api/sessions/{session_id}/checkpoint")
+    async def create_checkpoint(session_id: str, reason: str = "manual") -> dict[str, Any]:
+        """在当前时刻创建一个回滚 checkpoint。"""
+        instance = await _instance(session_id)
+        return {"ok": True, "checkpoint": instance.checkpoint(reason)}
+
+    @app.get("/api/sessions/{session_id}/rollback-points")
+    async def rollback_points(session_id: str) -> list[dict[str, Any]]:
+        """返回可回滚的 checkpoint 列表。"""
+        instance = await _instance(session_id)
+        return instance.rollback_points()
+
+    @app.post("/api/sessions/{session_id}/rollback")
+    async def rollback_to(session_id: str, checkpoint_id: str) -> dict[str, bool]:
+        """回滚到指定 checkpoint。"""
+        instance = await _instance(session_id)
+        try:
+            await instance.rollback_to(checkpoint_id)
+        except AssertionError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return {"ok": True}
+
 
     @app.get("/api/sessions/{session_id}/events/public")
     async def public_events(session_id: str) -> StreamingResponse:
         """订阅 session public SSE 事件。"""
-        try:
-            runtime = await app.state.registry.get_session(session_id)
-        except AssertionError as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
-        subscriber = runtime.event_store.subscribe_public()
+        instance = await _instance(session_id)
+        subscriber = instance.events("public", subscribe=True)
         return StreamingResponse(
-            _sse_event_generator(runtime.event_store, subscriber),
+            _sse_event_generator(instance.runtime.event_store, subscriber),
             media_type="text/event-stream",
         )
 
     @app.get("/api/sessions/{session_id}/events/host")
     async def host_events(session_id: str) -> StreamingResponse:
         """订阅 session host SSE 事件。"""
-        try:
-            runtime = await app.state.registry.get_session(session_id)
-        except AssertionError as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
-        subscriber = runtime.event_store.subscribe_host()
+        instance = await _instance(session_id)
+        subscriber = instance.events("host", subscribe=True)
         return StreamingResponse(
-            _sse_event_generator(runtime.event_store, subscriber),
+            _sse_event_generator(instance.runtime.event_store, subscriber),
             media_type="text/event-stream",
         )
 
@@ -353,10 +373,10 @@ def create_app(
         claim = app.state.registry.token_service.validate(token)
         if claim is None:
             raise HTTPException(status_code=404, detail="invalid token")
-        runtime = await app.state.registry.get_session(claim.session_id)
-        subscriber = runtime.event_store.subscribe_private(claim.seat_id)
+        instance = await _instance(claim.session_id)
+        subscriber = instance.events("private", seat_id=claim.seat_id, subscribe=True)
         return StreamingResponse(
-            _sse_event_generator(runtime.event_store, subscriber),
+            _sse_event_generator(instance.runtime.event_store, subscriber),
             media_type="text/event-stream",
         )
 
@@ -366,14 +386,13 @@ def create_app(
         claim = app.state.registry.token_service.validate(token)
         if claim is None:
             raise HTTPException(status_code=404, detail="invalid token")
-        runtime = await app.state.registry.get_session(claim.session_id)
-        snapshot = build_player_snapshot(runtime, claim.seat_id, claim.user_id).to_dict()
+        instance = await _instance(claim.session_id)
         return {
             "ok": True,
             "session_id": claim.session_id,
             "seat_id": claim.seat_id,
-            "backlog": runtime.event_store.private_backlog(claim.seat_id),
-            "snapshot": snapshot,
+            "backlog": instance.timeline("private", seat_id=claim.seat_id),
+            "snapshot": instance.player_view(claim.seat_id, claim.user_id),
         }
 
     @app.post("/api/player/claim")
@@ -382,9 +401,8 @@ def create_app(
         claim = app.state.registry.token_service.claim(request.token, request.user_id)
         if claim is None:
             raise HTTPException(status_code=404, detail="invalid token")
-        runtime = await app.state.registry.get_session(claim.session_id)
-        seat = runtime.session.seats[claim.seat_id]
-        seat.claimed_by = request.user_id
+        instance = await _instance(claim.session_id)
+        instance.join_player(claim.seat_id, request.user_id)
         return {
             "ok": True,
             "session_id": claim.session_id,
@@ -398,53 +416,27 @@ def create_app(
         claim = app.state.registry.token_service.validate(request.token)
         if claim is None:
             raise HTTPException(status_code=404, detail="invalid token")
-        runtime = await app.state.registry.get_session(claim.session_id)
-        submission = await _submit_to_current_action(runtime, claim.seat_id, source="human", data=request.data, text=request.text)
+        instance = await _instance(claim.session_id)
+        submission = await instance.submit_action(
+            seat_id=claim.seat_id, payload=request.data, source="human", text=request.text,
+        )
         if submission is None:
             raise HTTPException(status_code=409, detail="no pending action")
-        return _submission_response(runtime, claim.seat_id, submission)
+        return _submission_response(instance.session_id, claim.seat_id, submission)
 
     return app
 
 
-async def _submit_to_current_action(
-    runtime: Any,
-    seat_id: str,
-    source: str,
-    data: dict[str, Any] | None,
-    text: str,
-) -> Any | None:
-    """提交到 runner 或 skeleton action service 的当前 pending action。
-
-    返回 ActionSubmission，方便 API 把 request_id / validation 结果稳定返回给前端。
-    """
-    assert runtime is not None, "runtime 不能为空"
-    assert seat_id, "seat_id 不能为空"
-    assert source, "source 不能为空"
-    return await runtime.action_service.submit(
-        seat_id=seat_id,
-        source=source,
-        data=data,
-        text=text,
-    )
-
-
-def _pending_actions(runtime: Any) -> list[dict[str, Any]]:
-    """返回 skeleton / runner 两种 action service 的统一 pending 摘要。"""
-    assert runtime is not None, "runtime 不能为空"
-    return runtime.action_service.pending_summary()
-
-
-def _submission_response(runtime: Any, seat_id: str, submission: Any) -> dict[str, Any]:
+def _submission_response(session_id: str, seat_id: str, submission: Any) -> dict[str, Any]:
     """把 ActionSubmission 转成稳定 API 响应。"""
-    assert runtime is not None, "runtime 不能为空"
+    assert session_id, "session_id 不能为空"
     assert seat_id, "seat_id 不能为空"
     assert submission is not None, "submission 不能为空"
     validated = bool(getattr(submission, "validated", True))
     validation_error = getattr(submission, "validation_error", "")
     return {
         "ok": validated,
-        "session_id": runtime.session.session_id,
+        "session_id": session_id,
         "seat_id": getattr(submission, "seat_id", seat_id) or seat_id,
         "request_id": getattr(submission, "request_id", ""),
         "submission_id": getattr(submission, "submission_id", ""),

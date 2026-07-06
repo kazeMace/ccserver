@@ -58,6 +58,8 @@ class GameRuntime:
     summary_provider: SummaryProvider | None = None
     service: ServicePorts | None = None
     runtime_state: RuntimeState | None = None
+    # service 层缓存的 GameInstance（懒创建），保证同一局 checkpoint 跨请求一致。
+    _game_instance: Any = field(default=None, repr=False)
     _director_task: asyncio.Task[Any] | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:

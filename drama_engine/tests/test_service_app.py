@@ -655,3 +655,35 @@ def test_step_gate_api_controls_session_gate() -> None:
     step = client.post(f"/api/sessions/{session_id}/step?count=2")
     assert step.status_code == 200
     assert step.json()["gate"]["permits"] == 2
+
+
+def test_checkpoint_and_rollback_endpoints() -> None:
+    """checkpoint / rollback-points / rollback API 应经 GameInstance 工作。"""
+    app = create_app(registry=SessionRegistry(), catalog=GameCatalog(scripts_root="missing"))
+    with TestClient(app) as client:
+        created = client.post(
+            "/api/sessions",
+            json={
+                "game_id": "who_is_undercover",
+                "script_path": "drama_engine/scripts/interactive_session/deduction/who_is_undercover.yaml",
+                "seat_ids": [f"Player_{index}" for index in range(1, 7)],
+                "params": {"dry_run": True, "use_runner": True},
+            },
+        )
+        session_id = created.json()["session_id"]
+        assert client.post(f"/api/sessions/{session_id}/assign").status_code == 200
+
+        # 建 checkpoint
+        ckpt = client.post(f"/api/sessions/{session_id}/checkpoint?reason=before_start")
+        assert ckpt.status_code == 200
+        checkpoint_id = ckpt.json()["checkpoint"]["checkpoint_id"]
+
+        # 列出 rollback points
+        points = client.get(f"/api/sessions/{session_id}/rollback-points")
+        assert points.status_code == 200
+        assert any(p["checkpoint_id"] == checkpoint_id for p in points.json())
+
+        # 回滚
+        rolled = client.post(f"/api/sessions/{session_id}/rollback?checkpoint_id={checkpoint_id}")
+        assert rolled.status_code == 200
+        assert rolled.json()["ok"] is True
