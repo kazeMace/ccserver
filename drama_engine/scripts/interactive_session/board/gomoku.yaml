@@ -1,0 +1,140 @@
+meta:
+  title: 五子棋（Gomoku）
+  description: 用 interactive_session + builtin.board 机制集合实现的双人五子棋。棋盘规则全部来自机制，DSL 只负责流程编排。
+
+runtime:
+  type: interactive_session
+
+# 引入棋盘机制集合：提供 board_place / board.connect_n / board.cell_empty。
+# 五子棋、象棋、围棋都可以复用这同一组机制。
+game_pack:
+  plugin: builtin.board
+  config:
+    board_size: 15
+    win_length: 5
+
+extensions:
+  board:
+    enabled: true
+
+players:
+  count: 2
+  ids: [Player_1, Player_2]
+  initial_attrs:
+    alive: true
+
+# 初始状态：为两名玩家分配黑白，并记录当前落子方。
+state:
+  Player_1:
+    role: black
+  Player_2:
+    role: white
+  GAME:
+    winner: null
+
+flow:
+  type: state_machine
+  initial: black_turn
+  states:
+    black_turn:
+      scenes:
+        - black_move
+      transitions:
+        - to: white_turn
+          when:
+            left: GAME.winner
+            op: equal
+            right: null
+    white_turn:
+      scenes:
+        - white_move
+      transitions:
+        - to: black_turn
+          when:
+            left: GAME.winner
+            op: equal
+            right: null
+
+scenes:
+  black_move:
+    type: scene
+    scope:
+      id: board
+      visibility: public
+    participants:
+      static: [Player_1]
+    schedule:
+      mode: single
+      actor: Player_1
+    participant_action:
+      kind: action
+      response:
+        mode: structured
+        schema:
+          fields:
+            - name: position
+              type: list
+              required: true
+      cue: "轮到黑棋落子，请给出 position=[行, 列]。"
+    controller_action:
+      enabled: false
+    resolution:
+      # 落子交给 board_place 机制结算（校验占位、写棋盘、记录 last_move）。
+      effects:
+        - type: board_place
+    referee:
+      enabled: true
+      check_on: after_scene
+      rules:
+        - when:
+            evaluator: plugin
+            name: board.connect_n
+            input:
+              n: 5
+          result:
+            effects:
+              - type: set_state
+                path: GAME.winner
+                value: black
+            end: black_win
+
+  white_move:
+    type: scene
+    scope:
+      id: board
+      visibility: public
+    participants:
+      static: [Player_2]
+    schedule:
+      mode: single
+      actor: Player_2
+    participant_action:
+      kind: action
+      response:
+        mode: structured
+        schema:
+          fields:
+            - name: position
+              type: list
+              required: true
+      cue: "轮到白棋落子，请给出 position=[行, 列]。"
+    controller_action:
+      enabled: false
+    resolution:
+      effects:
+        - type: board_place
+    referee:
+      enabled: true
+      check_on: after_scene
+      rules:
+        - when:
+            evaluator: plugin
+            name: board.connect_n
+            input:
+              n: 5
+          result:
+            effects:
+              - type: set_state
+                path: GAME.winner
+                value: white
+            end: white_win

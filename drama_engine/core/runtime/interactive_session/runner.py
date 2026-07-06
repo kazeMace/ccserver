@@ -67,6 +67,9 @@ class InteractiveSessionRunner(BasicGameRunner):
         state = self._build_state(script, player_names)
         plugins = build_default_plugin_registry()
         InteractivePluginLoader().load(plugins, script.plugins)
+        # 安装 DSL 声明的 GamePack（机制集合）：把其机制注册进 plugin registry，
+        # 并把默认 config 与 DSL config 合并后写入 GAME 状态。
+        self._install_game_pack(script, plugins, state)
         evaluator = ConditionEvaluator(plugins)
         ctx = InteractiveExecutionContext(
             script=script,
@@ -227,6 +230,36 @@ class InteractiveSessionRunner(BasicGameRunner):
             if not state.has_entity(name):
                 state.register_entity(name, dict(player_initial))
         return state
+
+    def _install_game_pack(self, script: Any, plugins: Any, state: State) -> None:
+        """安装 DSL 声明的 GamePack / RuleSet 机制集合。
+
+        - 读取 script.game_pack.plugin（或 rule_set.plugin）。
+        - 从运行层 GamePack 注册表取 manifest，把其机制注册进 plugin registry。
+        - 把 manifest 默认 config 与 DSL config 合并后写入 GAME.<key>，供机制读取。
+        无声明时直接返回（纯剧情/社交推理脚本零关联）。
+        """
+        from drama_engine.core.dsl.plugins import PluginApi
+        from drama_engine.core.game_packs import build_default_game_pack_runtime_registry
+
+        pack_spec = script.game_pack or script.rule_set or {}
+        plugin_id = pack_spec.get("plugin") if isinstance(pack_spec, dict) else None
+        if not plugin_id:
+            return
+        registry = build_default_game_pack_runtime_registry()
+        assert registry.has(plugin_id), f"未知 game_pack/rule_set: {plugin_id}"
+        default_config = registry.install(plugin_id, PluginApi(plugins))
+        merged_config = dict(default_config)
+        merged_config.update(dict(pack_spec.get("config") or {}))
+        # 把 config 写入 GAME，机制通过 state.get_attr("GAME", key) 读取。
+        writer = StateWriter(state)
+        for key, value in merged_config.items():
+            writer.apply(SetAttr("GAME", str(key), value))
+        logger.info(
+            "[InteractiveSessionRunner] 安装 game_pack=%s config_keys=%s",
+            plugin_id,
+            sorted(merged_config.keys()),
+        )
 
     def _emit_public(self, event: dict[str, Any]) -> None:
         """Publish event to public and host streams."""

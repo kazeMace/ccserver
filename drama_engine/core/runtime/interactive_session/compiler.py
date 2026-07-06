@@ -76,6 +76,8 @@ class InteractiveSessionCompiler:
             scopes=scopes,
             referee=referee,
             plugins=list(canonical.get("plugins") or []),
+            game_pack=dict(canonical.get("game_pack") or {}),
+            rule_set=dict(canonical.get("rule_set") or {}),
             raw=canonical,
         )
 

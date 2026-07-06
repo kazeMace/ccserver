@@ -204,6 +204,9 @@ class InteractiveScript:
     scopes: dict[str, ScopeSpec] = field(default_factory=dict)
     referee: RefereeSpec = field(default_factory=RefereeSpec)
     plugins: list[dict[str, Any]] = field(default_factory=list)
+    # 机制集合引用：{"plugin": "builtin.board", "config": {...}}；不含规则本体。
+    game_pack: dict[str, Any] = field(default_factory=dict)
+    rule_set: dict[str, Any] = field(default_factory=dict)
     raw: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
