@@ -1,0 +1,117 @@
+meta:
+  title: 谁是卧底（可见性 E2E 样例）
+  description: 在谁是卧底基础上声明 visibility.secret_attrs=[role]，用于验证 KnowledgeFirewall 端到端投影与披露账本。
+
+runtime:
+  type: interactive_session
+
+game_pack:
+  plugin: builtin.social
+
+players:
+  count: 6
+  ids: [Player_1, Player_2, Player_3, Player_4, Player_5, Player_6]
+  initial_attrs:
+    alive: true
+
+# 声明 role 为秘密属性：他人视角看不到，本人与 host/referee 可见。
+visibility:
+  secret_attrs: [role]
+
+state:
+  Player_1: { role: civilian }
+  Player_2: { role: civilian }
+  Player_3: { role: civilian }
+  Player_4: { role: civilian }
+  Player_5: { role: civilian }
+  Player_6: { role: undercover }
+  GAME:
+    last_vote_target: null
+
+flow:
+  type: state_machine
+  initial: discuss
+  states:
+    discuss:
+      scenes:
+        - discussion
+      transitions:
+        - to: vote
+    vote:
+      scenes:
+        - day_vote
+      terminal: true
+
+scenes:
+  discussion:
+    type: scene
+    scope:
+      id: public_room
+      visibility: public
+    participants:
+      filter:
+        source: GAME.players
+        where:
+          left: alive
+          op: equal
+          right: true
+    schedule:
+      mode: openchat
+      max_turns: 6
+    participant_action:
+      kind: speak
+      response:
+        mode: text
+      cue: "请用一句话描述你拿到的词，注意隐藏或识别卧底。"
+    controller_action:
+      enabled: false
+
+  day_vote:
+    type: scene
+    scope:
+      id: public_room
+      visibility: public
+    participants:
+      filter:
+        source: GAME.players
+        where:
+          left: alive
+          op: equal
+          right: true
+    schedule:
+      mode: simultaneous
+      timeout_ms: 30000
+    participant_action:
+      kind: vote
+      target: required
+      candidates:
+        filter:
+          source: GAME.players
+          where:
+            left: alive
+            op: equal
+            right: true
+      response:
+        mode: structured
+        schema: vote
+        include_reason: true
+    controller_action:
+      enabled: false
+    resolution:
+      effects:
+        - type: tally_votes
+          field: vote
+          to: GAME.last_vote_target
+        - type: eliminate
+
+referee:
+  enabled: true
+  check_on: after_scene
+  rules:
+    - when:
+        evaluator: plugin
+        name: social.faction_cleared
+        input:
+          faction: undercover
+      result:
+        end: civilians_win
