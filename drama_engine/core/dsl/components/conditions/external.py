@@ -85,7 +85,7 @@ class ExternalConditionEvaluator:
                 "candidate": candidate,
                 "entity": entity,
                 "responses": responses or [],
-                "extra": extra or {},
+                "extra": self._serializable_extra(extra),
             },
         }
         timeout = int(cond.get("timeout_ms") or 3000) / 1000
@@ -392,6 +392,21 @@ class ExternalConditionEvaluator:
             "patch_journal": extra.get("patch_journal") or [],
             "metadata": extra.get("metadata") or {},
         }
+
+    def _serializable_extra(self, extra: dict | None) -> dict[str, Any]:
+        """Return extra context that can safely be encoded as JSON."""
+        result: dict[str, Any] = {}
+        for key, value in (extra or {}).items():
+            if str(key).startswith("__"):
+                continue
+            if key in {"inside_agent", "llm_client", "llm_provider"}:
+                continue
+            try:
+                json.dumps(value, ensure_ascii=False)
+            except (TypeError, ValueError):
+                continue
+            result[str(key)] = value
+        return result
 
 
 __all__ = ["ExternalConditionEvaluator"]

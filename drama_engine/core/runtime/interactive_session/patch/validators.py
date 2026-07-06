@@ -53,4 +53,10 @@ class PatchValidator:
         if patch_type == "add_transition":
             if not patch.get("from") or not patch.get("to"):
                 errors.append("add_transition 需要 from/to")
+        if patch_type == "set_state":
+            path = patch.get("path")
+            has_path = isinstance(path, str) and "." in path
+            has_entity_attr = bool(patch.get("entity")) and bool(patch.get("attr"))
+            if not has_path and not has_entity_attr:
+                errors.append("set_state 需要 path 或 entity/attr")
         return errors

@@ -128,11 +128,16 @@ class DynamicScheduleExecutor:
             allowed_values = [str(item) for item in scope_visibility]
             if visibility not in allowed_values:
                 visibility = allowed_values[0]
-        result.setdefault("scope", {
+        default_scope = {
             "id": "dynamic_" + "_".join(str(item) for item in result["participants"]),
             "visibility": visibility,
             "members": list(result["participants"]),
-        })
+        }
+        scope_value = result.get("scope")
+        if isinstance(scope_value, dict):
+            result["scope"] = {**default_scope, **scope_value}
+        else:
+            result["scope"] = default_scope
         scope = result.get("scope") or {}
         if isinstance(scope_visibility, list) and scope.get("visibility") not in scope_visibility:
             result["__invalid_reason"] = (
@@ -151,22 +156,19 @@ class DynamicScheduleExecutor:
         source_response: dict[str, Any],
     ) -> list[dict[str, Any]]:
         """Execute a pushed child schedule immediately."""
-        ctx.patch_journal.append(
-            "schedule_patch",
-            patch,
-            {"scene": ctx.current_scene_id, "source_response": source_response},
-        )
-        ctx.emit_public({
-            "kind": "interactive_schedule_pushed",
-            "runtime_type": "interactive_session",
-            "scene": ctx.current_scene_id,
-            "patch": patch,
-        })
         participants = [
             str(name)
             for name in patch.get("participants", [])
             if str(name) in parent_participants or str(name) in ctx.cast.all_names()
         ]
+        if not participants:
+            ctx.emit_host({
+                "kind": "interactive_session_warning",
+                "message": "schedule_patch 参与者不在当前 actor 集合中",
+                "scene": ctx.current_scene_id,
+                "patch": patch,
+            })
+            return []
         scope_spec = patch.get("scope") or {}
         scope = ScopeSpec(
             id=str(scope_spec.get("id") or "dynamic_scope"),
@@ -181,6 +183,17 @@ class DynamicScheduleExecutor:
             max_turns=int(patch.get("max_turns") or 1),
             max_rounds=int(patch.get("max_rounds") or 1),
         )
+        ctx.patch_journal.append(
+            "schedule_patch",
+            patch,
+            {"scene": ctx.current_scene_id, "source_response": source_response},
+        )
+        ctx.emit_public({
+            "kind": "interactive_schedule_pushed",
+            "runtime_type": "interactive_session",
+            "scene": ctx.current_scene_id,
+            "patch": patch,
+        })
         responses = []
         cue = str(schedule.opening or "临时子对话，请根据当前私密上下文发言。")
         if schedule.mode == "openchat":

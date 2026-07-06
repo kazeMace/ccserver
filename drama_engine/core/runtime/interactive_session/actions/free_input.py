@@ -94,6 +94,9 @@ class FreeInputExecutor:
             "return_to": spec.get("return_to") or {},
         }
         flow_patch = self._branch_flow_patch(ctx, spec, generator_result, branch)
+        branch_scene_id = self._branch_scene_id(flow_patch)
+        if not branch_scene_id:
+            raise ValueError("branch_then_return 需要 add_scene flow_patch")
         self._validate_and_preview_flow_patch(ctx, flow_patch, "branch flow_patch")
         branch_record = ctx.patch_journal.append("branch_patch", branch, {"scene": ctx.current_scene_id})
         flow_record = ctx.patch_journal.append("flow_patch", flow_patch, {"scene": ctx.current_scene_id, "branch": True})
@@ -106,7 +109,7 @@ class FreeInputExecutor:
         return_to = spec.get("return_to") or {}
         if return_to:
             ctx.session_metadata.setdefault("interactive_return_stack", []).append(return_to)
-        ctx.session_metadata["interactive_next_target"] = flow_patch["scene"]["id"]
+        ctx.session_metadata["interactive_next_target"] = branch_scene_id
         return {"kind": "branch_then_return", "branch": branch, "flow_patch": flow_patch}
 
     async def _generated_beat(
@@ -292,6 +295,15 @@ class FreeInputExecutor:
                 },
             },
         }
+
+    def _branch_scene_id(self, patch: dict[str, Any]) -> str:
+        """Return the generated branch scene id, or empty when invalid."""
+        if patch.get("type") != "add_scene":
+            return ""
+        scene = patch.get("scene")
+        if not isinstance(scene, dict):
+            return ""
+        return str(scene.get("id") or scene.get("name") or "")
 
     async def _resolve_ending(
         self,

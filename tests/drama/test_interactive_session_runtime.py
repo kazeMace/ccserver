@@ -1,6 +1,8 @@
 """interactive_session runtime tests."""
 
 from types import SimpleNamespace
+import urllib.error
+import urllib.request
 
 import pytest
 import yaml
@@ -766,6 +768,62 @@ async def test_flow_patch_failure_does_not_pollute_journal():
 
 
 @pytest.mark.asyncio
+async def test_set_state_flow_patch_requires_target_before_journal():
+    """Invalid set_state flow_patch should fail before journal append."""
+    ctx = _interactive_ctx({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["P1"]},
+        "flow": {"type": "sequence", "scenes": ["start"]},
+        "scenes": {
+            "start": {
+                "participants": {"static": []},
+                "schedule": {"mode": "none"},
+                "participant_action": {"kind": "none", "response": {"mode": "none"}},
+            }
+        },
+    })
+
+    with pytest.raises(ValueError):
+        await FreeInputExecutor().execute(
+            ctx,
+            "grow_flow",
+            {"patch": {"type": "set_state", "value": True}},
+            {"actor": "system", "text": "bad"},
+        )
+
+    assert ctx.patch_journal.snapshot() == []
+    assert ctx.state.get_attr("GAME", "missing_target") is None
+
+
+@pytest.mark.asyncio
+async def test_branch_then_return_rejects_non_scene_patch_before_journal():
+    """branch_then_return must not journal a non-scene patch."""
+    ctx = _interactive_ctx({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["P1"]},
+        "flow": {"type": "sequence", "scenes": ["start"]},
+        "scenes": {
+            "start": {
+                "participants": {"static": []},
+                "schedule": {"mode": "none"},
+                "participant_action": {"kind": "none", "response": {"mode": "none"}},
+            }
+        },
+    })
+
+    with pytest.raises(ValueError):
+        await FreeInputExecutor().execute(
+            ctx,
+            "branch_then_return",
+            {"patch": {"type": "set_state", "path": "GAME.bad_branch", "value": True}},
+            {"actor": "system", "text": "bad"},
+        )
+
+    assert ctx.patch_journal.snapshot() == []
+    assert ctx.state.get_attr("GAME", "bad_branch") is None
+
+
+@pytest.mark.asyncio
 async def test_materialized_flow_uses_immutable_base_flow(tmp_path):
     """Summary should expose base_flow separately from materialized flow."""
     script_path = tmp_path / "immutable_base.yaml"
@@ -1072,6 +1130,33 @@ async def test_referee_inside_provider_can_call_async_agent():
 
 
 @pytest.mark.asyncio
+async def test_http_condition_ignores_runtime_only_extra(monkeypatch):
+    """HTTP evaluator should not JSON-encode runtime-only Python handles."""
+    ctx = _interactive_ctx({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["P1"]},
+        "flow": {"type": "sequence", "scenes": ["start"]},
+        "scenes": {"start": {"participants": {"static": []}}},
+    }, actors=[_ScriptedActor("P1", [])])
+    ctx.session_metadata["inside_agent"] = _AsyncInsideAgent('{"result": true}')
+
+    def fail_urlopen(_request, timeout=0):
+        raise urllib.error.URLError("offline")
+
+    monkeypatch.setattr(urllib.request, "urlopen", fail_urlopen)
+
+    passed = await ctx.condition_evaluator.evaluate_async(
+        {"evaluator": "http", "url": "http://127.0.0.1/check", "fallback": True},
+        ctx.state,
+        actor=None,
+        responses=[],
+        extra=ctx.condition_extra(),
+    )
+
+    assert passed is True
+
+
+@pytest.mark.asyncio
 async def test_openchat_collects_one_speaker_per_turn(tmp_path):
     """openchat should be an open one-speaker-at-a-time conversation."""
     script_path = tmp_path / "openchat.yaml"
@@ -1147,6 +1232,102 @@ async def test_dynamic_child_openchat_uses_opening_and_first_speaker():
 
     messages = [event for event in public_events if event.get("kind") == "interactive_message"]
     assert [event["sender"] for event in messages] == ["A", "C", "B"]
+
+
+@pytest.mark.asyncio
+async def test_dynamic_openchat_partial_scope_defaults_public():
+    """openchat schedule patches with partial scope should stay public by default."""
+    actors = [
+        _ScriptedActor("A", [{"actor": "A", "text": "start", "data": None}]),
+        _ScriptedActor("B", [{"actor": "B", "text": "B opens", "data": None}]),
+    ]
+    ctx = _interactive_ctx({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["A", "B"]},
+        "flow": {"type": "sequence", "scenes": ["chat"]},
+        "scenes": {
+            "chat": {
+                "participants": {"static": ["A", "B"]},
+                "schedule": {
+                    "mode": "single",
+                    "actor": "A",
+                    "dynamic": {
+                        "enabled": True,
+                        "check_on": "after_message",
+                        "detector": {
+                            "patch": {
+                                "type": "push_schedule",
+                                "mode": "openchat",
+                                "participants": ["B"],
+                                "scope": {"id": "open_side_chat"},
+                                "max_turns": 1,
+                            }
+                        },
+                    },
+                },
+                "participant_action": {"kind": "speak", "response": {"mode": "text"}},
+            }
+        },
+    }, actors=actors)
+    public_events = []
+    host_events = []
+    ctx.emit_public = public_events.append
+    ctx.emit_host = host_events.append
+
+    await SceneExecutor().execute(ctx, ctx.script.scenes["chat"])
+
+    public_messages = [
+        event for event in public_events
+        if event.get("kind") == "interactive_message" and event.get("sender") == "B"
+    ]
+    private_messages = [
+        event for event in host_events
+        if event.get("kind") == "interactive_message" and event.get("sender") == "B"
+    ]
+    assert public_messages and public_messages[0]["scope"] == "open_side_chat"
+    assert private_messages == []
+
+
+@pytest.mark.asyncio
+async def test_dynamic_schedule_unknown_participants_do_not_pollute_journal():
+    """Invalid runtime participants should reject schedule_patch before journal append."""
+    actors = [
+        _ScriptedActor("A", [{"actor": "A", "text": "ask unknown", "data": None}]),
+    ]
+    ctx = _interactive_ctx({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["A"]},
+        "flow": {"type": "sequence", "scenes": ["chat"]},
+        "scenes": {
+            "chat": {
+                "participants": {"static": ["A"]},
+                "schedule": {
+                    "mode": "single",
+                    "actor": "A",
+                    "dynamic": {
+                        "enabled": True,
+                        "check_on": "after_message",
+                        "detector": {
+                            "patch": {
+                                "type": "push_schedule",
+                                "mode": "openchat",
+                                "participants": ["Z"],
+                                "max_turns": 1,
+                            }
+                        },
+                    },
+                },
+                "participant_action": {"kind": "speak", "response": {"mode": "text"}},
+            }
+        },
+    }, actors=actors)
+    host_events = []
+    ctx.emit_host = host_events.append
+
+    await SceneExecutor().execute(ctx, ctx.script.scenes["chat"])
+
+    assert ctx.patch_journal.by_type("schedule_patch") == []
+    assert any("参与者不在当前 actor 集合中" in event.get("message", "") for event in host_events)
 
 
 @pytest.mark.asyncio
