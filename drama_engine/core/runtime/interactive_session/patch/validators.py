@@ -36,7 +36,7 @@ class PatchValidator:
                 errors.append("push_schedule.participants 必须是非空列表")
         return errors
 
-    def validate_flow_patch(self, patch: dict[str, Any]) -> list[str]:
+    def validate_flow_patch(self, patch: dict[str, Any], script: Any | None = None) -> list[str]:
         """Validate a flow patch."""
         errors: list[str] = []
         if not isinstance(patch, dict):
@@ -53,6 +53,14 @@ class PatchValidator:
         if patch_type == "add_transition":
             if not patch.get("from") or not patch.get("to"):
                 errors.append("add_transition 需要 from/to")
+            elif script is not None:
+                state_names = set(getattr(script.flow, "states", {}).keys())
+                from_state = str(patch.get("from"))
+                to_state = str(patch.get("to"))
+                if from_state not in state_names:
+                    errors.append(f"add_transition.from 不存在: {from_state}")
+                if to_state not in state_names:
+                    errors.append(f"add_transition.to 不存在: {to_state}")
         if patch_type == "set_state":
             path = patch.get("path")
             has_path = isinstance(path, str) and "." in path

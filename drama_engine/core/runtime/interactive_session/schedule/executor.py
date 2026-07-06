@@ -53,6 +53,7 @@ class ScheduleExecutor:
                 participants=participants,
                 mode=schedule.mode,
                 cue=cue,
+                timeout_ms=schedule.timeout_ms,
             )
             responses.extend(round_responses)
             ctx.last_responses = list(responses)
@@ -111,7 +112,10 @@ class ScheduleExecutor:
                 participants=participants,
                 mode=schedule.mode,
                 cue=current_cue,
+                timeout_ms=schedule.timeout_ms,
             )
+            if not round_responses:
+                break
             responses.extend(round_responses)
             ctx.last_responses = list(responses)
             for response in round_responses:

@@ -682,6 +682,69 @@ class EffectExecutor:
         next_state = self._resolve_source(effect["state"], actor, responses, extra)
         writer.apply(SetAttr("GAME", "__flow_next_state", next_state))
 
+    def _handle_summarize(self, effect: dict, state: State, writer: StateWriter,
+                          responses: list, actor: str | None, extra: dict):
+        """
+        汇总当前 scene/hook 上下文并写入状态。
+
+        effect 字段：
+          to / path       — 写入位置，格式为 ENTITY.attr
+          format          — text 或 object，默认 text
+          template        — 可选模板；声明后优先渲染模板文本
+          include_raw     — format=object 时是否保留原始 responses
+        """
+        target = effect.get("to") or effect.get("path")
+        assert isinstance(target, str) and "." in target, "summarize.to 必须是 ENTITY.attr 格式"
+        entity, attr = target.split(".", 1)
+        text = self._summary_text(effect, state, responses, actor, extra)
+        if str(effect.get("format") or "text") in {"object", "dict"}:
+            value = {
+                "text": text,
+                "scene": extra.get("scene_name", ""),
+                "actors": [
+                    str(response.get("actor"))
+                    for response in responses
+                    if isinstance(response, dict) and response.get("actor")
+                ],
+                "response_count": len(responses),
+            }
+            if effect.get("include_raw"):
+                value["responses"] = list(responses)
+        else:
+            value = text
+        if not state.has_entity(entity):
+            state.register_entity(entity, {})
+        writer.apply(SetAttr(entity, attr, value))
+
+    def _summary_text(
+        self,
+        effect: dict,
+        state: State,
+        responses: list,
+        actor: str | None,
+        extra: dict,
+    ) -> str:
+        """Build a deterministic scene summary text."""
+        if effect.get("template"):
+            return self._render_template(effect.get("template"), state, actor, responses, extra)
+        lines = []
+        for response in responses:
+            if not isinstance(response, dict):
+                continue
+            speaker = str(response.get("actor") or "")
+            text = str(response.get("text") or "")
+            if not text:
+                data = response.get("data")
+                text = "" if data is None else str(data)
+            if speaker and text:
+                lines.append(f"{speaker}: {text}")
+            elif text:
+                lines.append(text)
+        controller_result = extra.get("controller_result")
+        if isinstance(controller_result, dict) and controller_result.get("text"):
+            lines.append("controller: " + str(controller_result["text"]))
+        return "\n".join(lines)
+
     def _handle_broadcast(self, effect: dict, state: State, writer: StateWriter,
                           responses: list, actor: str | None, extra: dict):
         """

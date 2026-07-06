@@ -9,6 +9,7 @@ import urllib.error
 import urllib.request
 from typing import Any, Callable
 
+from drama_engine.core.dsl.components.service_input import ServiceInputBuilder
 from drama_engine.core.engine import State
 
 
@@ -25,6 +26,7 @@ class ExternalConditionEvaluator:
         """
         self._evaluate = evaluate_condition
         self._resolve_value_expr = resolve_value_expr
+        self._input_builder = ServiceInputBuilder()
 
     def evaluate(
         self,
@@ -45,7 +47,16 @@ class ExternalConditionEvaluator:
             result = {
                 "result": bool(cond.get("fallback", False)),
                 "provider": "inside",
-                "input": self._default_input(state, actor, candidate, responses, extra, entity),
+                "input": self._build_input(
+                    cond,
+                    self._default_input(state, actor, candidate, responses, extra, entity),
+                    state,
+                    actor,
+                    candidate,
+                    responses,
+                    extra,
+                    entity,
+                ),
             }
             pass_when = cond.get("pass_when")
             if isinstance(pass_when, dict):
@@ -61,25 +72,11 @@ class ExternalConditionEvaluator:
             return bool(result["result"])
         if not url:
             return bool(cond.get("fallback", False))
+        default_input = self._default_input(state, actor, candidate, responses, extra, entity)
         payload = {
             "id": cond.get("id"),
             "endpoint": cond.get("endpoint"),
-            "input": self._resolve_input_spec(
-                cond["input"] if "input" in cond else self._default_input(
-                    state,
-                    actor,
-                    candidate,
-                    responses,
-                    extra,
-                    entity,
-                ),
-                state,
-                actor,
-                candidate,
-                responses,
-                extra,
-                entity,
-            ),
+            "input": self._build_input(cond, default_input, state, actor, candidate, responses, extra, entity),
             "context": {
                 "actor": actor,
                 "candidate": candidate,
@@ -188,7 +185,16 @@ class ExternalConditionEvaluator:
         )
         if client is None:
             return None
-        payload = self._default_input(state, actor, candidate, responses, extra, entity)
+        payload = self._build_input(
+            cond,
+            self._default_input(state, actor, candidate, responses, extra, entity),
+            state,
+            actor,
+            candidate,
+            responses,
+            extra,
+            entity,
+        )
         prompt = cond.get("prompt") or json.dumps(payload, ensure_ascii=False)
         if hasattr(client, "generate_ruling"):
             value = client.generate_ruling(prompt=prompt, action=cond.get("semantic_id"), world=payload)
@@ -241,6 +247,26 @@ class ExternalConditionEvaluator:
                 entity,
             )
         if runtime_ctx is not None:
+            try:
+                from drama_engine.core.runtime.interactive_session.services.inside_agent import (
+                    InsideAgentFactory,
+                )
+
+                client = InsideAgentFactory().get_or_create(runtime_ctx.session_metadata, cond)
+            except Exception:  # noqa: BLE001 - keep evaluator fallback deterministic.
+                client = None
+            if client is not None:
+                return await self._call_explicit_inside_client(
+                    client,
+                    cond,
+                    state,
+                    actor,
+                    candidate,
+                    responses,
+                    extra,
+                    entity,
+                )
+        if runtime_ctx is not None:
             actor_name = str(
                 cond.get("agent_id")
                 or cond.get("seat_id")
@@ -251,7 +277,16 @@ class ExternalConditionEvaluator:
             if not actor_name and all_names:
                 actor_name = str(all_names[0])
             if actor_name in all_names:
-                payload = self._default_input(state, actor, candidate, responses, extra, entity)
+                payload = self._build_input(
+                    cond,
+                    self._default_input(state, actor, candidate, responses, extra, entity),
+                    state,
+                    actor,
+                    candidate,
+                    responses,
+                    extra,
+                    entity,
+                )
                 prompt = cond.get("prompt") or json.dumps(payload, ensure_ascii=False)
                 value = await runtime_ctx.cast.get(actor_name).act(str(prompt), None)
                 data = value.get("data") if isinstance(value, dict) else None
@@ -274,7 +309,16 @@ class ExternalConditionEvaluator:
         entity: str | None,
     ) -> dict | None:
         """Call an explicitly supplied inside Agent/client."""
-        payload = self._default_input(state, actor, candidate, responses, extra, entity)
+        payload = self._build_input(
+            cond,
+            self._default_input(state, actor, candidate, responses, extra, entity),
+            state,
+            actor,
+            candidate,
+            responses,
+            extra,
+            entity,
+        )
         prompt = cond.get("prompt") or json.dumps(payload, ensure_ascii=False)
         if hasattr(client, "run"):
             value = client.run(str(prompt))
@@ -320,6 +364,33 @@ class ExternalConditionEvaluator:
             for ch in endpoint.upper()
         )
         return os.environ.get(env_name, "")
+
+    def _build_input(
+        self,
+        cond: dict,
+        default_payload: dict[str, Any],
+        state: State,
+        actor: str | None,
+        candidate: str | None,
+        responses: list | None,
+        extra: dict | None,
+        entity: str | None,
+    ) -> Any:
+        """Materialize evaluator.input include flags and `{ref: ...}` values."""
+        input_spec = cond.get("input") if "input" in cond else None
+
+        def resolve(value: Any) -> Any:
+            return self._resolve_value_expr(
+                value,
+                state=state,
+                actor=actor,
+                candidate=candidate,
+                responses=responses,
+                extra=extra,
+                entity=entity,
+            )
+
+        return self._input_builder.build(input_spec, default_payload, resolve)
 
     def _resolve_input_spec(
         self,

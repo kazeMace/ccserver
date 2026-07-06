@@ -56,7 +56,12 @@ class FlowExecutor:
             if flow.type == "sequence" or state_spec.terminal:
                 break
             next_state_id = await self._next_state(ctx, state_spec)
-            if next_state_id == current_state_id and not state_spec.transitions:
+            if next_state_id is None:
+                ctx.emit_host({
+                    "kind": "interactive_session_flow_stopped",
+                    "state": current_state_id,
+                    "message": "state_machine 没有命中的 transition，流程在当前 state 后停止",
+                })
                 break
             current_state_id = next_state_id
         if steps >= self._max_steps:
@@ -119,7 +124,7 @@ class FlowExecutor:
         self,
         ctx: InteractiveExecutionContext,
         state_spec: FlowStateSpec,
-    ) -> str:
+    ) -> str | None:
         """Resolve next state from transitions."""
         for transition in state_spec.transitions:
             if transition.when is None:
@@ -132,7 +137,7 @@ class FlowExecutor:
                 extra=ctx.condition_extra(),
             ):
                 return transition.to
-        return state_spec.id
+        return None
 
     def _apply_state_effects(self, ctx: InteractiveExecutionContext, effects: list[dict]) -> None:
         """Apply state entry/exit effects."""

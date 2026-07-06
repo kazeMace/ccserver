@@ -88,6 +88,8 @@ class InteractiveSessionRunner(BasicGameRunner):
         self._ctx = ctx
         session_state.metadata["human_seat_ids"] = list(getattr(session_state, "human_seat_ids", set()))
         session_state.metadata["runtime_type"] = "interactive_session"
+        session_state.metadata["dry_run"] = self.dry_run
+        session_state.metadata["project_root"] = str(getattr(self.context, "project_root", "") or "")
         session_state.metadata["interactive_session"] = {
             "flow_type": script.flow.type,
             "scene_count": len(script.scenes),

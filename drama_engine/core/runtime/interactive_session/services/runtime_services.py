@@ -14,11 +14,18 @@ import inspect
 from difflib import SequenceMatcher
 from typing import Any
 
+from drama_engine.core.dsl.components.service_input import ServiceInputBuilder
 from drama_engine.core.runtime.interactive_session.context import InteractiveExecutionContext
+from drama_engine.core.runtime.interactive_session.services.inside_agent import InsideAgentFactory
 
 
 class RuntimeServiceCaller:
     """Call built-in, plugin, HTTP, or LLM-like runtime services."""
+
+    def __init__(self) -> None:
+        """Initialize shared service helpers."""
+        self._input_builder = ServiceInputBuilder()
+        self._inside_agents = InsideAgentFactory()
 
     def call_sync(
         self,
@@ -42,19 +49,20 @@ class RuntimeServiceCaller:
             ValueError: When the provider type is unknown or response shape is invalid.
         """
         service_spec = dict(spec or {})
+        service_payload = self._build_service_payload(ctx, service_spec, payload)
         provider = self._service_provider(service_spec)
         if provider in {"builtin", "inside"}:
             if provider == "inside":
-                inside_result = self._call_inside_client(ctx, service_spec, purpose, payload)
+                inside_result = self._call_inside_client(ctx, service_spec, purpose, service_payload)
                 if inside_result is not None:
                     return inside_result
-            return self._call_builtin(ctx, service_spec, purpose, payload)
+            return self._call_builtin(ctx, service_spec, purpose, service_payload)
         if provider == "plugin":
-            return self._call_plugin(ctx, service_spec, purpose, payload)
+            return self._call_plugin(ctx, service_spec, purpose, service_payload)
         if provider == "http":
-            return self._call_http(ctx, service_spec, purpose, payload)
+            return self._call_http(ctx, service_spec, purpose, service_payload)
         if provider == "llm":
-            return self._call_llm(ctx, service_spec, purpose, payload)
+            return self._call_llm(ctx, service_spec, purpose, service_payload)
         raise ValueError(f"未知 runtime service provider: {provider}")
 
     async def call_async(
@@ -76,33 +84,57 @@ class RuntimeServiceCaller:
             A dictionary service result.
         """
         service_spec = dict(spec or {})
+        service_payload = self._build_service_payload(ctx, service_spec, payload)
         provider = self._service_provider(service_spec)
-        if provider == "inside":
-            if self._has_inside_client(ctx, service_spec):
-                client_result = await self._call_inside_client_async(ctx, service_spec, purpose, payload)
-                if client_result is not None:
-                    return client_result
-            actor_result = await self._call_inside_actor(ctx, service_spec, purpose, payload)
-            if actor_result is not None:
-                return actor_result
-            client_result = await self._call_inside_client_async(ctx, service_spec, purpose, payload)
+        if provider == "inside" or (
+            provider == "llm" and str(service_spec.get("provider") or "inside") == "inside"
+        ):
+            client_result = await self._call_inside_client_async(
+                ctx,
+                service_spec,
+                purpose,
+                service_payload,
+                allow_create=True,
+            )
             if client_result is not None:
                 return client_result
-            return self._call_builtin(ctx, service_spec, purpose, payload)
-        if provider == "llm" and str(service_spec.get("provider") or "inside") == "inside":
-            if self._has_inside_client(ctx, service_spec):
-                client_result = await self._call_inside_client_async(ctx, service_spec, purpose, payload)
-                if client_result is not None:
-                    return client_result
-            actor_result = await self._call_inside_actor(ctx, service_spec, purpose, payload)
+            actor_result = await self._call_inside_actor(ctx, service_spec, purpose, service_payload)
             if actor_result is not None:
                 return actor_result
-            client_result = await self._call_inside_client_async(ctx, service_spec, purpose, payload)
-            if client_result is not None:
-                return client_result
+            self._emit_inside_agent_warning(ctx, purpose)
+            return self._call_builtin(ctx, service_spec, purpose, service_payload)
         if provider == "plugin":
-            return await self._call_plugin_async(ctx, service_spec, purpose, payload)
-        return self.call_sync(ctx, service_spec, purpose, payload)
+            return await self._call_plugin_async(ctx, service_spec, purpose, service_payload)
+        if provider == "http":
+            return self._call_http(ctx, service_spec, purpose, service_payload)
+        if provider == "llm":
+            return self._call_llm(ctx, service_spec, purpose, service_payload)
+        if provider == "builtin":
+            return self._call_builtin(ctx, service_spec, purpose, service_payload)
+        return self.call_sync(ctx, service_spec, purpose, service_payload)
+
+    def _build_service_payload(
+        self,
+        ctx: InteractiveExecutionContext,
+        spec: dict[str, Any],
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Apply DSL `input:` shaping to a provider payload."""
+        if "input" not in spec:
+            return dict(payload)
+
+        def resolve(value: Any) -> Any:
+            return ctx.value_resolver.resolve(
+                value,
+                state=ctx.state,
+                responses=ctx.last_responses,
+                extra=ctx.runtime_extra(),
+            )
+
+        built = self._input_builder.build(spec.get("input"), payload, resolve)
+        if isinstance(built, dict):
+            return built
+        return {"value": built}
 
     def _has_inside_client(
         self,
@@ -110,7 +142,15 @@ class RuntimeServiceCaller:
         spec: dict[str, Any],
     ) -> bool:
         """Return whether an explicit inside client/Agent is available."""
-        return bool(
+        return self._explicit_inside_client(ctx, spec) is not None
+
+    def _explicit_inside_client(
+        self,
+        ctx: InteractiveExecutionContext,
+        spec: dict[str, Any],
+    ) -> Any | None:
+        """Return only explicitly injected Agent/client handles."""
+        return (
             spec.get("client")
             or ctx.session_metadata.get("inside_agent")
             or ctx.session_metadata.get("llm_client")
@@ -199,7 +239,7 @@ class RuntimeServiceCaller:
             "id": spec.get("id"),
             "name": spec.get("name"),
             "purpose": purpose,
-            "input": spec.get("input", payload),
+            "input": payload,
             "context": payload if "input" not in spec else ctx.full_context_payload(),
         }
         request = urllib.request.Request(
@@ -444,6 +484,7 @@ class RuntimeServiceCaller:
         spec: dict[str, Any],
         purpose: str,
         payload: dict[str, Any],
+        allow_create: bool = False,
     ) -> dict[str, Any] | None:
         """Call an injected ccserver Agent/client from an async runtime path."""
         client = (
@@ -452,6 +493,8 @@ class RuntimeServiceCaller:
             or ctx.session_metadata.get("llm_client")
             or ctx.session_metadata.get("llm_provider")
         )
+        if client is None and allow_create:
+            client = self._inside_agents.get_or_create(ctx.session_metadata, spec)
         if client is None:
             return None
         prompt = spec.get("prompt") or json.dumps(payload, ensure_ascii=False)
@@ -508,6 +551,25 @@ class RuntimeServiceCaller:
             if isinstance(decoded, dict):
                 return decoded
         return {"text": text, "actor": actor_name, "purpose": purpose}
+
+    def _emit_inside_agent_warning(
+        self,
+        ctx: InteractiveExecutionContext,
+        purpose: str,
+    ) -> None:
+        """Expose inside-agent creation failure once per purpose."""
+        error = ctx.session_metadata.get("__interactive_inside_agent_error")
+        if not error:
+            return
+        key = f"__interactive_inside_agent_warning_{purpose}"
+        if ctx.session_metadata.get(key):
+            return
+        ctx.session_metadata[key] = True
+        ctx.emit_host({
+            "kind": "interactive_session_warning",
+            "message": f"内部 Agent 初始化失败，已使用 builtin fallback: {error}",
+            "purpose": purpose,
+        })
 
     def _resolve_url(self, spec: dict[str, Any]) -> str:
         """Resolve URL from DSL or environment."""

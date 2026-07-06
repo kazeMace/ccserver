@@ -275,7 +275,12 @@ class SceneExecutor:
             "scene_name": scene.id,
             "controller_result": controller_result,
         }
-        selection_result = self._selection(resolution.get("selection"), responses)
+        selection_result = self._selection(
+            ctx,
+            resolution.get("selection"),
+            responses,
+            controller_result,
+        )
         if selection_result:
             extra["selection_result"] = selection_result
             extra["winner"] = selection_result.get("winner")
@@ -325,19 +330,18 @@ class SceneExecutor:
 
     def _selection(
         self,
+        ctx: InteractiveExecutionContext,
         selection: Any,
         responses: list[dict[str, Any]],
+        controller_result: dict[str, Any] | None,
     ) -> dict[str, Any] | None:
         """Compute a simple plurality selection."""
         if not isinstance(selection, dict):
             return None
         field = str(selection.get("field") or selection.get("target_field") or "vote")
         counts: dict[str, int] = {}
-        for response in responses:
-            data = response.get("data") or {}
-            if not isinstance(data, dict):
-                continue
-            value = data.get(field)
+        for item in self._selection_items(ctx, selection, responses, controller_result):
+            value = self._selection_value(item, field)
             if value is None:
                 continue
             counts[str(value)] = counts.get(str(value), 0) + 1
@@ -367,6 +371,46 @@ class SceneExecutor:
             "is_tie": len(winners) > 1,
             "tie_policy": tie_policy,
         }
+
+    def _selection_items(
+        self,
+        ctx: InteractiveExecutionContext,
+        selection: dict[str, Any],
+        responses: list[dict[str, Any]],
+        controller_result: dict[str, Any] | None,
+    ) -> list[Any]:
+        """Resolve selection.source into countable items."""
+        source = selection.get("source", "responses")
+        if source in (None, "responses"):
+            return list(responses)
+        if source == "controller_result":
+            return [controller_result] if controller_result else []
+        value = ctx.value_resolver.resolve(
+            source,
+            state=ctx.state,
+            responses=responses,
+            extra={
+                **ctx.runtime_extra(),
+                "controller_result": controller_result,
+            },
+        )
+        if value is None:
+            return []
+        if isinstance(value, list):
+            return value
+        if isinstance(value, dict):
+            return list(value.values()) if selection.get("values") else [value]
+        return [value]
+
+    def _selection_value(self, item: Any, field: str) -> Any:
+        """Read one selection value from a response/data item."""
+        if isinstance(item, dict):
+            data = item.get("data")
+            if isinstance(data, dict) and field in data:
+                return data.get(field)
+            if field in item:
+                return item.get(field)
+        return item
 
     def _normalize_effect(self, effect: dict[str, Any]) -> dict[str, Any]:
         """Normalize new effect path shorthand for existing EffectExecutor."""

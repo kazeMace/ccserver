@@ -56,7 +56,12 @@ class InteractiveExecutionContext:
         `session_metadata` for direct Python calls, but they must not leak into
         prompts, HTTP bodies, or journal-like payloads.
         """
-        hidden_keys = {"inside_agent", "llm_client", "llm_provider"}
+        hidden_keys = {
+            "inside_agent",
+            "llm_client",
+            "llm_provider",
+            "__interactive_inside_agent",
+        }
         result: dict[str, Any] = {}
         for key, value in self.session_metadata.items():
             if key in hidden_keys:

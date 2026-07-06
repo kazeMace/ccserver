@@ -93,19 +93,113 @@ class ParticipantActionExecutor:
         participants: list[str],
         mode: str,
         cue: str = "",
+        timeout_ms: int | None = None,
     ) -> list[dict[str, Any]]:
         """Collect responses according to a basic execution mode."""
         if action.kind in {"none", "narration"} or not actor_names:
             return []
         if mode == "simultaneous":
-            return list(await asyncio.gather(*[
-                self.collect_one(ctx, name, action, scope, participants, cue)
-                for name in actor_names
-            ]))
+            return await self._collect_simultaneous(
+                ctx,
+                actor_names,
+                action,
+                scope,
+                participants,
+                cue,
+                timeout_ms,
+            )
         responses = []
         for name in actor_names:
-            responses.append(await self.collect_one(ctx, name, action, scope, participants, cue))
+            response = await self._collect_one_with_timeout(
+                ctx,
+                name,
+                action,
+                scope,
+                participants,
+                cue,
+                timeout_ms,
+            )
+            if response is not None:
+                responses.append(response)
         return responses
+
+    async def _collect_simultaneous(
+        self,
+        ctx: InteractiveExecutionContext,
+        actor_names: list[str],
+        action: ParticipantActionSpec,
+        scope: ScopeSpec,
+        participants: list[str],
+        cue: str,
+        timeout_ms: int | None,
+    ) -> list[dict[str, Any]]:
+        """Collect simultaneous responses and cancel actors that exceed timeout."""
+        tasks = [
+            asyncio.create_task(self.collect_one(ctx, name, action, scope, participants, cue))
+            for name in actor_names
+        ]
+        timeout_seconds = self._timeout_seconds(timeout_ms)
+        done, pending = await asyncio.wait(tasks, timeout=timeout_seconds)
+        if pending:
+            for task in pending:
+                task.cancel()
+            await asyncio.gather(*pending, return_exceptions=True)
+            timed_out = [
+                actor_names[index]
+                for index, task in enumerate(tasks)
+                if task in pending
+            ]
+            self._emit_timeout(ctx, timed_out, timeout_ms)
+        responses = []
+        for task in tasks:
+            if task in done:
+                responses.append(task.result())
+        return responses
+
+    async def _collect_one_with_timeout(
+        self,
+        ctx: InteractiveExecutionContext,
+        actor_name: str,
+        action: ParticipantActionSpec,
+        scope: ScopeSpec,
+        participants: list[str],
+        cue: str,
+        timeout_ms: int | None,
+    ) -> dict[str, Any] | None:
+        """Collect one actor response with optional timeout."""
+        timeout_seconds = self._timeout_seconds(timeout_ms)
+        try:
+            if timeout_seconds is None:
+                return await self.collect_one(ctx, actor_name, action, scope, participants, cue)
+            return await asyncio.wait_for(
+                self.collect_one(ctx, actor_name, action, scope, participants, cue),
+                timeout=timeout_seconds,
+            )
+        except asyncio.TimeoutError:
+            self._emit_timeout(ctx, [actor_name], timeout_ms)
+            return None
+
+    def _timeout_seconds(self, timeout_ms: int | None) -> float | None:
+        """Convert timeout milliseconds to seconds."""
+        if timeout_ms is None:
+            return None
+        timeout = max(0, int(timeout_ms)) / 1000
+        return timeout
+
+    def _emit_timeout(
+        self,
+        ctx: InteractiveExecutionContext,
+        actor_names: list[str],
+        timeout_ms: int | None,
+    ) -> None:
+        """Emit a host-visible actor timeout warning."""
+        ctx.emit_host({
+            "kind": "interactive_schedule_timeout",
+            "scene": ctx.current_scene_id,
+            "actors": list(actor_names),
+            "timeout_ms": timeout_ms,
+            "message": "schedule.timeout_ms 超时，已跳过未完成 actor",
+        })
 
     def _resolve_candidates(
         self,

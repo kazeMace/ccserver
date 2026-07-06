@@ -1,5 +1,6 @@
 """interactive_session runtime tests."""
 
+import asyncio
 from types import SimpleNamespace
 import urllib.error
 import urllib.request
@@ -21,6 +22,7 @@ from drama_engine.core.runtime.interactive_session.actions.controller import Con
 from drama_engine.core.runtime.interactive_session import InteractiveSessionRunner
 from drama_engine.core.runtime.interactive_session.compiler import InteractiveSessionCompiler
 from drama_engine.core.runtime.interactive_session.context import InteractiveExecutionContext
+from drama_engine.core.runtime.interactive_session.flow.executor import FlowExecutor
 from drama_engine.core.runtime.interactive_session.models import ControllerActionSpec, ParticipantActionSpec, ScopeSpec
 from drama_engine.core.runtime.interactive_session.patch.journal import PatchJournal
 from drama_engine.core.runtime.interactive_session.scene.executor import SceneExecutor
@@ -1058,12 +1060,20 @@ async def test_dynamic_merge_back_writes_summary_state(tmp_path):
 
 def test_runoff_tie_policy_marks_runoff_candidates():
     """tie_policy=runoff should not silently pick alphabetical winner."""
+    ctx = _interactive_ctx({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["A", "B"]},
+        "flow": {"type": "sequence", "scenes": ["vote"]},
+        "scenes": {"vote": {"participants": {"static": []}}},
+    })
     result = SceneExecutor()._selection(
+        ctx,
         {"field": "vote", "tie_policy": "runoff"},
         [
             {"data": {"vote": "B"}},
             {"data": {"vote": "A"}},
         ],
+        None,
     )
 
     assert result["winner"] is None
@@ -1473,3 +1483,237 @@ async def test_inside_runtime_service_awaits_agent_run():
 
     assert result["text"] == "planned"
     assert agent.prompts == ["plan"]
+
+
+@pytest.mark.asyncio
+async def test_schedule_timeout_skips_unfinished_simultaneous_actor():
+    """schedule.timeout_ms should cancel only actors that exceed the limit."""
+
+    class _SlowActor(_ScriptedActor):
+        async def act(self, cue: str, collect=None) -> dict:
+            await asyncio.sleep(0.05)
+            return await super().act(cue, collect)
+
+    actors = [
+        _SlowActor("A", [{"actor": "A", "text": "late", "data": None}]),
+        _ScriptedActor("B", [{"actor": "B", "text": "ready", "data": None}]),
+    ]
+    ctx = _interactive_ctx({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["A", "B"]},
+        "flow": {"type": "sequence", "scenes": ["vote"]},
+        "scenes": {"vote": {"participants": {"static": ["A", "B"]}}},
+    }, actors=actors)
+    host_events = []
+    ctx.emit_host = host_events.append
+
+    responses = await ParticipantActionExecutor().collect_many(
+        ctx=ctx,
+        actor_names=["A", "B"],
+        action=ParticipantActionSpec(kind="speak", response={"mode": "text"}),
+        scope=ScopeSpec(id="public", visibility="public"),
+        participants=["A", "B"],
+        mode="simultaneous",
+        timeout_ms=10,
+    )
+
+    assert [response["actor"] for response in responses] == ["B"]
+    assert any(event.get("kind") == "interactive_schedule_timeout" for event in host_events)
+
+
+@pytest.mark.asyncio
+async def test_dynamic_child_openchat_uses_planner_stop():
+    """dynamic child openchat should ask its planner after each generated message."""
+    actors = [
+        _ScriptedActor("A", [{"actor": "A", "text": "请 B 和 C 开放聊", "data": None}]),
+        _ScriptedActor("B", [{"actor": "B", "text": "planner ignored", "data": None}]),
+        _ScriptedActor("C", [{"actor": "C", "text": "C opens", "data": None}]),
+    ]
+    ctx = _interactive_ctx({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["A", "B", "C"]},
+        "flow": {"type": "sequence", "scenes": ["chat"]},
+        "scenes": {
+            "chat": {
+                "participants": {"static": ["A", "B", "C"]},
+                "scope": {"id": "public", "visibility": "public"},
+                "schedule": {
+                    "mode": "single",
+                    "actor": "A",
+                    "dynamic": {
+                        "enabled": True,
+                        "check_on": "after_message",
+                        "detector": {
+                            "patch": {
+                                "type": "push_schedule",
+                                "mode": "openchat",
+                                "participants": ["B", "C"],
+                                "max_turns": 3,
+                                "first_speaker": "C",
+                                "planner": {"provider": "plugin", "name": "stop_child_chat"},
+                            }
+                        },
+                    },
+                },
+                "participant_action": {"kind": "speak", "response": {"mode": "text"}},
+            }
+        },
+    }, actors=actors)
+    ctx.plugin_registry.register_runtime_service("stop_child_chat", lambda _payload: {"stop": True})
+    public_events = []
+    ctx.emit_public = public_events.append
+
+    await SceneExecutor().execute(ctx, ctx.script.scenes["chat"])
+
+    messages = [event for event in public_events if event.get("kind") == "interactive_message"]
+    assert [event["sender"] for event in messages] == ["A", "C"]
+
+
+@pytest.mark.asyncio
+async def test_runtime_service_input_include_flags_shape_payload():
+    """runtime service input include flags should send a compact materialized payload."""
+    ctx = _interactive_ctx({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["A"]},
+        "flow": {"type": "sequence", "scenes": ["start"]},
+        "scenes": {"start": {"participants": {"static": []}}},
+    })
+    StateWriter(ctx.state).apply(SetAttr("GAME", "secret", "open"))
+    ctx.last_responses = [
+        {"actor": "A", "text": "old", "data": None},
+        {"actor": "A", "text": "new", "data": None},
+    ]
+    captured = []
+    ctx.plugin_registry.register_runtime_service(
+        "capture_input",
+        lambda payload: captured.append(payload) or {"ok": True},
+    )
+
+    result = await RuntimeServiceCaller().call_async(
+        ctx,
+        {
+            "provider": "plugin",
+            "name": "capture_input",
+            "input": {
+                "include_state": True,
+                "include_players": True,
+                "include_recent_messages": True,
+                "recent_limit": 1,
+                "secret": {"ref": "GAME.secret"},
+            },
+        },
+        "test_input",
+        ctx.full_context_payload(),
+    )
+
+    assert result == {"ok": True}
+    assert captured[0]["state"]["GAME"]["secret"] == "open"
+    assert captured[0]["players"] == ["A"]
+    assert captured[0]["recent_messages"] == [{"actor": "A", "text": "new", "data": None}]
+    assert captured[0]["secret"] == "open"
+    assert "last_responses" not in captured[0]
+
+
+@pytest.mark.asyncio
+async def test_state_machine_no_transition_match_stops_without_max_steps():
+    """A state with unmatched transitions should stop, not loop until max_steps."""
+    ctx = _interactive_ctx({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["A"]},
+        "state": {"GAME": {"ready": False}},
+        "flow": {
+            "type": "state_machine",
+            "initial": "start",
+            "states": {
+                "start": {
+                    "scenes": ["noop"],
+                    "transitions": [
+                        {"to": "start", "when": {"left": "GAME.ready", "op": "equal", "right": True}}
+                    ],
+                }
+            },
+        },
+        "scenes": {"noop": {"participants": {"static": []}, "schedule": {"mode": "none"}}},
+    })
+    host_events = []
+    ctx.emit_host = host_events.append
+
+    result = await FlowExecutor(max_steps=3).execute(ctx)
+
+    assert result == "interactive_session_completed"
+    assert any(event.get("kind") == "interactive_session_flow_stopped" for event in host_events)
+
+
+@pytest.mark.asyncio
+async def test_summarize_hook_writes_scene_summary():
+    """hooks.on_exit type=summarize should write a deterministic text summary."""
+    ctx = _interactive_ctx({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["A"]},
+        "flow": {"type": "sequence", "scenes": ["talk"]},
+        "scenes": {
+            "talk": {
+                "participants": {"static": ["A"]},
+                "schedule": {"mode": "single", "actor": "A"},
+                "participant_action": {"kind": "speak", "response": {"mode": "text"}},
+                "hooks": {"on_exit": [{"type": "summarize", "to": "STORY.scene_summary"}]},
+            }
+        },
+    }, actors=[_ScriptedActor("A", [{"actor": "A", "text": "hello", "data": None}])])
+
+    await SceneExecutor().execute(ctx, ctx.script.scenes["talk"])
+
+    assert ctx.state.get_attr("STORY", "scene_summary") == "A: hello"
+
+
+@pytest.mark.asyncio
+async def test_resolution_selection_source_controller_result():
+    """resolution.selection.source should be able to read controller_result."""
+    ctx = _interactive_ctx({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["A", "B"]},
+        "flow": {"type": "sequence", "scenes": ["choice"]},
+        "scenes": {
+            "choice": {
+                "participants": {"static": []},
+                "schedule": {"mode": "none"},
+                "participant_action": {"kind": "none", "response": {"mode": "none"}},
+                "controller_action": {
+                    "enabled": True,
+                    "controller": {"type": "plugin", "name": "pick_b"},
+                    "kind": "choice",
+                    "choices": [{"id": "A"}, {"id": "B"}],
+                },
+                "resolution": {
+                    "selection": {
+                        "source": "controller_result",
+                        "field": "selected_choice",
+                    }
+                },
+            }
+        },
+    })
+    ctx.plugin_registry.register_runtime_service("pick_b", lambda _payload: {"data": {"choice": "B"}, "text": "B"})
+
+    await SceneExecutor().execute(ctx, ctx.script.scenes["choice"])
+
+    assert ctx.state.get_attr("RESOLUTION", "selected") == "B"
+
+
+def test_add_transition_requires_existing_states():
+    """add_transition patches should not create undeclared flow states."""
+    ctx = _interactive_ctx({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["A"]},
+        "flow": {"type": "state_machine", "initial": "start", "states": {"start": {"scenes": ["noop"]}}},
+        "scenes": {"noop": {"participants": {"static": []}, "schedule": {"mode": "none"}}},
+    })
+
+    with pytest.raises(ValueError, match="add_transition"):
+        FreeInputExecutor()._validate_and_preview_flow_patch(
+            ctx,
+            {"type": "add_transition", "from": "start", "to": "missing"},
+            "flow_patch",
+        )
+
+    assert ctx.patch_journal.by_type("flow_patch") == []

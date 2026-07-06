@@ -705,9 +705,9 @@ flow:
         op: equal
         right: true
     when:
-      op: less_than_equal
-      left: GAME.round
-      right: 1
+      value:
+        ref: GAME.round
+      less_than_equal: 1
     dialogue_policy:
       mode: none
     response:
@@ -741,9 +741,9 @@ flow:
         op: equal
         right: true
     when:
-      op: less_than_equal
-      left: GAME.round
-      right: 1
+      value:
+        ref: GAME.round
+      less_than_equal: 1
     dialogue_policy:
       mode: simultaneous
     action_policy:
@@ -775,9 +775,9 @@ flow:
       from_state: GAME.sheriff_candidates
     when:
       all:
-      - op: less_than_equal
-        left: GAME.round
-        right: 1
+      - value:
+          ref: GAME.round
+        less_than_equal: 1
       - evaluator: code
         runtime: python
         code: result = bool(len(attr('GAME', 'sheriff_candidates', [])) > 0)
@@ -794,9 +794,9 @@ flow:
       from_state: GAME.sheriff_candidates
     when:
       all:
-      - op: less_than_equal
-        left: GAME.round
-        right: 1
+      - value:
+          ref: GAME.round
+        less_than_equal: 1
       - evaluator: code
         runtime: python
         code: result = bool(len(attr('GAME', 'sheriff_candidates', [])) > 0)
@@ -838,9 +838,9 @@ flow:
         code: result = bool(actor not in attr('GAME', 'sheriff_candidates', []))
     when:
       all:
-      - op: less_than_equal
-        left: GAME.round
-        right: 1
+      - value:
+          ref: GAME.round
+        less_than_equal: 1
       - evaluator: code
         runtime: python
         code: result = bool(len(attr('GAME', 'sheriff_candidates', [])) > 0)
@@ -908,9 +908,9 @@ flow:
       from_state: GAME.sheriff_pk_candidates
     when:
       all:
-      - op: less_than_equal
-        left: GAME.round
-        right: 1
+      - value:
+          ref: GAME.round
+        less_than_equal: 1
       - op: equal
         left: GAME.need_sheriff_pk
         right: true
@@ -934,9 +934,9 @@ flow:
         code: result = bool(actor not in attr('GAME', 'sheriff_pk_candidates', []))
     when:
       all:
-      - op: less_than_equal
-        left: GAME.round
-        right: 1
+      - value:
+          ref: GAME.round
+        less_than_equal: 1
       - op: equal
         left: GAME.need_sheriff_pk
         right: true

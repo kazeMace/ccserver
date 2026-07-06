@@ -248,7 +248,7 @@ class FreeInputExecutor:
         label: str,
     ) -> None:
         """Validate and dry-run compile a flow patch before journaling."""
-        errors = self._validator.validate_flow_patch(patch)
+        errors = self._validator.validate_flow_patch(patch, ctx.script)
         if errors:
             raise ValueError(f"{label} 校验失败: {errors}")
         self._patch_applier.preview(ctx, patch)

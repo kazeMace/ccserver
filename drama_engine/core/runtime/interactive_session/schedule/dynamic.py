@@ -182,6 +182,8 @@ class DynamicScheduleExecutor:
             opening=patch.get("opening") or patch.get("cue") or "",
             max_turns=int(patch.get("max_turns") or 1),
             max_rounds=int(patch.get("max_rounds") or 1),
+            timeout_ms=patch.get("timeout_ms"),
+            stop_when=patch.get("stop_when") or patch.get("until"),
         )
         ctx.patch_journal.append(
             "schedule_patch",
@@ -197,21 +199,32 @@ class DynamicScheduleExecutor:
         responses = []
         cue = str(schedule.opening or "临时子对话，请根据当前私密上下文发言。")
         if schedule.mode == "openchat":
-            actor_order = self._openchat_child_order(participants, schedule.actor, schedule.max_turns)
+            responses = await self._run_openchat_child(
+                ctx,
+                schedule,
+                parent_action,
+                scope,
+                participants,
+                cue,
+                patch,
+                source_response,
+            )
         else:
             actor_order = participants
-        rounds = len(actor_order) if schedule.mode == "openchat" else 1
-        for round_index in range(max(1, rounds)):
-            current_actors = [actor_order[round_index]] if schedule.mode == "openchat" else actor_order
-            responses.extend(await self._participant_actions.collect_many(
-                ctx=ctx,
-                actor_names=current_actors,
-                action=parent_action,
-                scope=scope,
-                participants=participants,
-                mode=schedule.mode,
-                cue=cue,
-            ))
+            for _round_index in range(max(1, schedule.max_rounds)):
+                responses.extend(await self._participant_actions.collect_many(
+                    ctx=ctx,
+                    actor_names=actor_order,
+                    action=parent_action,
+                    scope=scope,
+                    participants=participants,
+                    mode=schedule.mode,
+                    cue=cue,
+                    timeout_ms=schedule.timeout_ms,
+                ))
+                ctx.last_responses = list(responses)
+                if await self._should_stop(ctx, schedule):
+                    break
         pop_patch = {"type": "pop_schedule", "parent_scene": ctx.current_scene_id}
         ctx.patch_journal.append("schedule_patch", pop_patch, {"scene": ctx.current_scene_id})
         ctx.emit_public({
@@ -230,6 +243,135 @@ class DynamicScheduleExecutor:
                 "responses": responses,
             })
         return responses
+
+    async def _run_openchat_child(
+        self,
+        ctx: InteractiveExecutionContext,
+        schedule: ScheduleSpec,
+        parent_action: ParticipantActionSpec,
+        scope: ScopeSpec,
+        participants: list[str],
+        cue: str,
+        patch: dict[str, Any],
+        source_response: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        """Run a dynamic openchat child schedule through planner decisions."""
+        responses: list[dict[str, Any]] = []
+        current_actor = self._resolve_first_openchat_actor(participants, schedule.actor)
+        current_cue = cue
+        for turn_index in range(max(1, schedule.max_turns)):
+            if not current_actor:
+                break
+            round_responses = await self._participant_actions.collect_many(
+                ctx=ctx,
+                actor_names=[current_actor],
+                action=parent_action,
+                scope=scope,
+                participants=participants,
+                mode=schedule.mode,
+                cue=current_cue,
+                timeout_ms=schedule.timeout_ms,
+            )
+            if not round_responses:
+                break
+            responses.extend(round_responses)
+            ctx.last_responses = list(responses)
+            if await self._should_stop(ctx, schedule):
+                break
+            plan = await self._plan_openchat_next(
+                ctx,
+                schedule,
+                participants,
+                responses,
+                turn_index,
+                current_actor,
+                patch,
+                source_response,
+            )
+            if plan.get("stop") is True:
+                break
+            current_actor = str(plan.get("next_speaker") or "")
+            current_cue = str(plan.get("cue") or cue)
+        return responses
+
+    async def _plan_openchat_next(
+        self,
+        ctx: InteractiveExecutionContext,
+        schedule: ScheduleSpec,
+        participants: list[str],
+        responses: list[dict[str, Any]],
+        turn_index: int,
+        fallback_actor: str,
+        patch: dict[str, Any],
+        source_response: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Ask the patch planner for the next child openchat speaker."""
+        service_spec = schedule.planner or {}
+        if service_spec:
+            result = await self._services.call_async(
+                ctx,
+                service_spec,
+                "openchat_planner",
+                {
+                    **ctx.full_context_payload(),
+                    "participants": list(participants),
+                    "responses": list(responses),
+                    "last_response": responses[-1] if responses else {},
+                    "turn_index": turn_index,
+                    "schedule_patch": dict(patch),
+                    "source_response": dict(source_response),
+                },
+            )
+            next_speaker = result.get("next_speaker") or result.get("speaker") or result.get("actor")
+            if next_speaker in participants:
+                return {
+                    "next_speaker": str(next_speaker),
+                    "cue": result.get("cue") or result.get("opening") or "",
+                    "stop": bool(result.get("stop", False)),
+                }
+            if result.get("stop") is True:
+                return {"stop": True}
+        return self._round_robin_plan(participants, fallback_actor)
+
+    async def _should_stop(
+        self,
+        ctx: InteractiveExecutionContext,
+        schedule: ScheduleSpec,
+    ) -> bool:
+        """Check child schedule stop_when."""
+        if not schedule.stop_when:
+            return False
+        try:
+            return await ctx.condition_evaluator.evaluate_async(
+                schedule.stop_when,
+                ctx.state,
+                actor=None,
+                responses=ctx.last_responses,
+                extra=ctx.condition_extra(),
+            )
+        except Exception as exc:  # noqa: BLE001 - child schedule must stay observable.
+            ctx.emit_host({
+                "kind": "interactive_session_warning",
+                "message": f"dynamic schedule.stop_when 求值失败: {exc}",
+                "scene": ctx.current_scene_id,
+            })
+            return False
+
+    def _resolve_first_openchat_actor(self, participants: list[str], first_speaker: Any) -> str | None:
+        """Resolve the first child openchat speaker."""
+        if not participants:
+            return None
+        first = str(first_speaker or participants[0])
+        if first not in participants:
+            return participants[0]
+        return first
+
+    def _round_robin_plan(self, participants: list[str], fallback_actor: str) -> dict[str, Any]:
+        """Choose the next speaker by stable round-robin fallback."""
+        if not participants:
+            return {"stop": True}
+        index = participants.index(fallback_actor) if fallback_actor in participants else -1
+        return {"next_speaker": participants[(index + 1) % len(participants)], "cue": "", "stop": False}
 
     async def _merge_back(
         self,

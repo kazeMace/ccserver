@@ -60,9 +60,15 @@ class FlowMaterializer:
                 self._insert_scene(flow, scene_id, str(patch.get("after") or ""), str(patch.get("state") or ""))
         elif patch_type == "add_transition":
             states = flow.setdefault("states", {})
-            state = states.setdefault(str(patch.get("from")), {"scenes": [], "transitions": []})
+            from_state = str(patch.get("from"))
+            to_state = str(patch.get("to"))
+            if from_state not in states:
+                raise ValueError(f"add_transition.from 不存在: {from_state}")
+            if to_state not in states:
+                raise ValueError(f"add_transition.to 不存在: {to_state}")
+            state = states[from_state]
             state.setdefault("transitions", []).append({
-                "to": patch.get("to"),
+                "to": to_state,
                 "when": patch.get("when"),
             })
 
