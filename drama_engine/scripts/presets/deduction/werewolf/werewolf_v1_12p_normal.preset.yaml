@@ -1,6 +1,11 @@
-name: 狼人杀v1 12人白痴局
-description: 4狼4民1预1女1猎1白痴，纯AI，警长/PK/空刀/刀边胜负，女巫不能自救且同夜不可救毒
-script: fixed_flow/deduction/werewolf_v1.yaml
+name: 狼人杀v1 12人标准局
+description: 4狼5民1预1女1猎，无守卫，纯AI，警长/PK/空刀/刀边胜负，女巫不能自救且同夜不可救毒。
+script: fixed_flow/deduction/werewolf_v1_guard.yaml
 params:
   total_players: 12
   werewolf_count: 4
+  villager_count: 5
+  seer_count: 1
+  witch_count: 1
+  hunter_count: 1
+  guard_count: 0

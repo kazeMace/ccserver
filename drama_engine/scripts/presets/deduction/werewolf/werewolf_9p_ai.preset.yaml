@@ -1,6 +1,11 @@
 name: 9人纯AI局
-description: 全AI局，用于测试和演示
+description: 9人无守卫纯AI局，3狼3民1预1女1猎，用于测试和演示
 script: fixed_flow/deduction/werewolf_v1_guard.yaml
 params:
   total_players: 9
   werewolf_count: 3
+  villager_count: 3
+  seer_count: 1
+  witch_count: 1
+  hunter_count: 1
+  guard_count: 0

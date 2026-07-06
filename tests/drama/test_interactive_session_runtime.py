@@ -26,6 +26,7 @@ from drama_engine.core.runtime.interactive_session.context import InteractiveExe
 from drama_engine.core.runtime.interactive_session.flow.executor import FlowExecutor
 from drama_engine.core.runtime.interactive_session.models import ControllerActionSpec, ParticipantActionSpec, ScopeSpec
 from drama_engine.core.runtime.interactive_session.patch.journal import PatchJournal
+from drama_engine.core.runtime.interactive_session.referee.executor import RefereeExecutor
 from drama_engine.core.runtime.interactive_session.schedule.executor import ScheduleExecutor
 from drama_engine.core.runtime.interactive_session.scene.executor import SceneExecutor
 from drama_engine.core.runtime.interactive_session.services.runtime_services import RuntimeServiceCaller
@@ -247,6 +248,38 @@ def test_interactive_session_validator_rejects_contract_gaps():
                 }
             },
         },
+        {
+            "runtime": base["runtime"],
+            "flow": base["flow"],
+            "scenes": {
+                "s": {
+                    "participants": {"static": []},
+                    "resolution": {
+                        "selection": {
+                            "field": "vote",
+                            "tie_policy": "runoff",
+                            "runoff": {"to": "missing"},
+                        }
+                    },
+                }
+            },
+        },
+        {
+            "runtime": base["runtime"],
+            "flow": base["flow"],
+            "scenes": {
+                "s": {
+                    "participants": {"static": ["A"]},
+                    "schedule": {
+                        "mode": "single",
+                        "dynamic": {
+                            "enabled": True,
+                            "merge_back": {"mode": "summary", "to": "bad_path"},
+                        },
+                    },
+                }
+            },
+        },
     ]
 
     for doc in cases:
@@ -355,6 +388,31 @@ def test_builtin_condition_supports_count_ref_where():
                 "op": "equal",
                 "right": 2,
             },
+        },
+        state,
+        actor=None,
+    )
+
+    assert passed is True
+
+
+@pytest.mark.asyncio
+async def test_async_code_condition_evaluator_runs_code():
+    """Async condition evaluation should support evaluator=code."""
+    vocab = Vocabulary(
+        roles=frozenset(),
+        factions=frozenset(),
+        scopes=frozenset(),
+        abilities=frozenset(),
+    )
+    state = State(vocab)
+    state.register_entity("GAME", {"round": 2})
+
+    passed = await ConditionEvaluator().evaluate_async(
+        {
+            "evaluator": "code",
+            "language": "python",
+            "code": "result = state('GAME.round') == 2",
         },
         state,
         actor=None,
@@ -715,6 +773,50 @@ async def test_referee_evaluator_uses_result_effects(tmp_path):
     await runtime.runtime_state.task
 
     assert runtime.session.metadata["interactive_session"]["result"] == "plugin_end"
+
+
+@pytest.mark.asyncio
+async def test_referee_evaluator_non_terminal_result_continues_rules():
+    """Direct evaluator results with only effects/jump should continue to rules."""
+    ctx = _interactive_ctx({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["P1"]},
+        "flow": {"type": "sequence", "scenes": ["start"]},
+        "scenes": {
+            "start": {
+                "participants": {"static": []},
+                "schedule": {"mode": "none"},
+                "participant_action": {"kind": "none", "response": {"mode": "none"}},
+            }
+        },
+        "referee": {
+            "enabled": True,
+            "check_on": "after_scene",
+            "evaluator": "builtin",
+            "condition": {"left": "STORY.ready", "op": "equal", "right": None},
+            "result": {
+                "effects": [
+                    {"type": "set_state", "path": "STORY.ready", "value": True}
+                ]
+            },
+            "rules": [
+                {
+                    "when": {"left": "STORY.ready", "op": "equal", "right": True},
+                    "result": {"end": "ready"},
+                }
+            ],
+        },
+    })
+
+    result = await RefereeExecutor().check(
+        ctx,
+        ctx.script.referee,
+        "after_scene",
+        scene=ctx.script.scenes["start"],
+    )
+
+    assert result == "ready"
+    assert ctx.state.get_attr("STORY", "ready") is True
 
 
 @pytest.mark.asyncio
@@ -2575,6 +2677,45 @@ async def test_summarize_hook_writes_scene_summary():
     await SceneExecutor().execute(ctx, ctx.script.scenes["talk"])
 
     assert ctx.state.get_attr("STORY", "scene_summary") == "A: hello"
+
+
+@pytest.mark.asyncio
+async def test_summarize_hook_can_read_controller_result():
+    """on_exit summarize should include controller_result in text and raw object."""
+    ctx = _interactive_ctx({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["A"]},
+        "flow": {"type": "sequence", "scenes": ["control"]},
+        "scenes": {
+            "control": {
+                "participants": {"static": []},
+                "schedule": {"mode": "none"},
+                "participant_action": {"kind": "none", "response": {"mode": "none"}},
+                "controller_action": {
+                    "enabled": True,
+                    "controller": {"type": "system"},
+                    "kind": "free_text",
+                    "free_input": {"enabled": False},
+                },
+                "hooks": {
+                    "on_exit": [
+                        {
+                            "type": "summarize",
+                            "to": "STORY.controller_summary",
+                            "format": "object",
+                            "include_raw": True,
+                        }
+                    ]
+                },
+            }
+        },
+    })
+
+    await SceneExecutor().execute(ctx, ctx.script.scenes["control"])
+
+    summary = ctx.state.get_attr("STORY", "controller_summary")
+    assert summary["text"] == "controller: (system controller)"
+    assert summary["controller_result"]["text"] == "(system controller)"
 
 
 @pytest.mark.asyncio

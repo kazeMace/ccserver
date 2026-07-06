@@ -710,6 +710,8 @@ class EffectExecutor:
             }
             if effect.get("include_raw"):
                 value["responses"] = list(responses)
+                if isinstance(extra.get("controller_result"), dict):
+                    value["controller_result"] = dict(extra["controller_result"])
         else:
             value = text
         if not state.has_entity(entity):

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
 
 from drama_engine.core.runtime.interactive_session.actions.candidate_validation import (
@@ -12,6 +13,9 @@ from drama_engine.core.runtime.interactive_session.actions.response_models impor
 from drama_engine.core.runtime.interactive_session.context import InteractiveExecutionContext
 from drama_engine.core.runtime.interactive_session.models import ParticipantActionSpec, ScopeSpec
 from drama_engine.core.runtime.interactive_session.scene.scope import ScopeResolver
+
+
+logger = logging.getLogger(__name__)
 
 
 class ParticipantActionExecutor:
@@ -72,9 +76,11 @@ class ParticipantActionExecutor:
             if not error:
                 return response
             last_error = error
-            print(
-                f"[InteractiveCandidateValidation:{getattr(actor, 'name', '?')}] "
-                f"第 {attempt + 1} 次候选校验失败: {error}"
+            logger.warning(
+                "[InteractiveCandidateValidation:%s] 第 %s 次候选校验失败: %s",
+                getattr(actor, "name", "?"),
+                attempt + 1,
+                error,
             )
             current_prompt = (
                 prompt

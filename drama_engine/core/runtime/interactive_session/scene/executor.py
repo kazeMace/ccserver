@@ -79,7 +79,7 @@ class SceneExecutor:
         if isinstance(controller_result, dict) and controller_result.get("beat"):
             result = await self._publish_generated_beats_until_referee(ctx, scene, controller_result)
             if result is not None:
-                return await self._finish_scene(ctx, scene, responses, result)
+                return await self._finish_scene(ctx, scene, responses, result, controller_result=controller_result)
         self._apply_resolution(ctx, scene, responses, controller_result)
         self._drain_pending_broadcasts(ctx, scene)
         self._publish(ctx, scene)
@@ -89,7 +89,7 @@ class SceneExecutor:
             "after_scene",
             [{"kind": "after_scene", "scene": scene.id, "responses": list(responses)}],
         )
-        return await self._finish_scene(ctx, scene, responses, result)
+        return await self._finish_scene(ctx, scene, responses, result, controller_result=controller_result)
 
     async def _handle_message_event(
         self,
@@ -120,9 +120,15 @@ class SceneExecutor:
         scene: SceneSpec,
         responses: list[dict[str, Any]],
         result: str | None,
+        controller_result: dict[str, Any] | None = None,
     ) -> str | None:
         """Run exit lifecycle and emit scene completion."""
-        await self._run_hooks(ctx, scene, "on_exit")
+        await self._run_hooks(
+            ctx,
+            scene,
+            "on_exit",
+            hook_extra={"controller_result": controller_result} if controller_result is not None else None,
+        )
         self._drain_pending_broadcasts(ctx, scene)
         ctx.emit_public({
             "kind": "interactive_scene_completed",
@@ -725,6 +731,7 @@ class SceneExecutor:
         scene: SceneSpec,
         hook_name: str,
         event: dict[str, Any] | None = None,
+        hook_extra: dict[str, Any] | None = None,
     ) -> None:
         """Run lifecycle hooks by reusing effects."""
         hook_items = scene.hooks.get(hook_name) or []
@@ -740,7 +747,7 @@ class SceneExecutor:
                 ctx.state,
                 actor=None,
                 responses=ctx.last_responses,
-                extra=ctx.condition_extra(event=event or {}),
+                extra=ctx.condition_extra(event=event or {}, **(hook_extra or {})),
             ):
                 continue
             if "do" in item:
@@ -755,7 +762,12 @@ class SceneExecutor:
                 ctx.writer,
                 ctx.last_responses,
                 actor=None,
-                extra={**ctx.runtime_extra(), "scene_name": scene.id, "event": event or {}},
+                extra={
+                    **ctx.runtime_extra(),
+                    "scene_name": scene.id,
+                    "event": event or {},
+                    **(hook_extra or {}),
+                },
             )
 
     async def _handle_schedule_event(

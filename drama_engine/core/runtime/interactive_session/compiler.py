@@ -333,6 +333,8 @@ class InteractiveSessionCompiler:
         ):
             self._validate_service_provider(detector, "schedule.dynamic.detector")
         merge_back = dynamic_spec.get("merge_back")
+        if isinstance(merge_back, dict) and merge_back.get("to"):
+            assert "." in str(merge_back.get("to")), "schedule.dynamic.merge_back.to 必须是 ENTITY.attr 格式"
         if isinstance(merge_back, dict) and str(merge_back.get("mode") or "summary") == "plugin":
             service = merge_back.get("plugin") or merge_back.get("service") or {"provider": "plugin", **merge_back}
             if isinstance(service, dict):
@@ -398,6 +400,7 @@ class InteractiveSessionCompiler:
         scope_ids = set(scopes.keys())
         for scene in scenes.values():
             self._validate_controller_targets(scene, target_ids)
+            self._validate_resolution_targets(scene, target_ids)
             self._validate_referee_targets(scene.referee, target_ids, f"scene {scene.id}.referee")
             self._validate_publication_audiences(scene, scope_ids)
         self._validate_referee_targets(top_referee, target_ids, "referee")
@@ -434,6 +437,22 @@ class InteractiveSessionCompiler:
         if target:
             assert str(target) in target_ids, (
                 f"scene {scene_id} controller_action.free_input.return_to 引用了未知 flow target: {target}"
+            )
+
+    def _validate_resolution_targets(self, scene: SceneSpec, target_ids: set[str]) -> None:
+        """Validate resolution-driven flow targets."""
+        resolution = scene.resolution or {}
+        selection = resolution.get("selection")
+        if not isinstance(selection, dict):
+            return
+        runoff = selection.get("runoff")
+        target = None
+        if isinstance(runoff, dict):
+            target = runoff.get("to") or runoff.get("scene") or runoff.get("state")
+        target = target or selection.get("runoff_to") or selection.get("runoff_scene")
+        if target:
+            assert str(target) in target_ids, (
+                f"scene {scene.id} resolution.selection.runoff.to 引用了未知 flow target: {target}"
             )
 
     def _validate_referee_targets(self, referee: RefereeSpec, target_ids: set[str], label: str) -> None:

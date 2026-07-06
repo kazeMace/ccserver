@@ -337,6 +337,8 @@ result:
 `runtime.type: interactive_session` 的静态校验由 `InteractiveSessionCompiler` 负责。
 当前会在编译期拒绝未知 `schedule.mode`、未知 `dynamic.check_on` 和未知
 `referee.check_on`，避免拼写错误在运行时静默失效。
+controller choice/return target、referee jump target、runoff target 必须指向已定义
+scene/state；`schedule.dynamic.merge_back.to` 必须是 `ENTITY.attr` 状态路径。
 
 `drama_engine/scripts/interactive_session/...` 是新版 DSL 示例脚本。`fixed_flow`、
 `group_chat`、`dynamic_story` 和 `presets` 目录仍属于各自 runtime 的脚本，不强制迁移
@@ -379,6 +381,11 @@ drama_engine/scripts/interactive_session/deduction/dynamic_schedule_discussion.y
 旧 CLI/测试入口 `drama_engine/core/scripts/*.yaml` 作为兼容层保留，使用 symlink
 指向 `drama_engine/scripts/fixed_flow/...` 中的真实脚本源文件，避免维护两份 DSL。
 `drama_engine/core/presets/werewolf_9p_normal.preset.yaml` 保留为旧 preset 入口。
+CLI `validate` / `simulate` / `preview` / `package` 会解析 `.preset.yaml`，
+再用 preset 参数与 CLI `--param` 合成后的参数验证真实脚本。`scripts/presets`
+下的 preset 必须指向存在的脚本并通过 validate/simulate；当前狼人杀 preset 只保留
+已实现的 9 人标准/AI、12 人守卫、12 人无守卫标准入口。守卫脚本的角色分布已参数化，
+所以同一个脚本可以通过 `guard_count: 0` 支持无守卫人数配置。
 
 ## 17. Verification
 

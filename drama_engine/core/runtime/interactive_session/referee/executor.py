@@ -38,10 +38,15 @@ class RefereeExecutor:
             )
             if passed:
                 if isinstance(referee.result, dict):
-                    return self._apply_result(ctx, referee.result, scene, event)
-                if referee.result is not None:
+                    applied = self._apply_result(ctx, referee.result, scene, event)
+                    if applied is not None:
+                        return applied
+                    # Non-terminal evaluator results may set state or jump, then
+                    # still allow later explicit rules to decide final outcome.
+                elif referee.result is not None:
                     return str(referee.result)
-                return "referee_passed"
+                else:
+                    return "referee_passed"
 
         for rule in referee.rules:
             when = rule.get("when")

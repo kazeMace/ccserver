@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -227,6 +228,17 @@ class ConditionEvaluator:
                     raise ValueError(f"plugin evaluator 缺少 name/id/plugin: {cond}")
                 return await self._plugin.evaluate_async(
                     str(plugin_name),
+                    cond,
+                    state,
+                    actor,
+                    candidate,
+                    responses,
+                    extra,
+                    entity,
+                )
+            if evaluator == "code":
+                return await asyncio.to_thread(
+                    self._code.evaluate,
                     cond,
                     state,
                     actor,

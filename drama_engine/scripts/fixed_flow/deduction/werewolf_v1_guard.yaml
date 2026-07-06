@@ -15,6 +15,26 @@ params:
   display_name: 狼人数量
   type: int
   default: 4
+- name: villager_count
+  display_name: 村民数量
+  type: int
+  default: 4
+- name: seer_count
+  display_name: 预言家数量
+  type: int
+  default: 1
+- name: witch_count
+  display_name: 女巫数量
+  type: int
+  default: 1
+- name: hunter_count
+  display_name: 猎人数量
+  type: int
+  default: 1
+- name: guard_count
+  display_name: 守卫数量
+  type: int
+  default: 1
 vocab:
   roles:
   - werewolf
@@ -249,11 +269,11 @@ players:
     type: shuffle
     distribution:
       werewolf: '{{werewolf_count}}'
-      villager: 4
-      seer: 1
-      witch: 1
-      hunter: 1
-      guard: 1
+      villager: '{{villager_count}}'
+      seer: '{{seer_count}}'
+      witch: '{{witch_count}}'
+      hunter: '{{hunter_count}}'
+      guard: '{{guard_count}}'
 scopes:
 - name: public
   display_name: 全场

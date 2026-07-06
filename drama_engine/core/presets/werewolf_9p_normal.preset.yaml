@@ -1,6 +1,11 @@
 name: 9人标准局
-description: 9人标准局，3狼2村1预1女1猎，纯AI，标准规则
+description: 9人标准局，3狼3民1预1女1猎，纯AI，标准规则
 script: core/scripts/werewolf_v1_guard.yaml
 params:
   total_players: 9
   werewolf_count: 3
+  villager_count: 3
+  seer_count: 1
+  witch_count: 1
+  hunter_count: 1
+  guard_count: 0

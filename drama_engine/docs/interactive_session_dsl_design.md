@@ -1194,9 +1194,10 @@ schedule_patch:
 `dynamic.check_on` 只允许 `after_message` 和 `after_round`；`referee.check_on`
 只允许 `after_scene`、`after_message`、`after_round` 和 `after_generated_beat`。
 这些值会在 interactive_session 编译/validate 阶段校验，拼写错误不会静默通过。
-`controller_action.choices[].to`、`controller_action.free_input.return_to`、referee
-`result.to/jump` 等静态目标必须引用已存在 scene 或 state；unknown target 在
-validate 阶段视为错误。
+`controller_action.choices[].to`、`controller_action.free_input.return_to`、
+`resolution.selection.runoff.to/runoff_to/runoff_scene`、referee `result.to/jump`
+等静态目标必须引用已存在 scene 或 state；unknown target 在 validate 阶段视为错误。
+`schedule.dynamic.merge_back.to` 必须是 `ENTITY.attr` 状态路径格式。
 `participants`、`controller.type`、`resolution.selection.tie_policy` 和
 `publication.views.kind` 会做静态 shape/枚举校验，拼写错误不会 fallback 到默认全员或
 system controller。

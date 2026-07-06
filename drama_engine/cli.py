@@ -30,7 +30,13 @@ from drama_engine.core.dsl.compiler import YamlCompiler
 from drama_engine.core.dsl.validator import DslValidator, ValidationReport
 from drama_engine.core.runtime.interactive_session.compiler import InteractiveSessionCompiler
 from drama_engine.application.script_inspector import ScriptInspector
-from drama_engine.run_script import parse_cli_params
+from drama_engine.run_script import (
+    LocalRunError,
+    load_preset,
+    merge_params,
+    parse_cli_params,
+    resolve_script_path,
+)
 
 
 class CliError(RuntimeError):
@@ -144,7 +150,8 @@ def author_script(
 
 def validate_script(script_path: str | Path, params: dict[str, Any] | None = None) -> ValidationReport:
     """Validate one script and return the validation report."""
-    return DslValidator().validate_file(script_path, params=params)
+    path, resolved_params = _resolve_preset_script(script_path, params=params)
+    return DslValidator().validate_file(path, params=resolved_params)
 
 
 def lint_script(script_path: str | Path, params: dict[str, Any] | None = None) -> ValidationReport:
@@ -154,15 +161,16 @@ def lint_script(script_path: str | Path, params: dict[str, Any] | None = None) -
     already reports structural errors, stale scene fields, reference problems,
     state read/write risks and runtime warnings.
     """
-    return DslValidator().validate_file(script_path, params=params)
+    return validate_script(script_path, params=params)
 
 
 def preview_script(script_path: str | Path, params: dict[str, Any] | None = None) -> dict[str, Any]:
     """Build a preview document for one script."""
-    path = _existing_script_path(script_path)
+    original_path = _existing_script_path(script_path)
+    path, resolved_params = _resolve_preset_script(original_path, params=params)
     inspector = ScriptInspector()
-    inspection = inspector.inspect_file(path, params=params)
-    return {
+    inspection = inspector.inspect_file(path, params=resolved_params)
+    result = {
         "kind": "preview",
         "script_path": str(path),
         "generated_at": _now_iso(),
@@ -174,6 +182,9 @@ def preview_script(script_path: str | Path, params: dict[str, Any] | None = None
         "effects": inspection.get("effects", []),
         "issues": inspection.get("issues", {}),
     }
+    if original_path != path:
+        result["preset_path"] = str(original_path)
+    return result
 
 
 def simulate_script(script_path: str | Path, params: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -183,8 +194,9 @@ def simulate_script(script_path: str | Path, params: dict[str, Any] | None = Non
     compile, checks runtime support, and emits a deterministic flow/action
     summary that authoring tools can use before full dry-run playtesting.
     """
-    path = _existing_script_path(script_path)
-    validation = validate_script(path, params=params)
+    original_path = _existing_script_path(script_path)
+    path, resolved_params = _resolve_preset_script(original_path, params=params)
+    validation = validate_script(path, params=resolved_params)
     result: dict[str, Any] = {
         "kind": "simulation",
         "script_path": str(path),
@@ -201,7 +213,9 @@ def simulate_script(script_path: str | Path, params: dict[str, Any] | None = Non
         result["warnings"].append("validation failed; compile simulation skipped")
         return result
 
-    compile_params = dict(params or {})
+    if original_path != path:
+        result["preset_path"] = str(original_path)
+    compile_params = dict(resolved_params or {})
     compile_params["dry_run"] = True
     runtime_type = _runtime_type_from_file(path)
     if runtime_type == "interactive_session":
@@ -254,34 +268,65 @@ def _runtime_type_from_file(path: Path) -> str:
     return "game_session"
 
 
+def _resolve_preset_script(
+    script_path: str | Path,
+    params: dict[str, Any] | None = None,
+) -> tuple[Path, dict[str, Any]]:
+    """Resolve a direct script path or a .preset.yaml wrapper to a script."""
+    path = _existing_script_path(script_path)
+    if not path.name.endswith(".preset.yaml"):
+        return path, dict(params or {})
+    try:
+        preset = load_preset(str(path))
+        target = resolve_script_path(str(preset["script"]), preset_path=str(path))
+    except (AssertionError, LocalRunError, OSError, UnicodeError) as exc:
+        raise CliError(f"preset 解析失败: {path}: {exc}") from exc
+    merged_params = merge_params(dict(preset.get("params") or {}), dict(params or {}))
+    return target, merged_params
+
+
 def package_script(
     script_path: str | Path,
     output_path: str | Path,
     params: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Create a zip package with script, validation, simulation and preview data."""
-    path = _existing_script_path(script_path)
+    original_path = _existing_script_path(script_path)
+    path, resolved_params = _resolve_preset_script(original_path, params=params)
     output = Path(output_path).expanduser().resolve()
     assert output.suffix == ".zip", "package output 必须是 .zip 文件"
     output.parent.mkdir(parents=True, exist_ok=True)
 
-    validation = validate_script(path, params=params).to_dict()
-    simulation = simulate_script(path, params=params)
-    preview = preview_script(path, params=params)
+    validation = validate_script(original_path, params=params).to_dict()
+    simulation = simulate_script(original_path, params=params)
+    preview = preview_script(original_path, params=params)
     passed = bool(validation["passed"] and simulation["passed"] and preview["issues"]["passed"])
     manifest = {
         "kind": "party_game_package",
         "schema_version": "0.1",
         "script_file": path.name,
         "created_at": _now_iso(),
-        "params": dict(params or {}),
+        "params": dict(resolved_params or {}),
         "validation_passed": validation["passed"],
         "simulation_passed": simulation["passed"],
         "preview_included": True,
     }
+    if original_path != path:
+        manifest["preset_file"] = original_path.name
 
+    package_files = [
+        path.name,
+        "manifest.json",
+        "validation_report.json",
+        "simulation_report.json",
+        "preview.json",
+        "changelog.md",
+    ]
     with zipfile.ZipFile(output, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
         archive.write(path, arcname=path.name)
+        if original_path != path:
+            archive.write(original_path, arcname=original_path.name)
+            package_files.insert(1, original_path.name)
         archive.writestr("manifest.json", _to_json(manifest))
         archive.writestr("validation_report.json", _to_json(validation))
         archive.writestr("simulation_report.json", _to_json(simulation))
@@ -293,14 +338,7 @@ def package_script(
         "passed": passed,
         "output": str(output),
         "manifest": manifest,
-        "files": [
-            path.name,
-            "manifest.json",
-            "validation_report.json",
-            "simulation_report.json",
-            "preview.json",
-            "changelog.md",
-        ],
+        "files": package_files,
     }
 
 

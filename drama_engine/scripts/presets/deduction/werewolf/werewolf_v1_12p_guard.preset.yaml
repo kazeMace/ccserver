@@ -4,3 +4,8 @@ script: fixed_flow/deduction/werewolf_v1_guard.yaml
 params:
   total_players: 12
   werewolf_count: 4
+  villager_count: 4
+  seer_count: 1
+  witch_count: 1
+  hunter_count: 1
+  guard_count: 1
