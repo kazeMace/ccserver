@@ -229,6 +229,12 @@ class InteractiveSessionRunner(BasicGameRunner):
         for name in player_names:
             if not state.has_entity(name):
                 state.register_entity(name, dict(player_initial))
+                continue
+            # 玩家可能已在 state 块中声明（如按座位分配 role）；此处补齐缺失的初始属性，
+            # 保证 alive 等默认值不会因显式声明 role 而丢失。
+            for key, value in player_initial.items():
+                if state.get_attr(name, key) is None:
+                    StateWriter(state).apply(SetAttr(name, str(key), value))
         return state
 
     def _install_game_pack(self, script: Any, plugins: Any, state: State) -> None:

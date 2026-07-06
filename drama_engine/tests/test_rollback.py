@@ -17,6 +17,7 @@ from drama_engine.core.session.events import SessionEventStore
 from drama_engine.core.session.factory import _build_action_request_service
 
 _SCRIPT = "drama_engine/scripts/interactive_session/story/text_adventure_interactive.yaml"
+_SCRIPT_UNDERCOVER = "drama_engine/scripts/interactive_session/deduction/who_is_undercover.yaml"
 
 
 def test_state_full_snapshot_restore_roundtrip() -> None:
@@ -129,3 +130,35 @@ async def test_game_instance_checkpoint_and_rollback_end_to_end() -> None:
 
     restored = instance._current_game_state()
     assert restored.get_attr("GAME", "round") == 1
+
+
+@pytest.mark.asyncio
+async def test_who_is_undercover_playable_rollback_sample() -> None:
+    """可回滚 playable sample（文档 §18 step 10）：谁是卧底建点→推进→回滚→状态还原。"""
+    registry = GameInstanceRegistry(store=None, load_existing=False)
+    instance = await registry.create_instance(
+        game_id="who_is_undercover",
+        script_path=_SCRIPT_UNDERCOVER,
+        seat_ids=[f"Player_{i}" for i in range(1, 7)],
+        params={"dry_run": True, "use_runner": True},
+    )
+    await instance.assign()
+    state = instance._current_game_state()
+
+    # 在开局身份分配后建 checkpoint（玩家应带 role 与默认 alive）
+    summary = instance.checkpoint("after_assign")
+    assert state.get_attr("Player_6", "role") == "undercover"
+    assert state.get_attr("Player_1", "alive") is True
+
+    # 推进：模拟一次错误出局（把卧底之外的人投出）
+    StateWriter(state).apply(SetAttr("Player_1", "alive", False))
+    StateWriter(state).apply(SetAttr("GAME", "last_vote_target", "Player_1"))
+    assert state.get_attr("Player_1", "alive") is False
+
+    # 回滚到开局：错误出局被撤销
+    await instance.rollback_to(summary["checkpoint_id"])
+    restored = instance._current_game_state()
+    assert restored.get_attr("Player_1", "alive") is True
+    assert restored.get_attr("GAME", "last_vote_target") is None
+    # 事件流留有 rollback 记录
+    assert any(e.get("kind") == "rollback_applied" for e in instance.timeline("host"))
