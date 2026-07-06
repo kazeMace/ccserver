@@ -58,7 +58,7 @@ PUBLISH_FIELD_SCHEMA = DslSchema(
 
 SCENE_FIELD_SCHEMA = DslSchema(
     name="scene",
-    description="PartySessionRuntime 中的一幕，描述参与者、对话策略、动作、响应、结算和发布。",
+    description="interactive_session 中的一幕，描述参与者、对话策略、动作、响应、结算和发布。",
     fields=(
         DslField("name", "string", True, "场景唯一名称，非空。"),
         DslField("display_name", "string", False, "展示名称。"),

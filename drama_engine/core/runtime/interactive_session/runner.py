@@ -19,7 +19,7 @@ from drama_engine.core.runtime.interactive_session.patch.journal import PatchJou
 from drama_engine.core.runtime.interactive_session.patch.materializer import FlowMaterializer
 from drama_engine.core.runtime.interactive_session.services.plugin_loader import InteractivePluginLoader
 from drama_engine.core.runtime_spec.registry import RuntimeSpec
-from drama_engine.core.session.state import SESSION_ASSIGNED, SESSION_ENDED, SESSION_RUNNING
+from drama_engine.core.game_instance.state import SESSION_ASSIGNED, SESSION_ENDED, SESSION_RUNNING
 
 logger = logging.getLogger(__name__)
 

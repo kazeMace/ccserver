@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from drama_engine.core.engine import ActionRequest, ServiceHumanInputPort
 from drama_engine.core.session.events import SessionEventStore
 from drama_engine.core.session.persistence import JsonSessionStore
-from drama_engine.core.session.runtime import PartySessionRuntime
+from drama_engine.core.session.runtime import GameRuntime
 from drama_engine.core.session.registry import SessionRegistry
 from drama_engine.core.runner.base import BasicGameRunner, build_runner_context
 from drama_engine.core.ports.actions import RuntimeActionPort, RuntimeActionServiceRouter
@@ -379,8 +379,8 @@ def test_event_store_backlog_is_per_session() -> None:
 
 
 def test_party_session_runtime_is_target_session_container() -> None:
-    """PartySessionRuntime should be the target architecture session container."""
-    assert PartySessionRuntime.__name__ == "PartySessionRuntime"
+    """GameRuntime should be the target architecture session container."""
+    assert GameRuntime.__name__ == "GameRuntime"
 
 
 @pytest.mark.asyncio
@@ -430,7 +430,7 @@ async def test_specialized_runners_use_runtime_action_router_for_human_actors() 
 
 @pytest.mark.asyncio
 async def test_party_session_runtime_provides_memory_store_to_runner_context() -> None:
-    """PartySessionRuntime should expose one shared RuntimeMemoryStore."""
+    """GameRuntime should expose one shared RuntimeMemoryStore."""
     registry = SessionRegistry()
     runtime = await registry.create_session(
         game_id="memory",

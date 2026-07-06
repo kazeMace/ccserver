@@ -1,4 +1,9 @@
-"""Party session runtime container."""
+"""GameRuntime：一局游戏的底层运行资源容器。
+
+它管理 task、event publisher、action router、memory store、step gate、actor runtime、
+runtime state 和 lifecycle hooks；不负责创建游戏 API、加入玩家、HTML 视图、消息回滚或
+具体游戏规则（那些属于后续的 GameInstance / SessionControl / GameRunner）。
+"""
 
 from __future__ import annotations
 
@@ -9,7 +14,7 @@ from typing import Any
 
 from drama_engine.core.session.actions import ActionRequestService
 from drama_engine.core.session.events import SessionEventStore
-from drama_engine.core.session.state import (
+from drama_engine.core.game_instance.state import (
     SESSION_ASSIGNED,
     SESSION_ENDED,
     SESSION_FAILED,
@@ -17,7 +22,7 @@ from drama_engine.core.session.state import (
     SESSION_PAUSED,
     SESSION_RUNNING,
     SESSION_TERMINATED,
-    GameSessionState,
+    SessionState,
 )
 from drama_engine.core.ports.actions import RuntimeActionServiceRouter, RuntimeActionView
 from drama_engine.core.ports.events import EventPublisher
@@ -34,10 +39,10 @@ from drama_engine.core.session.step_gate import WebStepGate
 logger = logging.getLogger(__name__)
 
 @dataclass(slots=True)
-class PartySessionRuntime:
+class GameRuntime:
     """一局派对游戏的运行时控制容器。"""
 
-    session: GameSessionState
+    session: SessionState
     event_store: SessionEventStore
     action_service: ActionRequestService | RuntimeActionServiceRouter
     player_links: dict[str, str]
@@ -119,7 +124,7 @@ class PartySessionRuntime:
         self.runtime_state.metadata = dict(self.runtime_state.metadata or {})
         self.runtime_state.metadata["runner"] = runner.__class__.__name__
         logger.info(
-            "[PartySessionRuntime] 已注册 runner：session=%s runner=%s",
+            "[GameRuntime] 已注册 runner：session=%s runner=%s",
             self.session.session_id,
             runner.__class__.__name__,
         )
@@ -193,7 +198,7 @@ class PartySessionRuntime:
         self.event_store.append_public({"kind": "session_assigned"})
         self._set_runtime_phase("assigned")
         await self._emit_lifecycle("after", "assign")
-        logger.info("[PartySessionRuntime] 已发牌：session=%s", self.session.session_id)
+        logger.info("[GameRuntime] 已发牌：session=%s", self.session.session_id)
 
     async def start(self) -> None:
         """启动本局。"""
@@ -212,7 +217,7 @@ class PartySessionRuntime:
         self.event_store.append_public({"kind": "session_started"})
         self._set_runtime_phase("running")
         await self._emit_lifecycle("after", "start")
-        logger.info("[PartySessionRuntime] 已开始：session=%s", self.session.session_id)
+        logger.info("[GameRuntime] 已开始：session=%s", self.session.session_id)
 
     async def pause(self) -> None:
         """暂停本局。"""
@@ -230,7 +235,7 @@ class PartySessionRuntime:
         self.event_publisher.public({"kind": "session_paused"})
         self._set_runtime_phase("paused")
         await self._emit_lifecycle("after", "pause")
-        logger.info("[PartySessionRuntime] 已暂停：session=%s", self.session.session_id)
+        logger.info("[GameRuntime] 已暂停：session=%s", self.session.session_id)
 
     async def resume(self) -> None:
         """恢复本局。"""
@@ -248,7 +253,7 @@ class PartySessionRuntime:
         self.event_publisher.public({"kind": "session_resumed"})
         self._set_runtime_phase("running")
         await self._emit_lifecycle("after", "resume")
-        logger.info("[PartySessionRuntime] 已恢复：session=%s", self.session.session_id)
+        logger.info("[GameRuntime] 已恢复：session=%s", self.session.session_id)
 
     async def step(self, count: int = 1) -> dict[str, Any]:
         """放行 runner 的统一单步入口。"""
@@ -273,7 +278,7 @@ class PartySessionRuntime:
         self.event_store.append_host({"kind": "session_ended"})
         self.event_store.append_public({"kind": "session_ended"})
         self._set_runtime_phase("ended")
-        logger.info("[PartySessionRuntime] 已结束：session=%s", self.session.session_id)
+        logger.info("[GameRuntime] 已结束：session=%s", self.session.session_id)
 
     def mark_failed(self, reason: str) -> None:
         """标记本局异常失败。"""
@@ -282,7 +287,7 @@ class PartySessionRuntime:
         self.session.set_status(SESSION_FAILED)
         self.event_store.append_host({"kind": "session_failed", "reason": reason})
         self._set_runtime_phase("failed")
-        logger.info("[PartySessionRuntime] 已失败：session=%s reason=%s", self.session.session_id, reason)
+        logger.info("[GameRuntime] 已失败：session=%s reason=%s", self.session.session_id, reason)
 
     async def terminate(self, reason: str = "terminated by host") -> None:
         """终止本局，并取消后台任务和 pending action。"""
@@ -297,7 +302,7 @@ class PartySessionRuntime:
         self.event_store.append_host({"kind": "session_terminated", "reason": reason})
         self._set_runtime_phase("terminated")
         await self._emit_lifecycle("after", "terminate", {"reason": reason})
-        logger.info("[PartySessionRuntime] 已终止：session=%s", self.session.session_id)
+        logger.info("[GameRuntime] 已终止：session=%s", self.session.session_id)
 
     async def restart(self) -> None:
         """清空当前局并在同一个 session 中重新发牌。
@@ -328,7 +333,7 @@ class PartySessionRuntime:
         self.event_store.append_public({"kind": "session_restarted"})
         await self.assign()
         await self._emit_lifecycle("after", "restart")
-        logger.info("[PartySessionRuntime] 已重新开始：session=%s", self.session.session_id)
+        logger.info("[GameRuntime] 已重新开始：session=%s", self.session.session_id)
 
     def _set_runtime_phase(self, phase: str) -> None:
         """更新 runtime 自身生命周期 phase。"""
@@ -355,4 +360,4 @@ class PartySessionRuntime:
             payload=payload,
         )
 
-__all__ = ["PartySessionRuntime"]
+__all__ = ["GameRuntime"]

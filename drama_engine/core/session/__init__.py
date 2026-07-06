@@ -5,14 +5,14 @@ runtime primitives are still loading.
 """
 
 _EXPORT_MODULES = {
-    "PartySessionRuntime": "drama_engine.core.session.runtime",
-    "GameSessionState": "drama_engine.core.session.state",
+    "GameRuntime": "drama_engine.core.session.runtime",
+    "SessionState": "drama_engine.core.game_instance.state",
     "JsonSessionStore": "drama_engine.core.session.persistence",
     "PlayerClaim": "drama_engine.core.session.tokens",
     "PlayerTokenService": "drama_engine.core.session.tokens",
     "RuntimeLifecycleHooks": "drama_engine.core.session.lifecycle",
     "RuntimeState": "drama_engine.core.session.lifecycle",
-    "SeatState": "drama_engine.core.session.state",
+    "SeatState": "drama_engine.core.game_instance.state",
     "ServicePorts": "drama_engine.core.session.ports",
     "ServiceSessionControls": "drama_engine.core.session.controls",
     "SessionEventStore": "drama_engine.core.session.events",

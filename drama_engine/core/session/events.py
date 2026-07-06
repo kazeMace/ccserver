@@ -66,7 +66,7 @@ class SessionEventStore:
       2. 管理订阅者队列。
       3. 保证事件不跨 session 泄漏。
 
-    注意：本类是 session 级对象，不应被多个 PartySessionRuntime 共享。
+    注意：本类是 session 级对象，不应被多个 GameRuntime 共享。
     """
 
     def __init__(self, session_id: str) -> None:

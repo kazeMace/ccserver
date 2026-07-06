@@ -1,11 +1,11 @@
-"""Projection from PartySessionRuntime to frontend snapshots."""
+"""Projection from GameRuntime to frontend snapshots."""
 
 from __future__ import annotations
 
 from typing import Any
 
 from drama_engine.core.ports.views import BaseViewProjector
-from drama_engine.core.session.runtime import PartySessionRuntime
+from drama_engine.core.session.runtime import GameRuntime
 from drama_engine.core.session.view_contract import ViewSnapshot, ViewerPrincipal
 
 ROLE_NAMES = {
@@ -23,7 +23,7 @@ class SocialViewProjector(BaseViewProjector):
 
     def project(
         self,
-        runtime: PartySessionRuntime,
+        runtime: GameRuntime,
         audience: str,
         seat_id: str | None = None,
         user_id: str | None = None,
@@ -34,7 +34,7 @@ class SocialViewProjector(BaseViewProjector):
 
     def snapshot(
         self,
-        runtime: PartySessionRuntime,
+        runtime: GameRuntime,
         audience: str,
         seat_id: str | None = None,
         user_id: str | None = None,
@@ -48,7 +48,7 @@ class SocialViewProjector(BaseViewProjector):
         assert seat_id, "player snapshot 必须提供 seat_id"
         return self.player_snapshot(runtime, seat_id=seat_id, user_id=user_id)
 
-    def host_snapshot(self, runtime: PartySessionRuntime) -> ViewSnapshot:
+    def host_snapshot(self, runtime: GameRuntime) -> ViewSnapshot:
         """Build the host snapshot."""
         principal = ViewerPrincipal(viewer_kind="host", session_id=runtime.session.session_id)
         return ViewSnapshot(
@@ -69,7 +69,7 @@ class SocialViewProjector(BaseViewProjector):
             meta={"step_gate": runtime.step_gate.status()},
         )
 
-    def public_snapshot(self, runtime: PartySessionRuntime) -> ViewSnapshot:
+    def public_snapshot(self, runtime: GameRuntime) -> ViewSnapshot:
         """Build the public viewer snapshot."""
         principal = ViewerPrincipal(viewer_kind="public", session_id=runtime.session.session_id)
         return ViewSnapshot(
@@ -84,7 +84,7 @@ class SocialViewProjector(BaseViewProjector):
 
     def player_snapshot(
         self,
-        runtime: PartySessionRuntime,
+        runtime: GameRuntime,
         seat_id: str,
         user_id: str | None = None,
     ) -> ViewSnapshot:
@@ -115,22 +115,22 @@ class SocialViewProjector(BaseViewProjector):
 _SOCIAL_VIEW_PROJECTOR = SocialViewProjector()
 
 
-def build_host_snapshot(runtime: PartySessionRuntime) -> ViewSnapshot:
+def build_host_snapshot(runtime: GameRuntime) -> ViewSnapshot:
     """构建主持人视图。"""
     return _SOCIAL_VIEW_PROJECTOR.host_snapshot(runtime)
 
 
-def build_public_snapshot(runtime: PartySessionRuntime) -> ViewSnapshot:
+def build_public_snapshot(runtime: GameRuntime) -> ViewSnapshot:
     """构建公开观众视图。"""
     return _SOCIAL_VIEW_PROJECTOR.public_snapshot(runtime)
 
 
-def build_player_snapshot(runtime: PartySessionRuntime, seat_id: str, user_id: str | None = None) -> ViewSnapshot:
+def build_player_snapshot(runtime: GameRuntime, seat_id: str, user_id: str | None = None) -> ViewSnapshot:
     """构建玩家视图。"""
     return _SOCIAL_VIEW_PROJECTOR.player_snapshot(runtime, seat_id=seat_id, user_id=user_id)
 
 
-def _role_card(runtime: PartySessionRuntime, seat_id: str) -> dict[str, Any] | None:
+def _role_card(runtime: GameRuntime, seat_id: str) -> dict[str, Any] | None:
     seat = runtime.session.seats.get(seat_id)
     if seat is None or not seat.role_snapshot:
         return None
@@ -151,7 +151,7 @@ def _role_faction(role: str) -> str:
     return "unknown"
 
 
-def _visible_scopes(runtime: PartySessionRuntime, seat_id: str) -> list[str]:
+def _visible_scopes(runtime: GameRuntime, seat_id: str) -> list[str]:
     role = runtime.session.seats.get(seat_id).role_snapshot if seat_id in runtime.session.seats else None
     base = ["public", "town"]
     if role == "werewolf":
@@ -165,11 +165,11 @@ def _visible_scopes(runtime: PartySessionRuntime, seat_id: str) -> list[str]:
     return base
 
 
-def _current_action(runtime: PartySessionRuntime, seat_id: str) -> dict[str, Any] | None:
+def _current_action(runtime: GameRuntime, seat_id: str) -> dict[str, Any] | None:
     return runtime.action_view.current_action(runtime, seat_id)
 
 
-def _public_seats(runtime: PartySessionRuntime) -> list[dict[str, Any]]:
+def _public_seats(runtime: GameRuntime) -> list[dict[str, Any]]:
     result = []
     for seat in runtime.session.seats.values():
         result.append({
@@ -179,7 +179,7 @@ def _public_seats(runtime: PartySessionRuntime) -> list[dict[str, Any]]:
     return result
 
 
-def _player_visible_seats(runtime: PartySessionRuntime, viewer_seat_id: str) -> list[dict[str, Any]]:
+def _player_visible_seats(runtime: GameRuntime, viewer_seat_id: str) -> list[dict[str, Any]]:
     result = []
     for seat in runtime.session.seats.values():
         item = {

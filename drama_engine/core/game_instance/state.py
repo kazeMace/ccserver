@@ -1,4 +1,14 @@
-"""Core data models for Drama Engine Web multi-session runtime."""
+"""会话状态模型（SessionState）。
+
+本模块只保存「会话过程」状态，不保存「游戏事实」。两者必须分离（见架构文档 §6）：
+
+- SessionState（本文件）：座位、生命周期、当前进度、timeline cursor、checkpoint 列表、
+  回滚策略、metadata。它关心「这局会话进行到哪了」。
+- GameState（游戏事实）：角色、身份、票数、资产、血量、线索等，由 interactive_session
+  runtime 的 `engine.State` 持有。它关心「游戏世界现在是什么样」。
+
+不要把会话进度、事件 cursor、checkpoint 和游戏事实混进同一个对象。
+"""
 
 from __future__ import annotations
 
@@ -6,6 +16,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
+# 会话生命周期状态 / Session lifecycle statuses
 SESSION_LOBBY = "lobby"
 SESSION_ASSIGNED = "assigned"
 SESSION_RUNNING = "running"
@@ -14,13 +25,18 @@ SESSION_ENDED = "ended"
 SESSION_FAILED = "failed"
 SESSION_TERMINATED = "terminated"
 
+# 座位控制方式 / Seat controller types
 CONTROLLER_AI = "ai"
 CONTROLLER_HUMAN = "human"
 
 
 @dataclass(slots=True)
 class SeatState:
-    """单局中的一个 seat。"""
+    """单局中的一个座位。
+
+    座位是「会话层」概念（谁坐在这个位置、由谁控制），不是「游戏事实」。
+    角色/存活等游戏事实的快照字段仅用于视图展示，权威值在 GameState。
+    """
 
     seat_id: str
     controller_type: str = CONTROLLER_AI
@@ -63,8 +79,53 @@ class SeatState:
 
 
 @dataclass(slots=True)
-class GameSessionState:
-    """Web 多会话架构中的一局游戏元状态。"""
+class ProgressState:
+    """会话进度：当前 flow state / scene / round / turn / phase / actor。
+
+    这是「会话进行到哪了」的可序列化快照，供回滚和视图使用；具体玩法语义由
+    interactive_session runtime 填充。
+    """
+
+    current_state: str | None = None
+    current_scene: str | None = None
+    round: int = 0
+    turn: int = 0
+    phase: str | None = None
+    actor: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """转换为可序列化字典。"""
+        return {
+            "current_state": self.current_state,
+            "current_scene": self.current_scene,
+            "round": self.round,
+            "turn": self.turn,
+            "phase": self.phase,
+            "actor": self.actor,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "ProgressState":
+        """从字典恢复进度状态。"""
+        data = dict(data or {})
+        return cls(
+            current_state=data.get("current_state"),
+            current_scene=data.get("current_scene"),
+            round=int(data.get("round") or 0),
+            turn=int(data.get("turn") or 0),
+            phase=data.get("phase"),
+            actor=data.get("actor"),
+        )
+
+
+@dataclass(slots=True)
+class SessionState:
+    """一局游戏的会话过程状态。
+
+    只保存会话过程，不保存游戏事实：座位、生命周期、当前进度、timeline cursor、
+    checkpoint 列表、回滚策略、metadata。游戏事实（角色/票数/资产/血量）由
+    GameState 持有。
+    """
 
     game_id: str
     script_path: str
@@ -72,9 +133,17 @@ class GameSessionState:
     seat_ids: list[str] = field(default_factory=list)
     human_seat_ids: set[str] = field(default_factory=set)
     session_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    runtime_type: str = "interactive_session"
     status: str = SESSION_LOBBY
     metadata: dict[str, Any] = field(default_factory=dict)
     seats: dict[str, SeatState] = field(default_factory=dict)
+    # 会话进度与回滚相关字段（见架构文档 §6/§7）
+    progress: ProgressState = field(default_factory=ProgressState)
+    event_cursor: int = 0
+    message_cursor: int = 0
+    action_cursor: int = 0
+    checkpoints: list[str] = field(default_factory=list)
+    rollback_policy: str = "branch"
 
     def __post_init__(self) -> None:
         assert self.session_id, "session_id 不能为空"
@@ -96,6 +165,10 @@ class GameSessionState:
         """清局重置，保留 seat、控制方式、真人认领与元数据。"""
         for seat in self.seats.values():
             seat.reset_for_new_game()
+        self.progress = ProgressState()
+        self.event_cursor = 0
+        self.message_cursor = 0
+        self.action_cursor = 0
         self.set_status(SESSION_LOBBY)
 
     def seat_summary(self) -> list[dict[str, Any]]:
@@ -108,12 +181,14 @@ class GameSessionState:
             "session_id": self.session_id,
             "game_id": self.game_id,
             "script_path": self.script_path,
+            "runtime_type": self.runtime_type,
             "status": self.status,
             "seat_count": len(self.seats),
             "human_seat_count": len([
                 seat for seat in self.seats.values()
                 if seat.controller_type == CONTROLLER_HUMAN
             ]),
+            "progress": self.progress.to_dict(),
             "metadata": dict(self.metadata),
         }
 
@@ -123,17 +198,24 @@ class GameSessionState:
             "session_id": self.session_id,
             "game_id": self.game_id,
             "script_path": self.script_path,
+            "runtime_type": self.runtime_type,
             "params": dict(self.params),
             "seat_ids": list(self.seat_ids),
             "human_seat_ids": sorted(self.human_seat_ids),
             "status": self.status,
             "metadata": dict(self.metadata),
             "seats": {seat_id: seat.to_dict() for seat_id, seat in self.seats.items()},
+            "progress": self.progress.to_dict(),
+            "event_cursor": self.event_cursor,
+            "message_cursor": self.message_cursor,
+            "action_cursor": self.action_cursor,
+            "checkpoints": list(self.checkpoints),
+            "rollback_policy": self.rollback_policy,
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "GameSessionState":
-        """从持久化字典恢复 GameSessionState。"""
+    def from_dict(cls, data: dict[str, Any]) -> "SessionState":
+        """从持久化字典恢复 SessionState。"""
         assert isinstance(data, dict), "session data 必须是 dict"
         seats_data = data.get("seats") or {}
         seats = {
@@ -145,6 +227,7 @@ class GameSessionState:
         return cls(
             game_id=str(data.get("game_id") or ""),
             script_path=str(data.get("script_path") or ""),
+            runtime_type=str(data.get("runtime_type") or "interactive_session"),
             params=dict(data.get("params") or {}),
             seat_ids=seat_ids,
             human_seat_ids=human_seat_ids,
@@ -152,6 +235,12 @@ class GameSessionState:
             status=str(data.get("status") or SESSION_LOBBY),
             metadata=dict(data.get("metadata") or {}),
             seats=seats,
+            progress=ProgressState.from_dict(data.get("progress") or {}),
+            event_cursor=int(data.get("event_cursor") or 0),
+            message_cursor=int(data.get("message_cursor") or 0),
+            action_cursor=int(data.get("action_cursor") or 0),
+            checkpoints=list(data.get("checkpoints") or []),
+            rollback_policy=str(data.get("rollback_policy") or "branch"),
         )
 
 

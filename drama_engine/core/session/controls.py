@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from drama_engine.core.session.state import CONTROLLER_AI, CONTROLLER_HUMAN
+from drama_engine.core.game_instance.state import CONTROLLER_AI, CONTROLLER_HUMAN
 from drama_engine.core.session.tokens import PlayerTokenService
 
 class ServiceSessionControls:
@@ -10,7 +10,7 @@ class ServiceSessionControls:
 
     def set_controller(
         self,
-        runtime: "PartySessionRuntime",
+        runtime: "GameRuntime",
         seat_id: str,
         controller_type: str,
         token_service: PlayerTokenService,
@@ -44,7 +44,7 @@ class ServiceSessionControls:
 
     def set_human_count(
         self,
-        runtime: "PartySessionRuntime",
+        runtime: "GameRuntime",
         count: int,
         token_service: PlayerTokenService,
     ) -> dict[str, str]:
@@ -63,7 +63,7 @@ class ServiceSessionControls:
 
     def reset_join_link(
         self,
-        runtime: "PartySessionRuntime",
+        runtime: "GameRuntime",
         seat_id: str,
         token_service: PlayerTokenService,
     ) -> str:

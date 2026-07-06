@@ -7,17 +7,17 @@ import logging
 from typing import Any
 
 from drama_engine.core.session.events import SessionEventStore
-from drama_engine.core.session.state import (
+from drama_engine.core.game_instance.state import (
     SESSION_ASSIGNED,
     SESSION_LOBBY,
     SESSION_PAUSED,
     SESSION_RUNNING,
-    GameSessionState,
+    SessionState,
 )
 from drama_engine.core.session.persistence import JsonSessionStore
 from drama_engine.core.session.controls import ServiceSessionControls
 from drama_engine.core.session.factory import _build_action_request_service
-from drama_engine.core.session.runtime import PartySessionRuntime
+from drama_engine.core.session.runtime import GameRuntime
 from drama_engine.core.session.step_gate import WebStepGate
 from drama_engine.core.session.tokens import PlayerTokenService
 
@@ -35,7 +35,7 @@ class SessionRegistry:
         store: JsonSessionStore | None = None,
         load_existing: bool = True,
     ) -> None:
-        self._sessions: dict[str, PartySessionRuntime] = {}
+        self._sessions: dict[str, GameRuntime] = {}
         self._lock = asyncio.Lock()
         self._token_service = token_service or PlayerTokenService()
         self._store = store
@@ -70,7 +70,7 @@ class SessionRegistry:
         }
         self._store.save_all(snapshot)
 
-    def _runtime_to_snapshot(self, runtime: PartySessionRuntime) -> dict[str, Any]:
+    def _runtime_to_snapshot(self, runtime: GameRuntime) -> dict[str, Any]:
         """把 runtime 转为可持久化快照。"""
         assert runtime is not None, "runtime 不能为空"
         return {
@@ -84,10 +84,10 @@ class SessionRegistry:
             else {},
         }
 
-    def _runtime_from_snapshot(self, snapshot: dict[str, Any]) -> PartySessionRuntime:
+    def _runtime_from_snapshot(self, snapshot: dict[str, Any]) -> GameRuntime:
         """从持久化快照恢复 runtime。"""
         assert isinstance(snapshot, dict), "runtime snapshot 必须是 dict"
-        session = GameSessionState.from_dict(dict(snapshot.get("session") or {}))
+        session = SessionState.from_dict(dict(snapshot.get("session") or {}))
         if session.status in {SESSION_RUNNING, SESSION_PAUSED}:
             old_status = session.status
             session.set_status(SESSION_ASSIGNED)
@@ -98,7 +98,7 @@ class SessionRegistry:
         if isinstance(event_data, dict):
             event_store.load(event_data)
         step_gate = WebStepGate(session_id=session.session_id, on_change=event_store.append_host)
-        runtime = PartySessionRuntime(
+        runtime = GameRuntime(
             session=session,
             event_store=event_store,
             action_service=_build_action_request_service(session),
@@ -136,12 +136,12 @@ class SessionRegistry:
         params: dict[str, Any] | None = None,
         human_seat_ids: set[str] | None = None,
         metadata: dict[str, Any] | None = None,
-    ) -> PartySessionRuntime:
+    ) -> GameRuntime:
         """创建一局游戏。"""
         assert game_id, "game_id 不能为空"
         assert script_path, "script_path 不能为空"
         assert seat_ids, "seat_ids 不能为空"
-        session = GameSessionState(
+        session = SessionState(
             game_id=game_id,
             script_path=script_path,
             params=dict(params or {}),
@@ -159,7 +159,7 @@ class SessionRegistry:
             session_id=session.session_id,
             on_change=event_store.append_host,
         )
-        runtime = PartySessionRuntime(
+        runtime = GameRuntime(
             session=session,
             event_store=event_store,
             action_service=_build_action_request_service(session),
@@ -182,14 +182,14 @@ class SessionRegistry:
         logger.info("[SessionRegistry] 创建 session：%s", session.session_id)
         return runtime
 
-    def _attach_service_ports(self, runtime: PartySessionRuntime) -> None:
+    def _attach_service_ports(self, runtime: GameRuntime) -> None:
         """Bind registry-owned service resources to runtime service ports."""
         assert runtime is not None, "runtime 不能为空"
         assert runtime.service is not None, "runtime.service 不能为空"
         runtime.service.token_service = self._token_service
         runtime.service.persistence = self._store
 
-    async def get_session(self, session_id: str) -> PartySessionRuntime:
+    async def get_session(self, session_id: str) -> GameRuntime:
         """获取指定 session。"""
         assert session_id, "session_id 不能为空"
         async with self._lock:

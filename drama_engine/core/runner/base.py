@@ -16,7 +16,7 @@ from drama_engine.core.session.summary import SummaryProvider
 
 @dataclass(slots=True)
 class RunnerContext:
-    """Shared dependencies provided by PartySessionRuntime to runners."""
+    """Shared dependencies provided by GameRuntime to runners."""
 
     runtime: Any
     declaration: RuntimeSpec
