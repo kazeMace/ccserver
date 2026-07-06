@@ -117,40 +117,98 @@ class FreeInputExecutor:
         constrained: bool,
     ) -> dict[str, Any]:
         """Record one generated beat."""
-        service_spec = spec.get("generator") or {"name": "story_generator"}
         max_beats = int(spec.get("max_beats") or spec.get("max_turns") or 1)
-        generated_beats = []
         ending = await self._resolve_ending(ctx, spec) if constrained else None
-        for index in range(max(1, max_beats)):
-            generator_result = await self._services.call_async(
-                ctx,
-                service_spec,
-                "story_generator",
-                {
-                    **ctx.full_context_payload(),
-                    "text": controller_response.get("text", ""),
-                    "constrained": constrained,
-                    "ending": ending,
-                    "beat_index": index,
-                },
-            )
-            items = list(generator_result.get("beats") or [])
-            if not items:
-                items = [{"text": generator_result.get("text") or controller_response.get("text", "")}]
-            generated_beats.extend(items)
-            if not spec.get("loop", max_beats > 1):
-                break
-        if not generated_beats:
-            generated_beats = [{"text": controller_response.get("text", "") or "(generated beat)"}]
+        beat = await self._generate_one_beat(
+            ctx=ctx,
+            spec=spec,
+            controller_response=controller_response,
+            constrained=constrained,
+            ending=ending,
+            beat_index=0,
+        )
+        result = {"kind": "constrained_continue" if constrained else "free_continue", "beat": beat}
+        if spec.get("loop", max_beats > 1) and max_beats > 1:
+            result["generation_state"] = {
+                "spec": dict(spec),
+                "controller_response": dict(controller_response),
+                "constrained": constrained,
+                "ending": ending,
+                "next_index": 1,
+                "max_beats": max_beats,
+            }
+        return result
+
+    async def continue_generated_beat(
+        self,
+        ctx: InteractiveExecutionContext,
+        previous_result: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """Generate the next beat only after referee allows continuation."""
+        state = previous_result.get("generation_state")
+        if not isinstance(state, dict):
+            return None
+        next_index = int(state.get("next_index") or 0)
+        max_beats = int(state.get("max_beats") or 0)
+        if next_index >= max_beats:
+            return None
+        spec = dict(state.get("spec") or {})
+        controller_response = dict(state.get("controller_response") or {})
+        constrained = bool(state.get("constrained"))
+        beat = await self._generate_one_beat(
+            ctx=ctx,
+            spec=spec,
+            controller_response=controller_response,
+            constrained=constrained,
+            ending=state.get("ending"),
+            beat_index=next_index,
+        )
+        next_state = dict(state)
+        next_state["next_index"] = next_index + 1
+        result = {
+            "kind": "constrained_continue" if constrained else "free_continue",
+            "beat": beat,
+        }
+        if next_state["next_index"] < max_beats:
+            result["generation_state"] = next_state
+        return result
+
+    async def _generate_one_beat(
+        self,
+        ctx: InteractiveExecutionContext,
+        spec: dict[str, Any],
+        controller_response: dict[str, Any],
+        constrained: bool,
+        ending: Any,
+        beat_index: int,
+    ) -> dict[str, Any]:
+        """Generate and journal exactly one story beat."""
+        service_spec = spec.get("generator") or {"name": "story_generator"}
+        generator_result = await self._services.call_async(
+            ctx,
+            service_spec,
+            "story_generator",
+            {
+                **ctx.full_context_payload(),
+                "text": controller_response.get("text", ""),
+                "constrained": constrained,
+                "ending": ending,
+                "beat_index": beat_index,
+            },
+        )
+        items = list(generator_result.get("beats") or [])
+        item = items[0] if items else {"text": generator_result.get("text") or controller_response.get("text", "")}
+        if not isinstance(item, dict):
+            item = {"text": str(item)}
         beat = {
             "type": "generated_beat",
             "constrained": constrained,
-            "text": str(generated_beats[-1].get("text") or ""),
-            "beats": generated_beats,
+            "text": str(item.get("text") or ""),
+            "beats": [item],
             "ending": ending if constrained else None,
         }
-        ctx.patch_journal.append("story_beat", beat, {"scene": ctx.current_scene_id})
-        return {"kind": "constrained_continue" if constrained else "free_continue", "beat": beat}
+        ctx.patch_journal.append("story_beat", beat, {"scene": ctx.current_scene_id, "beat_index": beat_index})
+        return beat
 
     async def _grow_flow(
         self,

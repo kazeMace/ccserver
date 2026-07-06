@@ -10,6 +10,7 @@ import json
 import os
 import urllib.error
 import urllib.request
+import inspect
 from difflib import SequenceMatcher
 from typing import Any
 
@@ -41,8 +42,7 @@ class RuntimeServiceCaller:
             ValueError: When the provider type is unknown or response shape is invalid.
         """
         service_spec = dict(spec or {})
-        evaluator = service_spec.get("evaluator") or service_spec.get("type")
-        provider = str(evaluator or service_spec.get("provider") or "builtin")
+        provider = self._service_provider(service_spec)
         if provider in {"builtin", "inside"}:
             if provider == "inside":
                 inside_result = self._call_inside_client(ctx, service_spec, purpose, payload)
@@ -76,21 +76,78 @@ class RuntimeServiceCaller:
             A dictionary service result.
         """
         service_spec = dict(spec or {})
-        evaluator = service_spec.get("evaluator") or service_spec.get("type")
-        provider = str(evaluator or service_spec.get("provider") or "builtin")
+        provider = self._service_provider(service_spec)
         if provider == "inside":
+            if self._has_inside_client(ctx, service_spec):
+                client_result = await self._call_inside_client_async(ctx, service_spec, purpose, payload)
+                if client_result is not None:
+                    return client_result
             actor_result = await self._call_inside_actor(ctx, service_spec, purpose, payload)
             if actor_result is not None:
                 return actor_result
-            client_result = self._call_inside_client(ctx, service_spec, purpose, payload)
+            client_result = await self._call_inside_client_async(ctx, service_spec, purpose, payload)
             if client_result is not None:
                 return client_result
             return self._call_builtin(ctx, service_spec, purpose, payload)
         if provider == "llm" and str(service_spec.get("provider") or "inside") == "inside":
+            if self._has_inside_client(ctx, service_spec):
+                client_result = await self._call_inside_client_async(ctx, service_spec, purpose, payload)
+                if client_result is not None:
+                    return client_result
             actor_result = await self._call_inside_actor(ctx, service_spec, purpose, payload)
             if actor_result is not None:
                 return actor_result
+            client_result = await self._call_inside_client_async(ctx, service_spec, purpose, payload)
+            if client_result is not None:
+                return client_result
+        if provider == "plugin":
+            return await self._call_plugin_async(ctx, service_spec, purpose, payload)
         return self.call_sync(ctx, service_spec, purpose, payload)
+
+    def _has_inside_client(
+        self,
+        ctx: InteractiveExecutionContext,
+        spec: dict[str, Any],
+    ) -> bool:
+        """Return whether an explicit inside client/Agent is available."""
+        return bool(
+            spec.get("client")
+            or ctx.session_metadata.get("inside_agent")
+            or ctx.session_metadata.get("llm_client")
+            or ctx.session_metadata.get("llm_provider")
+        )
+
+    def _service_provider(self, spec: dict[str, Any]) -> str:
+        """Resolve the provider family for a runtime service declaration."""
+        evaluator = spec.get("evaluator") or spec.get("type")
+        if evaluator:
+            return str(evaluator)
+        if spec.get("provider"):
+            return str(spec["provider"])
+        if spec.get("plugin"):
+            return "plugin"
+        return "builtin"
+
+    async def _call_plugin_async(
+        self,
+        ctx: InteractiveExecutionContext,
+        spec: dict[str, Any],
+        purpose: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Call a plugin runtime service from an async path."""
+        name = str(spec.get("name") or spec.get("plugin") or spec.get("id") or purpose)
+        registry = ctx.plugin_registry
+        if (
+            registry is not None
+            and hasattr(registry, "has_runtime_service")
+            and registry.has_runtime_service(name)
+        ):
+            result = registry.call_runtime_service(name, payload)
+            if inspect.isawaitable(result):
+                result = await result
+            return self._ensure_dict(result, f"plugin service {name}")
+        return self._call_plugin(ctx, spec, purpose, payload)
 
     def _call_plugin(
         self,
@@ -197,6 +254,8 @@ class RuntimeServiceCaller:
             return self._detect_schedule_patch(spec, payload)
         if name in {"choose_ending_by_progress", "ending_selector"} or purpose == "ending_selector":
             return self._choose_ending(ctx, spec)
+        if name in {"openchat_planner", "plan_openchat_next"} or purpose == "openchat_planner":
+            return self._plan_openchat_next(payload)
         if purpose in {"story_generator", "branch_generator"}:
             return self._generate_story(spec, payload)
         if purpose == "flow_patch_generator":
@@ -267,6 +326,18 @@ class RuntimeServiceCaller:
                 return {"ending": first.get("id") or first.get("name")}
             return {"ending": str(first)}
         return {"ending": spec.get("ending")}
+
+    def _plan_openchat_next(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Choose the next openchat speaker deterministically."""
+        participants = [str(item) for item in payload.get("participants", []) or []]
+        if not participants:
+            return {"stop": True}
+        last_response = payload.get("last_response") or {}
+        last_actor = str(last_response.get("actor") or "")
+        if last_actor in participants:
+            index = participants.index(last_actor)
+            return {"next_speaker": participants[(index + 1) % len(participants)]}
+        return {"next_speaker": participants[0]}
 
     def _generate_story(
         self,
@@ -366,6 +437,43 @@ class RuntimeServiceCaller:
             return None
         result = self._call_client(client, spec, purpose, payload)
         return self._ensure_dict(result, "inside runtime service")
+
+    async def _call_inside_client_async(
+        self,
+        ctx: InteractiveExecutionContext,
+        spec: dict[str, Any],
+        purpose: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """Call an injected ccserver Agent/client from an async runtime path."""
+        client = (
+            spec.get("client")
+            or ctx.session_metadata.get("inside_agent")
+            or ctx.session_metadata.get("llm_client")
+            or ctx.session_metadata.get("llm_provider")
+        )
+        if client is None:
+            return None
+        prompt = spec.get("prompt") or json.dumps(payload, ensure_ascii=False)
+        if hasattr(client, "run"):
+            value = client.run(str(prompt))
+        elif hasattr(client, "act"):
+            value = client.act(str(prompt), None)
+        elif hasattr(client, "generate_ruling"):
+            value = client.generate_ruling(prompt=prompt, action=purpose, world=payload)
+        elif hasattr(client, "complete"):
+            value = client.complete(prompt)
+        elif callable(client):
+            value = client({"purpose": purpose, "prompt": prompt, "payload": payload})
+        else:
+            return None
+        if inspect.isawaitable(value):
+            value = await value
+        if isinstance(value, dict) and "text" in value and "data" in value:
+            data = value.get("data")
+            if isinstance(data, dict):
+                return data
+        return self._ensure_dict(value, "inside runtime service")
 
     async def _call_inside_actor(
         self,

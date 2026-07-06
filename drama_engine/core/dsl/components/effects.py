@@ -693,8 +693,16 @@ class EffectExecutor:
           template — 消息模板文本
         """
         scope = effect.get("scope")
+        message = effect.get("message") if isinstance(effect.get("message"), dict) else {}
+        template = (
+            effect.get("template")
+            or effect.get("text")
+            or message.get("template")
+            or message.get("text")
+            or ""
+        )
         template = self._render_template(
-            effect.get("template", ""),
+            template,
             state=state,
             actor=actor,
             responses=responses,

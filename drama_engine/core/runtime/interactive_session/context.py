@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from copy import deepcopy
+from dataclasses import dataclass, field
+import json
 from typing import Any
 
 from drama_engine.core.dsl.components import CandidateResolver, ConditionEvaluator, EffectExecutor, ValueResolver
@@ -29,6 +30,7 @@ class InteractiveExecutionContext:
     emit_public: Any
     emit_host: Any
     session_metadata: dict[str, Any]
+    emit_private: Any = None
     base_raw: dict[str, Any] = field(default_factory=dict)
     last_responses: list[dict[str, Any]] = field(default_factory=list)
     current_state_id: str = ""
@@ -43,9 +45,45 @@ class InteractiveExecutionContext:
             "current_state": self.current_state_id,
             "current_scene": self.current_scene_id,
             "patch_journal": self.patch_journal.snapshot(),
-            "metadata": self.session_metadata,
+            "metadata": self.serializable_metadata(),
             "base_flow": deepcopy(self.base_raw),
         }
+
+    def serializable_metadata(self) -> dict[str, Any]:
+        """Return session metadata that is safe for JSON service payloads.
+
+        Runtime-only handles such as Agent/client objects stay in
+        `session_metadata` for direct Python calls, but they must not leak into
+        prompts, HTTP bodies, or journal-like payloads.
+        """
+        hidden_keys = {"inside_agent", "llm_client", "llm_provider"}
+        result: dict[str, Any] = {}
+        for key, value in self.session_metadata.items():
+            if key in hidden_keys:
+                continue
+            try:
+                result[key] = json.loads(json.dumps(value, ensure_ascii=False))
+            except (TypeError, ValueError):
+                continue
+        return result
+
+    def condition_extra(self, **items: Any) -> dict[str, Any]:
+        """Build evaluator extra data that may call back into this runtime.
+
+        Args:
+            **items: Extra event/hook-specific context.
+
+        Returns:
+            Dict with normal runtime context plus a non-serializable runtime
+            pointer for async inside evaluators.
+        """
+        result = self.runtime_extra()
+        result["__interactive_ctx"] = self
+        for key in ("inside_agent", "llm_client", "llm_provider", "inside_agent_id"):
+            if key in self.session_metadata:
+                result[key] = self.session_metadata[key]
+        result.update(items)
+        return result
 
     def full_context_payload(self) -> dict[str, Any]:
         """Return a serializable runtime payload for external services.
@@ -62,6 +100,6 @@ class InteractiveExecutionContext:
             "current_scene": self.current_scene_id,
             "last_responses": list(self.last_responses),
             "patches": self.patch_journal.snapshot(),
-            "metadata": dict(self.session_metadata),
+            "metadata": self.serializable_metadata(),
             "base_flow": deepcopy(self.base_raw),
         }

@@ -49,6 +49,8 @@ class ScheduleSpec:
     mode: str = "none"
     actor: Any = None
     order: dict[str, Any] = field(default_factory=dict)
+    planner: dict[str, Any] = field(default_factory=dict)
+    opening: Any = ""
     max_turns: int = 1
     max_rounds: int = 1
     timeout_ms: int | None = None

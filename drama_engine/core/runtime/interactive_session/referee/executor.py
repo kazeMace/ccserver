@@ -12,7 +12,7 @@ from drama_engine.core.runtime.interactive_session.models import RefereeSpec, Sc
 class RefereeExecutor:
     """Evaluate referee checks at configured lifecycle points."""
 
-    def check(
+    async def check(
         self,
         ctx: InteractiveExecutionContext,
         referee: RefereeSpec,
@@ -29,12 +29,12 @@ class RefereeExecutor:
             return None
 
         if referee.evaluator:
-            passed = ctx.condition_evaluator.evaluate(
+            passed = await ctx.condition_evaluator.evaluate_async(
                 referee.evaluator,
                 ctx.state,
                 actor=None,
                 responses=ctx.last_responses,
-                extra={**ctx.runtime_extra(), "hook": hook, "event": event or {}},
+                extra=ctx.condition_extra(hook=hook, event=event or {}),
             )
             if passed:
                 if isinstance(referee.result, dict):
@@ -48,12 +48,12 @@ class RefereeExecutor:
             if not isinstance(when, dict):
                 continue
             try:
-                passed = ctx.condition_evaluator.evaluate(
+                passed = await ctx.condition_evaluator.evaluate_async(
                     when,
                     ctx.state,
                     actor=None,
                     responses=ctx.last_responses,
-                    extra={**ctx.runtime_extra(), "hook": hook, "event": event or {}},
+                    extra=ctx.condition_extra(hook=hook, event=event or {}),
                 )
             except Exception as exc:  # noqa: BLE001 - visible warning is better than silent end.
                 ctx.emit_host({

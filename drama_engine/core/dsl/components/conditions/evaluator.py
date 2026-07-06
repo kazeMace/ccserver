@@ -177,6 +177,52 @@ class ConditionEvaluator:
             )
         raise ValueError(f"未知条件格式: {cond}")
 
+    async def evaluate_async(
+        self,
+        cond: dict,
+        state: State,
+        actor: str | None,
+        candidate: str | None = None,
+        responses: list | None = None,
+        extra: dict | None = None,
+        entity: str | None = None,
+    ) -> bool:
+        """Async condition evaluation for interactive runtimes."""
+        assert isinstance(cond, dict), f"条件必须是 dict，收到 {type(cond)}"
+        if "all" in cond:
+            for item in cond["all"]:
+                if not await self.evaluate_async(item, state, actor, candidate, responses, extra, entity):
+                    return False
+            return True
+        if "any" in cond:
+            for item in cond["any"]:
+                if await self.evaluate_async(item, state, actor, candidate, responses, extra, entity):
+                    return True
+            return False
+        if "not" in cond:
+            return not await self.evaluate_async(
+                cond["not"],
+                state,
+                actor,
+                candidate,
+                responses,
+                extra,
+                entity,
+            )
+        if "evaluator" in cond:
+            evaluator = str(cond.get("evaluator") or "builtin")
+            if evaluator in {"http", "llm"}:
+                return await self._external.evaluate_async(
+                    cond,
+                    state,
+                    actor,
+                    candidate,
+                    responses,
+                    extra,
+                    entity,
+                )
+        return self.evaluate(cond, state, actor, candidate, responses, extra, entity)
+
     def _evaluate_by_evaluator(
         self,
         cond: dict,

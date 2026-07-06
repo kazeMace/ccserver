@@ -11,6 +11,7 @@ from drama_engine.core.runtime.interactive_session.models import (
 )
 from drama_engine.core.runtime.interactive_session.schedule.dynamic import DynamicScheduleExecutor
 from drama_engine.core.runtime.interactive_session.schedule.modes import ScheduleModePlanner
+from drama_engine.core.runtime.interactive_session.services.runtime_services import RuntimeServiceCaller
 
 
 class ScheduleExecutor:
@@ -25,6 +26,7 @@ class ScheduleExecutor:
         self._participant_actions = participant_actions or ParticipantActionExecutor()
         self._dynamic = dynamic or DynamicScheduleExecutor(self._participant_actions)
         self._planner = ScheduleModePlanner()
+        self._services = RuntimeServiceCaller()
 
     async def execute(
         self,
@@ -38,6 +40,8 @@ class ScheduleExecutor:
         """Execute schedule and return collected responses."""
         if schedule.mode == "none":
             return []
+        if schedule.mode == "openchat":
+            return await self._execute_openchat(ctx, schedule, action, scope, participants, cue)
         responses = []
         for _round_index in range(self._planner.rounds(schedule)):
             actor_order = self._planner.order(ctx, participants, schedule)
@@ -79,11 +83,107 @@ class ScheduleExecutor:
                 if child_responses:
                     responses.extend(child_responses)
                     ctx.last_responses = list(responses)
-            if self._should_stop(ctx, schedule):
+            if await self._should_stop(ctx, schedule):
                 break
         return responses
 
-    def _should_stop(
+    async def _execute_openchat(
+        self,
+        ctx: InteractiveExecutionContext,
+        schedule: ScheduleSpec,
+        action: ParticipantActionSpec,
+        scope: ScopeSpec,
+        participants: list[str],
+        cue: str,
+    ) -> list[dict]:
+        """Execute open chat one speaker at a time with planner support."""
+        responses = []
+        current_actor = self._planner.openchat_first_actor(ctx, participants, schedule)
+        current_cue = str(schedule.opening or cue or "")
+        for turn_index in range(max(1, schedule.max_turns)):
+            if not current_actor:
+                break
+            round_responses = await self._participant_actions.collect_many(
+                ctx=ctx,
+                actor_names=[current_actor],
+                action=action,
+                scope=scope,
+                participants=participants,
+                mode=schedule.mode,
+                cue=current_cue,
+            )
+            responses.extend(round_responses)
+            ctx.last_responses = list(responses)
+            for response in round_responses:
+                child_responses = await self._dynamic.maybe_run(
+                    ctx=ctx,
+                    dynamic=schedule.dynamic,
+                    parent_action=action,
+                    parent_participants=participants,
+                    source_response=response,
+                )
+                if child_responses:
+                    responses.extend(child_responses)
+                    ctx.last_responses = list(responses)
+            if await self._should_stop(ctx, schedule):
+                break
+            plan = await self._plan_openchat_next(
+                ctx=ctx,
+                schedule=schedule,
+                participants=participants,
+                responses=responses,
+                turn_index=turn_index,
+                fallback_actor=current_actor,
+            )
+            if plan.get("stop") is True:
+                break
+            current_actor = str(plan.get("next_speaker") or "")
+            current_cue = str(plan.get("cue") or cue or "")
+        return responses
+
+    async def _plan_openchat_next(
+        self,
+        ctx: InteractiveExecutionContext,
+        schedule: ScheduleSpec,
+        participants: list[str],
+        responses: list[dict],
+        turn_index: int,
+        fallback_actor: str,
+    ) -> dict:
+        """Plan the next openchat speaker through service or round-robin."""
+        service_spec = schedule.planner or {}
+        if not service_spec and isinstance(schedule.order, dict):
+            evaluator = schedule.order.get("evaluator") or schedule.order.get("provider") or schedule.order.get("name")
+            if evaluator:
+                service_spec = dict(schedule.order)
+        if service_spec:
+            result = await self._services.call_async(
+                ctx,
+                service_spec,
+                "openchat_planner",
+                {
+                    **ctx.full_context_payload(),
+                    "participants": list(participants),
+                    "responses": list(responses),
+                    "last_response": responses[-1] if responses else {},
+                    "turn_index": turn_index,
+                },
+            )
+            next_speaker = result.get("next_speaker") or result.get("speaker") or result.get("actor")
+            if next_speaker in participants:
+                return {
+                    "next_speaker": str(next_speaker),
+                    "cue": result.get("cue") or result.get("opening") or "",
+                    "stop": bool(result.get("stop", False)),
+                }
+            if result.get("stop") is True:
+                return {"stop": True}
+        if not participants:
+            return {"stop": True}
+        index = participants.index(fallback_actor) if fallback_actor in participants else -1
+        return {"next_speaker": participants[(index + 1) % len(participants)], "cue": "", "stop": False}
+
+    async def _should_stop(
         self,
         ctx: InteractiveExecutionContext,
         schedule: ScheduleSpec,
@@ -92,12 +192,12 @@ class ScheduleExecutor:
         if not schedule.stop_when:
             return False
         try:
-            return ctx.condition_evaluator.evaluate(
+            return await ctx.condition_evaluator.evaluate_async(
                 schedule.stop_when,
                 ctx.state,
                 actor=None,
                 responses=ctx.last_responses,
-                extra=ctx.runtime_extra(),
+                extra=ctx.condition_extra(),
             )
         except Exception as exc:  # noqa: BLE001 - keep the session observable.
             ctx.emit_host({

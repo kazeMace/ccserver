@@ -55,7 +55,7 @@ class FlowExecutor:
                 continue
             if flow.type == "sequence" or state_spec.terminal:
                 break
-            next_state_id = self._next_state(ctx, state_spec)
+            next_state_id = await self._next_state(ctx, state_spec)
             if next_state_id == current_state_id and not state_spec.transitions:
                 break
             current_state_id = next_state_id
@@ -115,7 +115,7 @@ class FlowExecutor:
             return str(item.get("id") or item.get("scene") or item.get("state") or "")
         return str(item)
 
-    def _next_state(
+    async def _next_state(
         self,
         ctx: InteractiveExecutionContext,
         state_spec: FlowStateSpec,
@@ -124,12 +124,12 @@ class FlowExecutor:
         for transition in state_spec.transitions:
             if transition.when is None:
                 return transition.to
-            if ctx.condition_evaluator.evaluate(
+            if await ctx.condition_evaluator.evaluate_async(
                 transition.when,
                 ctx.state,
                 actor=None,
                 responses=ctx.last_responses,
-                extra=ctx.runtime_extra(),
+                extra=ctx.condition_extra(),
             ):
                 return transition.to
         return state_spec.id

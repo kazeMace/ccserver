@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import inspect
 import urllib.error
 import urllib.request
 from typing import Any, Callable
@@ -102,6 +103,31 @@ class ExternalConditionEvaluator:
 
         return self._result_passes(cond, result, state, actor, candidate, responses, extra, entity)
 
+    async def evaluate_async(
+        self,
+        cond: dict,
+        state: State,
+        actor: str | None,
+        candidate: str | None,
+        responses: list | None,
+        extra: dict | None,
+        entity: str | None,
+    ) -> bool:
+        """Evaluate an external condition from an async runtime path."""
+        if cond.get("evaluator") == "llm" and str(cond.get("provider") or "inside") == "inside":
+            client_result = await self._call_inside_client_async(
+                cond,
+                state,
+                actor,
+                candidate,
+                responses,
+                extra,
+                entity,
+            )
+            if client_result is not None:
+                return self._result_passes(cond, client_result, state, actor, candidate, responses, extra, entity)
+        return self.evaluate(cond, state, actor, candidate, responses, extra, entity)
+
     def _result_passes(
         self,
         cond: dict,
@@ -172,6 +198,106 @@ class ExternalConditionEvaluator:
             value = client({"condition": cond, "payload": payload})
         else:
             return None
+        if isinstance(value, dict):
+            return value
+        if isinstance(value, str):
+            try:
+                decoded = json.loads(value)
+            except json.JSONDecodeError:
+                return {"result": value.lower() in {"1", "true", "yes", "ok"}, "text": value}
+            return decoded if isinstance(decoded, dict) else {"result": bool(decoded)}
+        return {"result": bool(value)}
+
+    async def _call_inside_client_async(
+        self,
+        cond: dict,
+        state: State,
+        actor: str | None,
+        candidate: str | None,
+        responses: list | None,
+        extra: dict | None,
+        entity: str | None,
+    ) -> dict | None:
+        """Call an injected or runtime ccserver Agent for inside LLM conditions."""
+        runtime_ctx = (extra or {}).get("__interactive_ctx")
+        metadata = (extra or {}).get("metadata") or {}
+        client = (
+            cond.get("client")
+            or (extra or {}).get("inside_agent")
+            or (extra or {}).get("llm_client")
+            or metadata.get("inside_agent")
+            or metadata.get("llm_client")
+            or metadata.get("llm_provider")
+        )
+        if client is not None:
+            return await self._call_explicit_inside_client(
+                client,
+                cond,
+                state,
+                actor,
+                candidate,
+                responses,
+                extra,
+                entity,
+            )
+        if runtime_ctx is not None:
+            actor_name = str(
+                cond.get("agent_id")
+                or cond.get("seat_id")
+                or (extra or {}).get("inside_agent_id")
+                or ""
+            )
+            all_names = runtime_ctx.cast.all_names()
+            if not actor_name and all_names:
+                actor_name = str(all_names[0])
+            if actor_name in all_names:
+                payload = self._default_input(state, actor, candidate, responses, extra, entity)
+                prompt = cond.get("prompt") or json.dumps(payload, ensure_ascii=False)
+                value = await runtime_ctx.cast.get(actor_name).act(str(prompt), None)
+                data = value.get("data") if isinstance(value, dict) else None
+                if isinstance(data, dict):
+                    return data
+                text = str(value.get("text") or "") if isinstance(value, dict) else str(value)
+                return self._decode_inside_value(text)
+
+        return None
+
+    async def _call_explicit_inside_client(
+        self,
+        client: Any,
+        cond: dict,
+        state: State,
+        actor: str | None,
+        candidate: str | None,
+        responses: list | None,
+        extra: dict | None,
+        entity: str | None,
+    ) -> dict | None:
+        """Call an explicitly supplied inside Agent/client."""
+        payload = self._default_input(state, actor, candidate, responses, extra, entity)
+        prompt = cond.get("prompt") or json.dumps(payload, ensure_ascii=False)
+        if hasattr(client, "run"):
+            value = client.run(str(prompt))
+        elif hasattr(client, "act"):
+            value = client.act(str(prompt), None)
+        elif hasattr(client, "generate_ruling"):
+            value = client.generate_ruling(prompt=prompt, action=cond.get("semantic_id"), world=payload)
+        elif hasattr(client, "complete"):
+            value = client.complete(prompt)
+        elif callable(client):
+            value = client({"condition": cond, "payload": payload})
+        else:
+            return None
+        if inspect.isawaitable(value):
+            value = await value
+        if isinstance(value, dict) and "text" in value and "data" in value:
+            data = value.get("data")
+            if isinstance(data, dict):
+                return data
+        return self._decode_inside_value(value)
+
+    def _decode_inside_value(self, value: Any) -> dict:
+        """Normalize an inside condition result."""
         if isinstance(value, dict):
             return value
         if isinstance(value, str):

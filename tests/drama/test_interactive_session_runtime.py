@@ -22,6 +22,7 @@ from drama_engine.core.runtime.interactive_session.context import InteractiveExe
 from drama_engine.core.runtime.interactive_session.models import ControllerActionSpec, ParticipantActionSpec, ScopeSpec
 from drama_engine.core.runtime.interactive_session.patch.journal import PatchJournal
 from drama_engine.core.runtime.interactive_session.scene.executor import SceneExecutor
+from drama_engine.core.runtime.interactive_session.services.runtime_services import RuntimeServiceCaller
 from drama_engine.core.session.lifecycle import RuntimeState
 from drama_engine.core.session.ports import ServicePorts
 from drama_engine.core.session.summary import SummaryProvider
@@ -114,6 +115,19 @@ class _ScriptedActor:
     async def act(self, cue: str, collect=None) -> dict:
         """Return next scripted response."""
         return self.responses.pop(0)
+
+
+class _AsyncInsideAgent:
+    """Test ccserver-like Agent with async run()."""
+
+    def __init__(self, text: str) -> None:
+        self.text = text
+        self.prompts = []
+
+    async def run(self, prompt: str) -> str:
+        """Return scripted text."""
+        self.prompts.append(prompt)
+        return self.text
 
 
 def _interactive_ctx(script_doc: dict, actors: list[_ScriptedActor] | None = None) -> InteractiveExecutionContext:
@@ -900,6 +914,39 @@ async def test_plugin_participants_are_resolved(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_participants_plugin_shorthand_is_resolved(tmp_path):
+    """participants.plugin should resolve through runtime services."""
+    script_path = tmp_path / "plugin_participants_shorthand.yaml"
+    script_path.write_text(yaml.safe_dump({
+        "runtime": {"type": "interactive_session"},
+        "plugins": [
+            {"runtime_services": {"select_current_scene_participants": {"result": {"participants": ["A"]}}}}
+        ],
+        "players": {"ids": ["A", "B"]},
+        "flow": {"type": "sequence", "scenes": ["talk"]},
+        "scenes": {
+            "talk": {
+                "participants": {"plugin": "select_current_scene_participants"},
+                "schedule": {"mode": "sequential"},
+                "participant_action": {"kind": "speak", "response": {"mode": "text"}},
+            }
+        },
+    }, allow_unicode=True), encoding="utf-8")
+    runtime = _runtime_for(str(script_path))
+    runner = build_runner_for_session(runtime, dry_run=True)
+
+    await runner.assign()
+    await runner.start()
+    await runtime.runtime_state.task
+
+    started = [
+        event for event in runtime.event_store.public
+        if event.get("kind") == "interactive_scene_started"
+    ][0]
+    assert started["participants"] == ["A"]
+
+
+@pytest.mark.asyncio
 async def test_dynamic_merge_back_writes_summary_state(tmp_path):
     """dynamic.merge_back should write the configured state target."""
     script_path = tmp_path / "merge_back.yaml"
@@ -993,3 +1040,255 @@ async def test_human_controller_without_seat_uses_human_actor():
 
     assert response["actor"] == "P1"
     assert response["text"] == "human move"
+
+
+@pytest.mark.asyncio
+async def test_referee_inside_provider_can_call_async_agent():
+    """referee evaluator llm/provider=inside should await a ccserver Agent-like client."""
+    ctx = _interactive_ctx({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["P1"]},
+        "flow": {"type": "sequence", "scenes": ["start"]},
+        "scenes": {
+            "start": {
+                "participants": {"static": []},
+                "schedule": {"mode": "none"},
+                "participant_action": {"kind": "none", "response": {"mode": "none"}},
+            }
+        },
+        "referee": {
+            "enabled": True,
+            "check_on": "after_scene",
+            "evaluator": "llm",
+            "provider": "inside",
+            "result": {"end": "inside_done"},
+        },
+    }, actors=[_ScriptedActor("P1", [])])
+    ctx.session_metadata["inside_agent"] = _AsyncInsideAgent('{"result": true}')
+
+    result = await SceneExecutor().execute(ctx, ctx.script.scenes["start"])
+
+    assert result == "inside_done"
+
+
+@pytest.mark.asyncio
+async def test_openchat_collects_one_speaker_per_turn(tmp_path):
+    """openchat should be an open one-speaker-at-a-time conversation."""
+    script_path = tmp_path / "openchat.yaml"
+    script_path.write_text(yaml.safe_dump({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["A", "B"]},
+        "flow": {"type": "sequence", "scenes": ["chat"]},
+        "scenes": {
+            "chat": {
+                "participants": {"static": ["A", "B"]},
+                "schedule": {"mode": "openchat", "max_turns": 3, "actor": "A"},
+                "participant_action": {"kind": "speak", "response": {"mode": "text"}},
+            }
+        },
+    }, allow_unicode=True), encoding="utf-8")
+    runtime = _runtime_for(str(script_path))
+    runner = build_runner_for_session(runtime, dry_run=True)
+
+    await runner.assign()
+    await runner.start()
+    await runtime.runtime_state.task
+
+    messages = [
+        event for event in runtime.event_store.public
+        if event.get("kind") == "interactive_message"
+    ]
+    assert len(messages) == 3
+    assert [event["sender"] for event in messages] == ["A", "B", "A"]
+
+
+@pytest.mark.asyncio
+async def test_dynamic_child_openchat_uses_opening_and_first_speaker():
+    """dynamic child openchat should honor AI-designed opening and first_speaker."""
+    actors = [
+        _ScriptedActor("A", [{"actor": "A", "text": "请 B 和 C 私聊", "data": None}]),
+        _ScriptedActor("B", [{"actor": "B", "text": "B follows", "data": None}]),
+        _ScriptedActor("C", [{"actor": "C", "text": "C opens", "data": None}]),
+    ]
+    ctx = _interactive_ctx({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["A", "B", "C"]},
+        "flow": {"type": "sequence", "scenes": ["chat"]},
+        "scenes": {
+            "chat": {
+                "participants": {"static": ["A", "B", "C"]},
+                "scope": {"id": "public", "visibility": "public"},
+                "schedule": {
+                    "mode": "single",
+                    "actor": "A",
+                    "dynamic": {
+                        "enabled": True,
+                        "check_on": "after_message",
+                        "detector": {
+                            "patch": {
+                                "type": "push_schedule",
+                                "mode": "openchat",
+                                "participants": ["B", "C"],
+                                "max_turns": 2,
+                                "first_speaker": "C",
+                                "opening": "C 先开场，然后 B 回应。",
+                            }
+                        },
+                    },
+                },
+                "participant_action": {"kind": "speak", "response": {"mode": "text"}},
+            }
+        },
+    }, actors=actors)
+    public_events = []
+    ctx.emit_public = public_events.append
+
+    await SceneExecutor().execute(ctx, ctx.script.scenes["chat"])
+
+    messages = [event for event in public_events if event.get("kind") == "interactive_message"]
+    assert [event["sender"] for event in messages] == ["A", "C", "B"]
+
+
+@pytest.mark.asyncio
+async def test_publication_supports_template_ref_and_private_players():
+    """publication should render template/ref content and route player audiences."""
+    ctx = _interactive_ctx({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["A"]},
+        "flow": {"type": "sequence", "scenes": ["publish"]},
+        "scenes": {
+            "publish": {
+                "participants": {"static": []},
+                "schedule": {"mode": "none"},
+                "participant_action": {"kind": "none", "response": {"mode": "none"}},
+                "publication": {
+                    "messages": [
+                        {
+                            "audience": {"scope": "public"},
+                            "content": {"template": "阶段 {GAME.phase}"},
+                        }
+                    ],
+                    "disclosures": [
+                        {
+                            "audience": {"players": ["A"]},
+                            "content": {"ref": "GAME.secret"},
+                        }
+                    ],
+                },
+            }
+        },
+    }, actors=[_ScriptedActor("A", [])])
+    StateWriter(ctx.state).apply(SetAttr("GAME", "phase", "day"))
+    StateWriter(ctx.state).apply(SetAttr("GAME", "secret", "seer-only"))
+    public_events = []
+    private_events = []
+    ctx.emit_public = public_events.append
+    ctx.emit_private = lambda seat_id, event: private_events.append({"seat_id": seat_id, **event})
+
+    await SceneExecutor().execute(ctx, ctx.script.scenes["publish"])
+
+    assert any(event.get("text") == "阶段 day" for event in public_events)
+    assert private_events == [{
+        "seat_id": "A",
+        "kind": "interactive_disclosure",
+        "runtime_type": "interactive_session",
+        "scene": "publish",
+        "audience": ["A"],
+        "text": "seer-only",
+    }]
+
+
+@pytest.mark.asyncio
+async def test_broadcast_effect_is_drained_in_interactive_session():
+    """resolution broadcast should publish in interactive_session, not stay queued."""
+    ctx = _interactive_ctx({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["A"]},
+        "flow": {"type": "sequence", "scenes": ["broadcast"]},
+        "scenes": {
+            "broadcast": {
+                "participants": {"static": []},
+                "schedule": {"mode": "none"},
+                "participant_action": {"kind": "none", "response": {"mode": "none"}},
+                "resolution": {
+                    "effects": [
+                        {
+                            "type": "broadcast",
+                            "scope": {"id": "public", "visibility": "public"},
+                            "message": {"template": "选中 {GAME.choice}"},
+                        }
+                    ]
+                },
+            }
+        },
+    }, actors=[_ScriptedActor("A", [])])
+    StateWriter(ctx.state).apply(SetAttr("GAME", "choice", "A"))
+    public_events = []
+    ctx.emit_public = public_events.append
+
+    await SceneExecutor().execute(ctx, ctx.script.scenes["broadcast"])
+
+    assert ctx.state.get_attr("GAME", "__pending_broadcasts") == []
+    assert any(event.get("kind") == "interactive_broadcast" and event.get("text") == "选中 A" for event in public_events)
+
+
+@pytest.mark.asyncio
+async def test_runoff_policy_can_jump_to_configured_scene():
+    """tie_policy=runoff should set RESOLUTION data and configured next target."""
+    actors = [
+        _ScriptedActor("A", [{"actor": "A", "text": "vote B", "data": {"vote": "B"}}]),
+        _ScriptedActor("B", [{"actor": "B", "text": "vote A", "data": {"vote": "A"}}]),
+    ]
+    ctx = _interactive_ctx({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["A", "B"]},
+        "flow": {"type": "sequence", "scenes": ["vote", "runoff_vote"]},
+        "scenes": {
+            "vote": {
+                "participants": {"static": ["A", "B"]},
+                "schedule": {"mode": "sequential"},
+                "participant_action": {"kind": "vote", "response": {"mode": "structured", "schema": "vote"}},
+                "resolution": {
+                    "selection": {
+                        "field": "vote",
+                        "tie_policy": "runoff",
+                        "runoff": {"to": "runoff_vote"},
+                    }
+                },
+            },
+            "runoff_vote": {
+                "participants": {"static": []},
+                "schedule": {"mode": "none"},
+                "participant_action": {"kind": "none", "response": {"mode": "none"}},
+            },
+        },
+    }, actors=actors)
+
+    await SceneExecutor().execute(ctx, ctx.script.scenes["vote"])
+
+    assert ctx.state.get_attr("RESOLUTION", "needs_runoff") is True
+    assert ctx.state.get_attr("RESOLUTION", "runoff_candidates") == ["A", "B"]
+    assert ctx.session_metadata["interactive_next_target"] == "runoff_vote"
+
+
+@pytest.mark.asyncio
+async def test_inside_runtime_service_awaits_agent_run():
+    """runtime service provider=inside should await a ccserver Agent-like run method."""
+    ctx = _interactive_ctx({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["P1"]},
+        "flow": {"type": "sequence", "scenes": ["start"]},
+        "scenes": {"start": {"participants": {"static": []}}},
+    })
+    agent = _AsyncInsideAgent('{"text": "planned"}')
+    ctx.session_metadata["inside_agent"] = agent
+
+    result = await RuntimeServiceCaller().call_async(
+        ctx,
+        {"provider": "inside", "prompt": "plan"},
+        "story_generator",
+        ctx.full_context_payload(),
+    )
+
+    assert result["text"] == "planned"
+    assert agent.prompts == ["plan"]

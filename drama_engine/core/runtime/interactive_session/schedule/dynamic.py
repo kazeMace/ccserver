@@ -122,10 +122,12 @@ class DynamicScheduleExecutor:
         if max_turns.get("max") is not None and int(result["max_turns"]) > int(max_turns["max"]):
             result["__invalid_reason"] = f"max_turns {result['max_turns']} 超过 allowed.max_turns.max"
             return result
-        visibility = "private"
+        visibility = "public" if result.get("mode") == "openchat" else "private"
         scope_visibility = allowed.get("scope_visibility")
         if isinstance(scope_visibility, list) and scope_visibility:
-            visibility = str(scope_visibility[0])
+            allowed_values = [str(item) for item in scope_visibility]
+            if visibility not in allowed_values:
+                visibility = allowed_values[0]
         result.setdefault("scope", {
             "id": "dynamic_" + "_".join(str(item) for item in result["participants"]),
             "visibility": visibility,
@@ -173,20 +175,29 @@ class DynamicScheduleExecutor:
         )
         schedule = ScheduleSpec(
             mode=str(patch.get("mode") or "openchat"),
+            actor=patch.get("first_speaker") or patch.get("actor"),
+            planner=dict(patch.get("planner") or {}),
+            opening=patch.get("opening") or patch.get("cue") or "",
             max_turns=int(patch.get("max_turns") or 1),
             max_rounds=int(patch.get("max_rounds") or 1),
         )
         responses = []
-        rounds = schedule.max_turns if schedule.mode == "openchat" else 1
-        for _ in range(max(1, rounds)):
+        cue = str(schedule.opening or "临时子对话，请根据当前私密上下文发言。")
+        if schedule.mode == "openchat":
+            actor_order = self._openchat_child_order(participants, schedule.actor, schedule.max_turns)
+        else:
+            actor_order = participants
+        rounds = len(actor_order) if schedule.mode == "openchat" else 1
+        for round_index in range(max(1, rounds)):
+            current_actors = [actor_order[round_index]] if schedule.mode == "openchat" else actor_order
             responses.extend(await self._participant_actions.collect_many(
                 ctx=ctx,
-                actor_names=participants,
+                actor_names=current_actors,
                 action=parent_action,
                 scope=scope,
                 participants=participants,
                 mode=schedule.mode,
-                cue="临时子对话，请根据当前私密上下文发言。",
+                cue=cue,
             ))
         pop_patch = {"type": "pop_schedule", "parent_scene": ctx.current_scene_id}
         ctx.patch_journal.append("schedule_patch", pop_patch, {"scene": ctx.current_scene_id})
@@ -198,7 +209,7 @@ class DynamicScheduleExecutor:
         })
         merge_back = patch.get("merge_back") or dynamic.merge_back
         if merge_back:
-            self._merge_back(ctx, merge_back, responses, patch)
+            await self._merge_back(ctx, merge_back, responses, patch)
             ctx.emit_host({
                 "kind": "interactive_schedule_merge",
                 "scene": ctx.current_scene_id,
@@ -207,7 +218,7 @@ class DynamicScheduleExecutor:
             })
         return responses
 
-    def _merge_back(
+    async def _merge_back(
         self,
         ctx: InteractiveExecutionContext,
         merge_back: dict[str, Any],
@@ -222,7 +233,7 @@ class DynamicScheduleExecutor:
         mode = str(merge_back.get("mode") or "summary")
         value: Any
         if mode == "plugin":
-            service_result = self._services.call_sync(
+            service_result = await self._services.call_async(
                 ctx,
                 merge_back.get("plugin") or merge_back.get("service") or {"provider": "plugin", **merge_back},
                 "schedule_merge_back",
@@ -242,6 +253,21 @@ class DynamicScheduleExecutor:
         if not ctx.state.has_entity(entity):
             ctx.state.register_entity(entity, {})
         ctx.writer.apply(SetAttr(entity, attr, value))
+
+    def _openchat_child_order(
+        self,
+        participants: list[str],
+        first_speaker: Any,
+        max_turns: int,
+    ) -> list[str]:
+        """Build child openchat speaker order with an optional first speaker."""
+        if not participants:
+            return []
+        first = str(first_speaker or participants[0])
+        if first not in participants:
+            first = participants[0]
+        start = participants.index(first)
+        return [participants[(start + index) % len(participants)] for index in range(max(1, max_turns))]
 
     def _summary_value(
         self,

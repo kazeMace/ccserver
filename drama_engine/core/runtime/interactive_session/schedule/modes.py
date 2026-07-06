@@ -28,6 +28,8 @@ class ScheduleModePlanner:
             result = list(participants)
             random.shuffle(result)
             return result
+        if schedule.order.get("strategy") == "reverse_seat_order":
+            return list(reversed(participants))
         return list(participants)
 
     def rounds(self, schedule: ScheduleSpec) -> int:
@@ -57,3 +59,17 @@ class ScheduleModePlanner:
             if value in participants:
                 return str(value)
         return participants[0] if participants else None
+
+    def openchat_first_actor(
+        self,
+        ctx: InteractiveExecutionContext,
+        participants: list[str],
+        schedule: ScheduleSpec,
+    ) -> str | None:
+        """Resolve the first openchat speaker."""
+        first_spec = (
+            schedule.actor
+            or schedule.order.get("first_speaker")
+            or schedule.order.get("actor")
+        )
+        return self._resolve_single_actor(ctx, participants, first_spec)

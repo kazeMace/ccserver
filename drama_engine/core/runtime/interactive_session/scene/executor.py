@@ -32,11 +32,11 @@ class SceneExecutor:
     async def execute(self, ctx: InteractiveExecutionContext, scene: SceneSpec) -> str | None:
         """Run a scene and return referee result when ended."""
         ctx.current_scene_id = scene.id
-        if not self._when_passes(ctx, scene):
+        if not await self._when_passes(ctx, scene):
             ctx.emit_host({"kind": "interactive_scene_skipped", "scene": scene.id})
             return None
 
-        self._run_hooks(ctx, scene, "on_enter")
+        await self._run_hooks(ctx, scene, "on_enter")
         participants = await self._resolve_participants(ctx, scene)
         cue = self._render_cue(ctx, scene.participant_action.cue)
         ctx.emit_public({
@@ -46,7 +46,7 @@ class SceneExecutor:
             "participants": participants,
         })
 
-        self._run_hooks(ctx, scene, "on_before_action")
+        await self._run_hooks(ctx, scene, "on_before_action")
         schedule_patch_count = len(ctx.patch_journal.by_type("schedule_patch"))
         responses = await self._schedule.execute(
             ctx=ctx,
@@ -57,29 +57,30 @@ class SceneExecutor:
             cue=cue,
         )
         ctx.last_responses = responses
-        self._run_schedule_hooks(ctx, scene, schedule_patch_count)
+        await self._run_schedule_hooks(ctx, scene, schedule_patch_count)
         for response in responses:
-            self._run_hooks(ctx, scene, "on_message", event=response)
-        result = self._check_referee_events(ctx, scene, "after_message", responses)
+            await self._run_hooks(ctx, scene, "on_message", event=response)
+        result = await self._check_referee_events(ctx, scene, "after_message", responses)
         if result is not None:
-            return self._finish_scene(ctx, scene, responses, result)
-        result = self._check_referee_events(ctx, scene, "after_round", [{"kind": "round_completed"}])
+            return await self._finish_scene(ctx, scene, responses, result)
+        result = await self._check_referee_events(ctx, scene, "after_round", [{"kind": "round_completed"}])
         if result is not None:
-            return self._finish_scene(ctx, scene, responses, result)
-        self._run_hooks(ctx, scene, "on_after_action")
+            return await self._finish_scene(ctx, scene, responses, result)
+        await self._run_hooks(ctx, scene, "on_after_action")
         controller_result = await self._controller.execute(ctx, scene.controller_action)
         if isinstance(controller_result, dict) and controller_result.get("beat"):
-            result = self._publish_generated_beats_until_referee(ctx, scene, controller_result)
+            result = await self._publish_generated_beats_until_referee(ctx, scene, controller_result)
             if result is not None:
-                return self._finish_scene(ctx, scene, responses, result)
+                return await self._finish_scene(ctx, scene, responses, result)
         self._apply_resolution(ctx, scene, responses, controller_result)
+        self._drain_pending_broadcasts(ctx, scene)
         self._publish(ctx, scene)
-        result = self._referee.check(ctx, scene.referee, "after_scene", scene=scene)
+        result = await self._referee.check(ctx, scene.referee, "after_scene", scene=scene)
         if result is None:
-            result = self._referee.check(ctx, ctx.script.referee, "after_scene", scene=scene)
-        return self._finish_scene(ctx, scene, responses, result)
+            result = await self._referee.check(ctx, ctx.script.referee, "after_scene", scene=scene)
+        return await self._finish_scene(ctx, scene, responses, result)
 
-    def _finish_scene(
+    async def _finish_scene(
         self,
         ctx: InteractiveExecutionContext,
         scene: SceneSpec,
@@ -87,7 +88,8 @@ class SceneExecutor:
         result: str | None,
     ) -> str | None:
         """Run exit lifecycle and emit scene completion."""
-        self._run_hooks(ctx, scene, "on_exit")
+        await self._run_hooks(ctx, scene, "on_exit")
+        self._drain_pending_broadcasts(ctx, scene)
         ctx.emit_public({
             "kind": "interactive_scene_completed",
             "runtime_type": "interactive_session",
@@ -97,7 +99,7 @@ class SceneExecutor:
         })
         return result
 
-    def _publish_generated_beats_until_referee(
+    async def _publish_generated_beats_until_referee(
         self,
         ctx: InteractiveExecutionContext,
         scene: SceneSpec,
@@ -120,12 +122,15 @@ class SceneExecutor:
                 "controller_result": controller_result,
             }
             ctx.emit_public(event)
-            result = self._check_referee_events(ctx, scene, "after_generated_beat", [event])
+            result = await self._check_referee_events(ctx, scene, "after_generated_beat", [event])
             if result is not None:
                 return result
+        next_result = await self._controller.continue_generated_beat(ctx, controller_result)
+        if isinstance(next_result, dict) and next_result.get("beat"):
+            return await self._publish_generated_beats_until_referee(ctx, scene, next_result)
         return None
 
-    def _check_referee_events(
+    async def _check_referee_events(
         self,
         ctx: InteractiveExecutionContext,
         scene: SceneSpec,
@@ -134,25 +139,25 @@ class SceneExecutor:
     ) -> str | None:
         """Run scene and top-level referee for event-like lifecycle hooks."""
         for event in events:
-            self._run_hooks(ctx, scene, "on_referee_check", event=event)
-            result = self._referee.check(ctx, scene.referee, hook, scene=scene, event=event)
+            await self._run_hooks(ctx, scene, "on_referee_check", event=event)
+            result = await self._referee.check(ctx, scene.referee, hook, scene=scene, event=event)
             if result is not None:
                 return result
-            result = self._referee.check(ctx, ctx.script.referee, hook, scene=scene, event=event)
+            result = await self._referee.check(ctx, ctx.script.referee, hook, scene=scene, event=event)
             if result is not None:
                 return result
         return None
 
-    def _when_passes(self, ctx: InteractiveExecutionContext, scene: SceneSpec) -> bool:
+    async def _when_passes(self, ctx: InteractiveExecutionContext, scene: SceneSpec) -> bool:
         """Evaluate scene.when."""
         if not scene.when:
             return True
-        return ctx.condition_evaluator.evaluate(
+        return await ctx.condition_evaluator.evaluate_async(
             scene.when,
             ctx.state,
             actor=None,
             responses=ctx.last_responses,
-            extra=ctx.runtime_extra(),
+            extra=ctx.condition_extra(),
         )
 
     async def _resolve_participants(
@@ -189,16 +194,18 @@ class SceneExecutor:
                     continue
                 if not where:
                     filtered.append(name)
-                elif ctx.condition_evaluator.evaluate(
+                elif await ctx.condition_evaluator.evaluate_async(
                     where,
                     ctx.state,
                     actor=name,
                     entity=name,
-                    extra=ctx.runtime_extra(),
+                    extra=ctx.condition_extra(),
                 ):
                     filtered.append(name)
             return filtered
         evaluator = spec.get("evaluator") or spec.get("provider")
+        if not evaluator and spec.get("plugin"):
+            evaluator = "plugin"
         if evaluator in {"plugin", "inside", "builtin", "http", "llm"}:
             return await self._resolve_service_participants(ctx, scene, spec, all_names)
         return list(all_names)
@@ -274,6 +281,14 @@ class SceneExecutor:
             extra["winner"] = selection_result.get("winner")
             self._ensure_entity(ctx, "RESOLUTION")
             ctx.writer.apply(SetAttr("RESOLUTION", "selected", selection_result.get("winner")))
+            ctx.writer.apply(SetAttr("RESOLUTION", "counts", selection_result.get("counts", {})))
+            ctx.writer.apply(SetAttr("RESOLUTION", "needs_runoff", bool(selection_result.get("needs_runoff"))))
+            ctx.writer.apply(SetAttr(
+                "RESOLUTION",
+                "runoff_candidates",
+                selection_result.get("runoff_candidates", []),
+            ))
+            self._apply_runoff_target(ctx, resolution.get("selection"), selection_result)
         effects = [self._normalize_effect(effect) for effect in resolution.get("effects", []) or []]
         if effects:
             ctx.effect_executor.execute_all(
@@ -284,6 +299,29 @@ class SceneExecutor:
                 actor=None,
                 extra=extra,
             )
+
+    def _apply_runoff_target(
+        self,
+        ctx: InteractiveExecutionContext,
+        selection: Any,
+        selection_result: dict[str, Any],
+    ) -> None:
+        """Store a configured runoff target when a tie needs another round."""
+        if not selection_result.get("needs_runoff") or not isinstance(selection, dict):
+            return
+        runoff = selection.get("runoff")
+        target = None
+        if isinstance(runoff, dict):
+            target = runoff.get("to") or runoff.get("scene") or runoff.get("state")
+        target = target or selection.get("runoff_to") or selection.get("runoff_scene")
+        if target:
+            ctx.session_metadata["interactive_next_target"] = str(target)
+            ctx.emit_host({
+                "kind": "interactive_runoff_requested",
+                "scene": ctx.current_scene_id,
+                "target": str(target),
+                "candidates": list(selection_result.get("runoff_candidates") or []),
+            })
 
     def _selection(
         self,
@@ -345,39 +383,40 @@ class SceneExecutor:
         messages = publication.get("messages") or []
         for item in messages:
             if isinstance(item, str):
-                text = item
+                text = self._render_cue(ctx, item)
                 audience = scene.scope.id
             elif isinstance(item, dict):
-                content = item.get("content") or {}
-                text = content.get("text") or item.get("text") or ""
-                audience_spec = item.get("audience") or {}
-                audience = audience_spec.get("scope") if isinstance(audience_spec, dict) else audience_spec
+                text = self._publication_text(ctx, item)
+                audience = item.get("audience") or item.get("scope") or scene.scope.id
             else:
                 continue
-            ctx.emit_public({
+            event = {
                 "kind": "interactive_publication",
                 "runtime_type": "interactive_session",
                 "scene": scene.id,
-                "audience": audience or scene.scope.id,
-                "text": self._render_cue(ctx, text),
-            })
+                "audience": self._audience_label(audience, scene.scope.id),
+                "text": text,
+            }
+            self._emit_to_audience(ctx, event, audience, default_scope=scene.scope.id, private_default=False)
         for item in publication.get("disclosures", []) or []:
             if not isinstance(item, dict):
                 continue
-            audience = item.get("audience") or {}
-            audience_scope = audience.get("scope") if isinstance(audience, dict) else audience
-            text = item.get("text") or (item.get("content") or {}).get("text") or ""
+            audience = item.get("audience") or item.get("scope") or scene.scope.id
+            text = self._publication_text(ctx, item)
             event = {
                 "kind": "interactive_disclosure",
                 "runtime_type": "interactive_session",
                 "scene": scene.id,
-                "audience": audience_scope or scene.scope.id,
-                "text": self._render_cue(ctx, text),
+                "audience": self._audience_label(audience, scene.scope.id),
+                "text": text,
             }
-            if item.get("private", True):
-                ctx.emit_host(event)
-            else:
-                ctx.emit_public(event)
+            self._emit_to_audience(
+                ctx,
+                event,
+                audience,
+                default_scope=scene.scope.id,
+                private_default=bool(item.get("private", True)),
+            )
         for view in publication.get("views", []) or []:
             if not isinstance(view, dict):
                 continue
@@ -403,7 +442,110 @@ class SceneExecutor:
             if view_event:
                 ctx.emit_public(view_event)
 
-    def _run_hooks(
+    def _publication_text(
+        self,
+        ctx: InteractiveExecutionContext,
+        item: dict[str, Any],
+    ) -> str:
+        """Resolve publication text/template/ref content."""
+        content = item.get("content") or item.get("message") or {}
+        if isinstance(content, str):
+            return self._render_cue(ctx, content)
+        if not isinstance(content, dict):
+            content = {}
+        if "ref" in content:
+            value = ctx.value_resolver.resolve(
+                {"ref": content["ref"]},
+                state=ctx.state,
+                responses=ctx.last_responses,
+                extra=ctx.runtime_extra(),
+            )
+            return "" if value is None else str(value)
+        text = (
+            content.get("text")
+            or content.get("template")
+            or item.get("text")
+            or item.get("template")
+            or ""
+        )
+        return self._render_cue(ctx, text)
+
+    def _emit_to_audience(
+        self,
+        ctx: InteractiveExecutionContext,
+        event: dict[str, Any],
+        audience: Any,
+        default_scope: str,
+        private_default: bool,
+    ) -> None:
+        """Route a publication event to public, host, or private players."""
+        if isinstance(audience, dict):
+            players = audience.get("players") or audience.get("seats")
+            if isinstance(players, list) and players:
+                for seat_id in players:
+                    self._emit_private(ctx, str(seat_id), event)
+                return
+            scope_name = audience.get("scope") or audience.get("id") or default_scope
+            visibility = audience.get("visibility")
+            if visibility == "private" or private_default:
+                members = audience.get("members") or []
+                for seat_id in members:
+                    self._emit_private(ctx, str(seat_id), event)
+                if not members:
+                    ctx.emit_host(event)
+                return
+            ctx.emit_public({**event, "audience": scope_name})
+            return
+        if private_default:
+            ctx.emit_host(event)
+            return
+        ctx.emit_public({**event, "audience": audience or default_scope})
+
+    def _emit_private(
+        self,
+        ctx: InteractiveExecutionContext,
+        seat_id: str,
+        event: dict[str, Any],
+    ) -> None:
+        """Emit a private event when the runtime provides a private sink."""
+        if ctx.emit_private is not None:
+            ctx.emit_private(seat_id, event)
+            return
+        ctx.emit_host({**event, "seat_id": seat_id})
+
+    def _audience_label(self, audience: Any, default_scope: str) -> Any:
+        """Return a compact audience label for event payloads."""
+        if isinstance(audience, dict):
+            return audience.get("scope") or audience.get("id") or audience.get("players") or default_scope
+        return audience or default_scope
+
+    def _drain_pending_broadcasts(
+        self,
+        ctx: InteractiveExecutionContext,
+        scene: SceneSpec,
+    ) -> None:
+        """Publish and clear effects.broadcast messages for interactive_session."""
+        pending = ctx.state.get_attr("GAME", "__pending_broadcasts") or []
+        if not pending:
+            return
+        ctx.writer.apply(SetAttr("GAME", "__pending_broadcasts", []))
+        for item in pending:
+            if not isinstance(item, dict):
+                continue
+            audience = item.get("scope") or scene.scope.id
+            text = str(item.get("template") or item.get("text") or "")
+            if not text:
+                continue
+            event = {
+                "kind": "interactive_broadcast",
+                "runtime_type": "interactive_session",
+                "scene": scene.id,
+                "audience": self._audience_label(audience, scene.scope.id),
+                "text": self._render_cue(ctx, text),
+            }
+            self._emit_to_audience(ctx, event, audience, scene.scope.id, private_default=False)
+
+    async def _run_hooks(
         self,
         ctx: InteractiveExecutionContext,
         scene: SceneSpec,
@@ -419,12 +561,12 @@ class SceneExecutor:
             if not isinstance(item, dict):
                 continue
             when = item.get("when")
-            if when and not ctx.condition_evaluator.evaluate(
+            if when and not await ctx.condition_evaluator.evaluate_async(
                 when,
                 ctx.state,
                 actor=None,
                 responses=ctx.last_responses,
-                extra={**ctx.runtime_extra(), "event": event or {}},
+                extra=ctx.condition_extra(event=event or {}),
             ):
                 continue
             if "do" in item:
@@ -442,7 +584,7 @@ class SceneExecutor:
                 extra={**ctx.runtime_extra(), "scene_name": scene.id, "event": event or {}},
             )
 
-    def _run_schedule_hooks(
+    async def _run_schedule_hooks(
         self,
         ctx: InteractiveExecutionContext,
         scene: SceneSpec,
@@ -453,9 +595,9 @@ class SceneExecutor:
         for record in records:
             event = {"kind": record.payload.get("type"), "patch": record.payload}
             if record.payload.get("type") == "push_schedule":
-                self._run_hooks(ctx, scene, "on_schedule_push", event=event)
+                await self._run_hooks(ctx, scene, "on_schedule_push", event=event)
             elif record.payload.get("type") == "pop_schedule":
-                self._run_hooks(ctx, scene, "on_schedule_pop", event=event)
+                await self._run_hooks(ctx, scene, "on_schedule_pop", event=event)
 
     def _ensure_entity(self, ctx: InteractiveExecutionContext, entity: str) -> None:
         """Register an entity when missing."""

@@ -82,6 +82,7 @@ class InteractiveSessionRunner(BasicGameRunner):
             emit_public=self._emit_public,
             emit_host=self._emit_host,
             session_metadata=session_state.metadata,
+            emit_private=self._emit_private,
             base_raw=deepcopy(script.raw),
         )
         self._ctx = ctx
@@ -212,6 +213,10 @@ class InteractiveSessionRunner(BasicGameRunner):
     def _emit_host(self, event: dict[str, Any]) -> None:
         """Publish host-only event."""
         self.event_publisher.host(dict(event))
+
+    def _emit_private(self, seat_id: str, event: dict[str, Any]) -> None:
+        """Publish one private seat event."""
+        self.event_publisher.private(seat_id, dict(event))
 
 
 InteractiveSessionExecutionModel = InteractiveSessionRunner

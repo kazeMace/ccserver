@@ -119,7 +119,7 @@ class ControllerActionExecutor:
             if actor_name in ctx.cast.all_names():
                 return await ctx.cast.get(actor_name).act(cue, None)
         if controller_type == "plugin":
-            service_result = self._services.call_sync(
+            service_result = await self._services.call_async(
                 ctx,
                 controller,
                 "controller",
@@ -131,6 +131,14 @@ class ControllerActionExecutor:
                 "data": service_result.get("data"),
             }
         return {"actor": controller_type, "text": "(system controller)", "data": None}
+
+    async def continue_generated_beat(
+        self,
+        ctx: InteractiveExecutionContext,
+        previous_result: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """Continue generated story beats after referee allows it."""
+        return await self._free_input.continue_generated_beat(ctx, previous_result)
 
     def _default_controller_actor(
         self,

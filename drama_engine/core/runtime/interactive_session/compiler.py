@@ -126,6 +126,8 @@ class InteractiveSessionCompiler:
             mode=str(spec.get("mode") or "none"),
             actor=spec.get("actor"),
             order=dict(spec.get("order") or {}),
+            planner=dict(spec.get("planner") or {}),
+            opening=spec.get("opening") or spec.get("cue") or "",
             max_turns=int(spec.get("max_turns") or spec.get("rounds") or 1),
             max_rounds=int(spec.get("max_rounds") or spec.get("rounds") or 1),
             timeout_ms=spec.get("timeout_ms"),
