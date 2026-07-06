@@ -16,14 +16,13 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from drama_engine.core.control_plane.plane import build_control_plane
+from drama_engine.core.control_plane.roles import ControlProposal
 from drama_engine.core.game_instance.rollback import RollbackManager
 from drama_engine.core.game_instance.session_control import SessionControl
 from drama_engine.core.game_instance.snapshots import SnapshotManager
-from drama_engine.core.session.view_projection import (
-    build_host_snapshot,
-    build_player_snapshot,
-    build_public_snapshot,
-)
+from drama_engine.core.views.projector import ViewProjector
+from drama_engine.core.visibility.knowledge_firewall import build_default_knowledge_firewall
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +58,11 @@ class GameInstance:
             journal_provider=self._current_patch_journal,
             memory_provider=lambda: runtime.memory_store,
         )
+        # 视图统一走 ViewProjector；信息隔离走 KnowledgeFirewall。
+        self.views = ViewProjector(runtime)
+        self.firewall = build_default_knowledge_firewall()
+        # ControlPlane 在 assign 后按脚本 control_plane 声明构建（此时才有编译产物）。
+        self.control_plane = None
         logger.info("[GameInstance] 绑定 session=%s", self.session_id)
 
     def _current_game_state(self) -> Any:
@@ -86,8 +90,33 @@ class GameInstance:
     # ---- 生命周期（委托 GameRuntime）----
 
     async def assign(self) -> None:
-        """执行发牌/初始化。"""
+        """执行发牌/初始化，并按脚本声明构建控制面。"""
         await self.runtime.assign()
+        self._build_control_plane()
+
+    def _build_control_plane(self) -> None:
+        """按编译后脚本的 control_plane 声明构建 ControlPlane。
+
+        应用器接入 patch/effect 提案落地；当前提供 patch 提案落到 patch journal 的
+        最小应用器，effect/announcement 记录到事件流。
+        """
+        runner = getattr(self.runtime, "runner", None)
+        script = getattr(runner, "_script", None) if runner is not None else None
+        spec = getattr(script, "raw", {}).get("control_plane") if script is not None else None
+        self.control_plane = build_control_plane(spec, applier=self._apply_control_proposal)
+
+    def _apply_control_proposal(self, proposal: ControlProposal) -> None:
+        """把已通过裁定的提案落到权威状态/事件流。"""
+        journal = self._current_patch_journal()
+        if proposal.kind == "patch" and journal is not None:
+            journal.append(str(proposal.payload.get("type") or "control_patch"), proposal.payload,
+                           source={"role": proposal.role})
+        elif proposal.kind == "announcement":
+            self.session_control.append_public({
+                "kind": "control_announcement",
+                "role": proposal.role,
+                "text": proposal.payload.get("text", ""),
+            })
 
     async def start(self) -> None:
         """启动本局。"""
@@ -155,38 +184,65 @@ class GameInstance:
         """返回当前 pending 动作摘要。"""
         return self.session_control.pending_actions()
 
-    def submit_control_action(self, role: str, payload: dict[str, Any]) -> Any:
+    def submit_control_action(self, role: str, payload: dict[str, Any]) -> dict[str, Any]:
         """提交控制角色动作（host/director/writer 等）。
 
-        阶段6 ControlPlane 接入后实现；当前显式未支持，避免静默吞掉调用。
+        走 ControlPlane 的「提案 → 校验 → 应用」流水线；控制角色不直接改权威状态。
+        payload 需含 kind（patch/effect/announcement/scene_beat）与提案内容。
         """
-        raise NotImplementedError("submit_control_action 将在 ControlPlane 阶段实现")
+        assert self.control_plane is not None, "control_plane 未构建；请先 assign"
+        proposal = ControlProposal(
+            role=role,
+            kind=str(payload.get("kind") or ""),
+            payload=dict(payload.get("payload") or {}),
+            reason=str(payload.get("reason") or ""),
+        )
+        verdict = self.control_plane.submit_proposal(proposal)
+        return verdict.to_dict()
 
-    def apply_control_proposal(self, proposal: dict[str, Any]) -> Any:
-        """应用控制角色 proposal（经 referee/validator 校验后）。
+    def apply_control_proposal(self, proposal: dict[str, Any]) -> dict[str, Any]:
+        """直接提交一个 proposal dict（等价 submit_control_action 的字典入口）。"""
+        assert self.control_plane is not None, "control_plane 未构建；请先 assign"
+        obj = ControlProposal(
+            role=str(proposal.get("role") or ""),
+            kind=str(proposal.get("kind") or ""),
+            payload=dict(proposal.get("payload") or {}),
+            reason=str(proposal.get("reason") or ""),
+        )
+        return self.control_plane.submit_proposal(obj).to_dict()
 
-        阶段6 ControlPlane 接入后实现。
-        """
-        raise NotImplementedError("apply_control_proposal 将在 ControlPlane 阶段实现")
+    def control_proposals(self) -> list[dict[str, Any]]:
+        """返回控制面提案审批历史。"""
+        return self.control_plane.proposals() if self.control_plane is not None else []
 
-    # ---- 视图（当前复用 view_projection，阶段6 迁移到 ViewProjector）----
+    # ---- 视图（统一走 ViewProjector）----
 
     def host_view(self) -> dict[str, Any]:
         """返回主持人视图快照。"""
-        return build_host_snapshot(self.runtime).to_dict()
+        return self.views.host_view()
 
     def public_view(self) -> dict[str, Any]:
         """返回公开观众视图快照。"""
-        return build_public_snapshot(self.runtime).to_dict()
+        return self.views.public_view()
 
     def player_view(self, seat_id: str, user_id: str | None = None) -> dict[str, Any]:
         """返回指定 seat 的玩家视图快照。"""
         assert seat_id, "seat_id 不能为空"
-        return build_player_snapshot(self.runtime, seat_id, user_id).to_dict()
+        return self.views.player_view(seat_id, user_id)
 
     def audience_view(self) -> dict[str, Any]:
-        """返回观众视图；当前等同 public_view。"""
-        return self.public_view()
+        """返回观众视图。"""
+        return self.views.audience_view()
+
+    # ---- 受限上下文投影（KnowledgeFirewall）----
+
+    def project_context(self, audience: str, purpose: str) -> dict[str, Any]:
+        """按 audience + purpose 生成受限上下文（信息隔离）。"""
+        return self.firewall.project_context(
+            state=self._current_game_state(),
+            audience=audience,
+            purpose=purpose,
+        )
 
     # ---- Timeline / 事件 ----
 

@@ -76,16 +76,19 @@ async def test_game_instance_lifecycle_dry_run_reaches_end() -> None:
 
 
 @pytest.mark.asyncio
-async def test_control_and_rollback_apis_are_explicitly_unimplemented() -> None:
-    """未接入的 control/rollback 接口应显式抛错，而不是静默返回。"""
+async def test_project_context_restricts_non_privileged_audience() -> None:
+    """KnowledgeFirewall：普通玩家视角拿不到全局 state，只拿 actor view。"""
     registry = GameInstanceRegistry(store=None, load_existing=False)
     instance = await registry.create_instance(
         game_id="story",
         script_path=_SCRIPT,
         seat_ids=["Player_1"],
-        params={"use_runner": False},
+        params={"dry_run": True, "use_runner": True},
     )
-    with pytest.raises(NotImplementedError):
-        instance.submit_control_action("writer", {})
-    with pytest.raises(NotImplementedError):
-        instance.apply_control_proposal({})
+    await instance.assign()
+    restricted = instance.project_context("player:Player_1", "prompt")
+    assert restricted["audience_kind"] == "restricted"
+    assert "self" in restricted and "others" in restricted
+    # host 授权视角拿到完整 state 快照
+    privileged = instance.project_context("host", "referee")
+    assert "state" in privileged or "audience_kind" not in privileged
