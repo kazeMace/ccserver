@@ -38,12 +38,8 @@ _PROJECT_ROOT = _DRAMA_ROOT.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from drama_engine.core.dsl.compiler import YamlCompiler
+from drama_engine.core.runtime.interactive_session.compiler import InteractiveSessionCompiler
 from drama_engine.core.session.registry import SessionRegistry
-from drama_engine.core.execution_models.fixed_flow import (
-    _resolve_player_names,
-    build_default_adapter_from_env,
-)
 from drama_engine.application.script_library import SCRIPT_LIBRARY_ROOT
 from drama_engine.service.server.app import create_app
 
@@ -172,6 +168,33 @@ def resolve_script_path(script_ref: str, preset_path: str | None = None) -> Path
     raise LocalRunError(f"剧本文件不存在: {script_ref}\n已检查:\n  - {checked}")
 
 
+def _resolve_interactive_player_names(script: Any) -> list[str]:
+    """从编译后的 InteractiveScript 解析 seat 名称。
+
+    解析顺序：
+      1. players.ids 显式列表。
+      2. players.count 生成 Player_1..Player_N。
+      3. 从各 scene 的静态 participants 汇总。
+      4. 兜底一个 Player_1。
+    与 InteractiveSessionRunner._resolve_player_names 保持同一套规则。
+    """
+    players = getattr(script, "players", None) or {}
+    ids = players.get("ids") if isinstance(players, dict) else None
+    if isinstance(ids, list) and ids:
+        return [str(item) for item in ids]
+    count = int(players.get("count") or 0) if isinstance(players, dict) else 0
+    if count > 0:
+        return [f"Player_{index}" for index in range(1, count + 1)]
+    names: set[str] = set()
+    for scene in getattr(script, "scenes", {}).values():
+        spec = scene.participants.spec
+        if isinstance(spec, dict) and isinstance(spec.get("static"), list):
+            names.update(str(item) for item in spec["static"])
+        elif isinstance(spec, list):
+            names.update(str(item) for item in spec)
+    return sorted(names) or ["Player_1"]
+
+
 def resolve_human_players(params: dict[str, Any]) -> set[str]:
     """从参数解析真人 seat 集合。
 
@@ -241,7 +264,7 @@ def build_local_script_config(parsed: argparse.Namespace, parser: argparse.Argum
     params["use_runner"] = True
 
     script_path = resolve_script_path(script_ref, preset_path=preset_path)
-    compiler = YamlCompiler()
+    compiler = InteractiveSessionCompiler()
     errors = compiler.validate_file(str(script_path), params)
     if errors:
         message_lines = ["YAML 校验失败:"]
@@ -250,7 +273,7 @@ def build_local_script_config(parsed: argparse.Namespace, parser: argparse.Argum
         raise LocalRunError("\n".join(message_lines))
 
     script = compiler.compile(str(script_path), params=params)
-    seat_ids = _resolve_player_names(script)
+    seat_ids = _resolve_interactive_player_names(script)
     human_seat_ids = resolve_human_players(params)
     _assert_human_seats_exist(human_seat_ids, seat_ids)
     return LocalScriptConfig(
@@ -277,9 +300,6 @@ async def create_local_runtime(registry: SessionRegistry, config: LocalScriptCon
         params=config.params,
         metadata={"local_single_script": True, "script_path": str(config.script_path)},
     )
-    if not config.dry_run:
-        assert runtime.runner is not None, "runner 不能为空"
-        runtime.runner.adapter = build_default_adapter_from_env()
     return runtime
 
 

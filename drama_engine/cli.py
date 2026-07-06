@@ -26,7 +26,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from drama_engine.core.dsl.compiler import YamlCompiler
 from drama_engine.core.dsl.validator import DslValidator, ValidationReport
 from drama_engine.core.runtime.interactive_session.compiler import InteractiveSessionCompiler
 from drama_engine.application.script_inspector import ScriptInspector
@@ -218,39 +217,27 @@ def simulate_script(script_path: str | Path, params: dict[str, Any] | None = Non
     compile_params = dict(resolved_params or {})
     compile_params["dry_run"] = True
     runtime_type = _runtime_type_from_file(path)
-    if runtime_type == "interactive_session":
-        script = InteractiveSessionCompiler().compile(str(path), params=compile_params)
-        scenes = list(script.scenes.values())
+    if runtime_type != "interactive_session":
         result["runtime_type"] = runtime_type
-        result["scene_count"] = len(scenes)
-        result["action_scene_count"] = sum(
-            1 for scene in scenes
-            if scene.participant_action.kind not in {"none", "narration"}
-            or scene.controller_action.enabled
+        result["warnings"].append(
+            f"runtime {runtime_type} 不受支持；当前只支持 interactive_session"
         )
-        result["narration_scene_count"] = sum(
-            1 for scene in scenes
-            if scene.controller_action.kind == "narration"
-            or scene.participant_action.kind == "narration"
-        )
-        result["passed"] = True
         return result
 
-    compiler = YamlCompiler()
-    script = compiler.compile(str(path), params=compile_params)
-    scenes = list(getattr(script.flow, "scenes", []) or [])
-    runtime_type = getattr(getattr(script, "runtime", None), "type", runtime_type)
+    script = InteractiveSessionCompiler().compile(str(path), params=compile_params)
+    scenes = list(script.scenes.values())
     result["runtime_type"] = runtime_type
     result["scene_count"] = len(scenes)
-    result["action_scene_count"] = sum(1 for scene in scenes if scene.response_model is not None)
+    result["action_scene_count"] = sum(
+        1 for scene in scenes
+        if scene.participant_action.kind not in {"none", "narration"}
+        or scene.controller_action.enabled
+    )
     result["narration_scene_count"] = sum(
         1 for scene in scenes
-        if scene.__class__.__name__ == "Scene"
-        and scene.dialogue_policy.__class__.__name__ == "Narration"
+        if scene.controller_action.kind == "narration"
+        or scene.participant_action.kind == "narration"
     )
-    if runtime_type not in {"game_session", "group_chat", "dynamic_story", "interactive_session"}:
-        result["warnings"].append(f"runtime {runtime_type} is recognized but not supported by simulation")
-        return result
     result["passed"] = True
     return result
 
@@ -264,8 +251,8 @@ def _runtime_type_from_file(path: Path) -> str:
     if isinstance(runtime, str):
         return runtime
     if isinstance(runtime, dict):
-        return str(runtime.get("type") or "game_session")
-    return "game_session"
+        return str(runtime.get("type") or "interactive_session")
+    return "interactive_session"
 
 
 def _resolve_preset_script(

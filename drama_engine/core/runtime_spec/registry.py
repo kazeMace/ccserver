@@ -2,9 +2,8 @@
 
 设计目标：
 - DSL 可以显式声明 runtime.type。
-- 当前默认 runtime 是 game_session，保持现有狼人杀路径不变。
-- game_session / group_chat / dynamic_story 都会经 runtime dispatch 接入
-  对应 runner 与领域 runtime 组件。
+- 当前系统只支持 `interactive_session` 一种 runtime，它也是默认值。
+- runtime dispatch 会据此选择 InteractiveSessionRunner。
 """
 
 from __future__ import annotations
@@ -18,11 +17,11 @@ class RuntimeSpec:
     """DSL 顶层 runtime 规格。
 
     参数：
-      type   — Runtime 类型，例如 game_session / group_chat / dynamic_story。
+      type   — Runtime 类型，当前只支持 interactive_session。
       config — Runtime 配置字典；由具体 runtime 自己解释。
     """
 
-    type: str = "game_session"
+    type: str = "interactive_session"
     config: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -74,7 +73,7 @@ class RuntimeRegistry:
         """解析 DSL runtime 规格。
 
         支持：
-          - None：默认 game_session。
+          - None：默认 interactive_session。
           - 字符串：runtime 类型。
           - 字典：{type: ..., config: ...}。
         """
@@ -83,7 +82,7 @@ class RuntimeRegistry:
         elif isinstance(spec, str):
             declaration = RuntimeSpec(type=spec)
         elif isinstance(spec, dict):
-            runtime_type = spec.get("type", "game_session")
+            runtime_type = spec.get("type", "interactive_session")
             config = spec.get("config", {}) or {}
             declaration = RuntimeSpec(type=runtime_type, config=config)
         else:
@@ -99,8 +98,5 @@ class RuntimeRegistry:
 def build_default_runtime_registry() -> RuntimeRegistry:
     """构建默认 Runtime 注册表。"""
     registry = RuntimeRegistry()
-    registry.register("game_session", "固定剧本/派对/桌游流程 Runtime")
-    registry.register("group_chat", "多 Agent 群聊互动 Runtime")
-    registry.register("dynamic_story", "用户驱动动态剧情 Runtime")
     registry.register("interactive_session", "统一互动场景 Runtime，支持多 Agent 玩法与动态剧情")
     return registry

@@ -1,4 +1,11 @@
-"""Fixed-flow engine package exports."""
+"""Engine shared data / state / actor layer.
+
+旧的固定流程编排层（Director / Sequence / dialogue policies / Stage / Narrator）已随
+`interactive_session` 新架构上线而删除。本包现在只保留被新 runtime 与 DSL 组件复用的
+共享层：世界状态 State、剧本数据模型 models、Actor 协议与 Cast。
+The legacy fixed-flow orchestration has been removed; this package now only keeps the
+shared data/state/actor layer reused by the interactive_session runtime and DSL components.
+"""
 
 from .actors import (
     ActorController,
@@ -12,44 +19,6 @@ from .actors import (
 )
 from .cast import Cast
 from .constants import MAX_COLLECT_RETRIES, MAX_LOOP_TURNS
-from .dialogue import (
-    LoopUntil,
-    Narration,
-    OpenChat,
-    RandomOrder,
-    Sequential,
-    Simultaneous,
-    Single,
-    _act_with_candidate_validation,
-    _candidate_constraint_error,
-    _candidate_validation_error,
-    _default_response_text,
-    _deliver_self_message,
-    _get_nested_value,
-    _map_message_value,
-    _message_rule_applies,
-    _message_when_matches,
-    _normalize_message_rules,
-    _normalize_message_targets,
-    _order_participant_names,
-    _prepare_actor_for_scene,
-    _prepare_response_for_delivery,
-    _record_actor_act,
-    _render_message_template,
-    _render_scene_messages,
-    _resolve_action_cue,
-    _resolve_candidate_count_constraint,
-    _resolve_cue,
-    _resolve_message_expr,
-    _resolve_message_value,
-    _resolve_publication_messages,
-    _resolve_scene_candidates,
-    _resolve_state_value,
-    _selected_candidate_field,
-    _set_actor_scene_context,
-)
-from .director import ActorProfileBuilder, CastingService, Director
-from .flow import FixedDeal, Sequence, ShuffleDeal, StateMachineFlow
 from .human import (
     ActionRequest,
     ActionSubmission,
@@ -59,8 +28,6 @@ from .human import (
     create_human_actor_from_port,
 )
 from .models import ActorProfile, PlayerConfig, Role, Scene, Scope, Script, Vocabulary
-from .narration import Narrator
-from .stage import Stage
 from .state import Link, SetAttr, State, StateWriter, Unlink, kill, revive
 
 __all__ = [
@@ -69,40 +36,24 @@ __all__ = [
     "ActorController",
     "ActorPort",
     "ActorProfile",
-    "ActorProfileBuilder",
     "AgentActor",
     "AgentActorController",
     "Cast",
-    "CastingService",
-    "Director",
-    "FixedDeal",
     "HumanActorController",
     "HumanInputPort",
     "Link",
-    "LoopUntil",
     "MAX_COLLECT_RETRIES",
     "MAX_LOOP_TURNS",
-    "Narration",
-    "Narrator",
     "ObservationBuffer",
-    "OpenChat",
     "PerceptionFormatter",
     "PlayerConfig",
-    "RandomOrder",
     "Role",
     "Scope",
     "Scene",
     "Script",
     "SeatActor",
-    "Sequence",
-    "Sequential",
     "SetAttr",
-    "ShuffleDeal",
-    "Simultaneous",
-    "Single",
-    "Stage",
     "State",
-    "StateMachineFlow",
     "StateWriter",
     "Unlink",
     "Vocabulary",

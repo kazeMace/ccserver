@@ -1,8 +1,9 @@
 """Runner dispatch for DSL runtime declarations.
 
-本模块根据 DSL 的 runtime.type 创建对应 runner。
-game_session 使用 SocialDeductionGameRunner；group_chat / dynamic_story 使用各自
-execution model，防止不同 runtime 类型误走固定流程执行模型。
+本模块根据 DSL 的 runtime.type 创建对应 runner。当前系统只支持
+`interactive_session` 一种 runtime；其余 runtime.type 会被拒绝。
+This module builds a runner from the DSL runtime.type. Only `interactive_session`
+is supported now; any other runtime.type is rejected.
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ from drama_engine.core.runtime_spec.registry import RuntimeSpec, build_default_r
 
 
 class UnsupportedRuntimeRunner(BasicGameRunner):
-    """已识别但尚未实现的 Runtime runner。"""
+    """已识别但不受支持的 Runtime runner。"""
 
     def __init__(self, runtime: Any, declaration: RuntimeSpec) -> None:
         """保存 Web session runtime 和 DSL runtime 声明。"""
@@ -26,22 +27,22 @@ class UnsupportedRuntimeRunner(BasicGameRunner):
         super().__init__(runtime=runtime, declaration=declaration)
 
     async def assign(self) -> None:
-        """阻止未实现 runtime 进入发牌流程。"""
+        """阻止不受支持 runtime 进入发牌流程。"""
         raise NotImplementedError(self._message())
 
     async def start(self) -> None:
-        """阻止未实现 runtime 启动。"""
+        """阻止不受支持 runtime 启动。"""
         raise NotImplementedError(self._message())
 
     async def reset_runtime_state(self) -> None:
-        """未实现 runtime 没有可重置的执行状态。"""
+        """不受支持 runtime 没有可重置的执行状态。"""
         return None
 
     def _message(self) -> str:
         """返回面向调用方的清晰错误。"""
         return (
-            f"runtime.type '{self.declaration.type}' 已注册，"
-            "但对应 Runner 尚未实现"
+            f"runtime.type '{self.declaration.type}' 不受支持；"
+            "当前只支持 interactive_session"
         )
 
 
@@ -66,60 +67,8 @@ def build_runner_for_session(runtime: Any, dry_run: bool = True) -> BasicGameRun
     declaration = read_runtime_declaration(script_path, runtime.session.params)
     runtime.session.metadata["runtime_type"] = declaration.type
 
-    if declaration.type == "game_session":
-        runner_class = _fixed_flow_runner_class(script_path)
-
-        return runner_class(runtime=runtime, declaration=declaration, dry_run=dry_run)
-    if declaration.type == "group_chat":
-        from drama_engine.core.execution_models.group_chat import GroupChatExecutionModel
-
-        return GroupChatExecutionModel(runtime=runtime, declaration=declaration, dry_run=dry_run)
-    if declaration.type == "dynamic_story":
-        from drama_engine.core.execution_models.dynamic_story import DynamicStoryExecutionModel
-
-        return DynamicStoryExecutionModel(runtime=runtime, declaration=declaration, dry_run=dry_run)
     if declaration.type == "interactive_session":
         from drama_engine.core.runtime.interactive_session import InteractiveSessionExecutionModel
 
         return InteractiveSessionExecutionModel(runtime=runtime, declaration=declaration, dry_run=dry_run)
     return UnsupportedRuntimeRunner(runtime=runtime, declaration=declaration)
-
-
-def _fixed_flow_runner_class(script_path: str) -> type[BasicGameRunner]:
-    """Choose a fixed-flow runner specialization from domain declarations."""
-    raw_text = Path(script_path).read_text(encoding="utf-8")
-    doc = yaml.safe_load(raw_text) or {}
-    assert isinstance(doc, dict), "script YAML 顶层必须是 dict"
-    from drama_engine.core.execution_models.fixed_flow import (
-        BoardGameRunner,
-        CardGameRunner,
-        EconomyGameRunner,
-        SocialDeductionGameRunner,
-    )
-
-    extension_spec = doc.get("extensions") if isinstance(doc.get("extensions"), dict) else {}
-    extension_keys = set(extension_spec.keys())
-    scene_types = _scene_types(doc)
-
-    if "cards" in doc or "cards" in extension_keys or "card" in scene_types:
-        return CardGameRunner
-    if "board" in doc or "board" in extension_keys or "board" in scene_types:
-        return BoardGameRunner
-    if "economy" in doc or "economy" in extension_keys:
-        return EconomyGameRunner
-    return SocialDeductionGameRunner
-
-
-def _scene_types(doc: dict[str, Any]) -> set[str]:
-    """Collect scene_type values from flow.scenes."""
-    flow = doc.get("flow")
-    if not isinstance(flow, dict):
-        return set()
-    scenes = flow.get("scenes")
-    if not isinstance(scenes, list):
-        return set()
-    result = set()
-    for scene in scenes:
-        if isinstance(scene, dict) and scene.get("scene_type"):
-            result.add(str(scene["scene_type"]))
-    return result

@@ -49,38 +49,3 @@ def test_public_event_is_not_duplicated_for_host_subscriber() -> None:
     assert subscriber.queue.qsize() == 1
     assert len(store.host_backlog()) == 1
     assert store.host_backlog()[0]["text"] == "天亮了"
-
-from drama_engine.core.engine import SetAttr, State, StateWriter, Vocabulary
-from drama_engine.core.execution_models.fixed_flow import SocialDeductionGameRunner
-
-
-def test_dashboard_masks_night_kill_until_death_report() -> None:
-    """wolf/poison 夜间死亡必须等 GAME.night_deaths 记录后才展示出局。"""
-    state = State(Vocabulary(frozenset(), frozenset(), frozenset(), frozenset()))
-    state.register_entity("GAME", {})
-    state.register_entity("Player_1", {})
-    writer = StateWriter(state)
-    writer.apply(SetAttr("GAME", "round", 1))
-    writer.apply(SetAttr("Player_1", "alive", False))
-    writer.apply(SetAttr("Player_1", "death_cause", "wolf"))
-    writer.apply(SetAttr("Player_1", "death_round", 1))
-
-    assert SocialDeductionGameRunner._visible_alive_for_dashboard(state, "Player_1", False) is True
-
-    writer.apply(SetAttr("GAME", "night_deaths", ["Player_1"]))
-
-    assert SocialDeductionGameRunner._visible_alive_for_dashboard(state, "Player_1", False) is False
-
-
-def test_dashboard_shows_public_vote_death_immediately() -> None:
-    """公开投票/枪击等死亡不是夜刀剧透，应立即展示出局。"""
-    state = State(Vocabulary(frozenset(), frozenset(), frozenset(), frozenset()))
-    state.register_entity("GAME", {})
-    state.register_entity("Player_1", {})
-    writer = StateWriter(state)
-    writer.apply(SetAttr("GAME", "round", 1))
-    writer.apply(SetAttr("Player_1", "alive", False))
-    writer.apply(SetAttr("Player_1", "death_cause", "vote"))
-    writer.apply(SetAttr("Player_1", "death_round", 1))
-
-    assert SocialDeductionGameRunner._visible_alive_for_dashboard(state, "Player_1", False) is False

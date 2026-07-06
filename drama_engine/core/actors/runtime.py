@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable
 
-from drama_engine.core.engine import Cast, CastingService
+from drama_engine.core.engine import Cast
 from drama_engine.core.actors.components import (
     ActorFactory,
     ActorProfilePublisher,
@@ -26,7 +26,6 @@ class ActorRuntime:
 
     runtime: Any
     cast: Cast | None = None
-    casting_service: CastingService | None = None
     profiles: dict[str, Any] = field(default_factory=dict)
     player_resolver: PlayerResolver = field(default_factory=PlayerResolver)
     seat_registry: SeatRegistry = field(default_factory=SeatRegistry)
@@ -43,7 +42,6 @@ class ActorRuntime:
     def reset(self) -> None:
         """Drop transient actor runtime state."""
         self.cast = None
-        self.casting_service = None
         self.seat_registry.clear()
         self.role_catalog = None
         self.casting_policy = None
@@ -113,19 +111,6 @@ class ActorRuntime:
         self.role_catalog = RoleCatalog(getattr(script, "roles", []))
         self.casting_policy = ScriptCastingPolicy(getattr(script, "casting", None))
         return cast
-
-    def create_casting_service(self, script: Any, stage: Any) -> CastingService:
-        """Create a CastingService bound to the current session cast."""
-        assert self.cast is not None, "create_casting_service 前必须先 create_cast"
-        self.role_catalog = RoleCatalog(getattr(script, "roles", []))
-        self.casting_policy = ScriptCastingPolicy(getattr(script, "casting", None))
-        self.casting_service = CastingService(
-            script=script,
-            stage=stage,
-            cast=self.cast,
-            profile_publisher=self.profile_publisher,
-        )
-        return self.casting_service
 
 
 class _ResolvedSeatState:
