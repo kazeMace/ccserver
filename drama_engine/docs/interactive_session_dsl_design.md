@@ -337,6 +337,7 @@ when:
 ```
 
 复杂机制优先实现为 plugin。plugin 可以内置 prompt、schema、fallback、校验逻辑，也可以内部调用 LLM、HTTP 或代码执行器。
+plugin condition 可以是同步函数，也可以是 async handler；interactive_session 的异步执行路径会 await async plugin condition。
 
 ### 6.6 Runtime Interaction Protocol
 
@@ -569,6 +570,9 @@ schedule:
 runtime 不再请求后续 actor 发言。`simultaneous` 因为并发语义，只能在本批已完成响应
 返回后逐条检查。
 
+`referee.check_on: after_round` 会在每个 schedule round 后立即执行。对于
+`loop_until`，如果第一轮后 referee 已经返回终局，runtime 不会继续执行后续 round。
+
 ### 9.5 Openchat
 
 ```yaml
@@ -702,6 +706,14 @@ schedule_patch:
 - `planner` 可以在每段后返回 `next_speaker`、`cue` 或 `stop: true`。
 - 没有 `planner` 时 runtime 使用稳定轮转 fallback。
 - `timeout_ms` 和 `stop_when` 在子调度中同样生效。
+
+动态子调度的非 `openchat` mode 复用普通 schedule 语义：
+
+- `single` 尊重 `actor` / `first_speaker`。
+- `sequential`、`random_order` 和 `loop_until` 尊重 `order` 与 `max_rounds`。
+- patch 没有显式声明 `max_rounds` 时，非 `openchat` 子调度会把 `max_turns` 作为兼容轮数。
+- `push_schedule` 写入 journal 后，无论子调度是否抛错，runtime 都会写入配对的
+  `pop_schedule`，保证 patch journal 不留下未闭合调度帧。
 
 子调度结束后 runtime 执行：
 
@@ -1111,6 +1123,9 @@ publication:
 `audience` 路由规则。`audience.players` / `audience.seats` 会走 private sink，
 `audience.scope` 或普通字符串会走 public sink，`private: true` 且没有明确 seat 时只发给 host。
 
+participant message 的路由遵守 `scope.visibility`：public scope 进入 public sink；
+private scope 会发送给 scope members 的 private sink，同时 host 保留可观测事件。
+
 ## 18. Patch Model
 
 动态能力不修改原始 DSL。
@@ -1168,6 +1183,10 @@ schedule_patch:
 
 `add_scene.state` 如果显式声明，也必须是已存在 state；runtime 不会因为 patch
 自动创建新的 state machine 节点。
+
+`dynamic.check_on` 只允许 `after_message` 和 `after_round`；`referee.check_on`
+只允许 `after_scene`、`after_message`、`after_round` 和 `after_generated_beat`。
+这些值会在 interactive_session 编译/validate 阶段校验，拼写错误不会静默通过。
 
 ## 19. Four Story Interaction Modes
 

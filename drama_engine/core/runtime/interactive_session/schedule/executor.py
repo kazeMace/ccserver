@@ -40,6 +40,7 @@ class ScheduleExecutor:
         participants: list[str],
         cue: str = "",
         after_response: Callable[[dict[str, Any], list[dict[str, Any]]], Awaitable[str | None]] | None = None,
+        after_round: Callable[[dict[str, Any], list[dict[str, Any]]], Awaitable[str | None]] | None = None,
     ) -> dict[str, Any]:
         """Execute schedule and return collected responses plus early result."""
         if schedule.mode == "none":
@@ -53,6 +54,7 @@ class ScheduleExecutor:
                 participants,
                 cue,
                 after_response,
+                after_round,
             )
         responses = []
         for _round_index in range(self._planner.rounds(schedule)):
@@ -131,6 +133,9 @@ class ScheduleExecutor:
                     ctx.last_responses = list(responses)
                 if child_result.get("result") is not None:
                     return {"responses": responses, "result": child_result.get("result")}
+            result = await self._handle_round_event(after_round, round_responses, responses)
+            if result is not None:
+                return {"responses": responses, "result": result}
             if await self._should_stop(ctx, schedule):
                 break
         return {"responses": responses, "result": None}
@@ -186,6 +191,7 @@ class ScheduleExecutor:
         participants: list[str],
         cue: str,
         after_response: Callable[[dict[str, Any], list[dict[str, Any]]], Awaitable[str | None]] | None,
+        after_round: Callable[[dict[str, Any], list[dict[str, Any]]], Awaitable[str | None]] | None,
     ) -> dict[str, Any]:
         """Execute open chat one speaker at a time with planner support."""
         responses = []
@@ -239,6 +245,9 @@ class ScheduleExecutor:
                     ctx.last_responses = list(responses)
                 if child_result.get("result") is not None:
                     return {"responses": responses, "result": child_result.get("result")}
+            result = await self._handle_round_event(after_round, round_responses, responses)
+            if result is not None:
+                return {"responses": responses, "result": result}
             if await self._should_stop(ctx, schedule):
                 break
             plan = await self._plan_openchat_next(
@@ -254,6 +263,25 @@ class ScheduleExecutor:
             current_actor = str(plan.get("next_speaker") or "")
             current_cue = str(plan.get("cue") or cue or "")
         return {"responses": responses, "result": None}
+
+    async def _handle_round_event(
+        self,
+        after_round: Callable[[dict[str, Any], list[dict[str, Any]]], Awaitable[str | None]] | None,
+        round_responses: list[dict[str, Any]],
+        current_responses: list[dict[str, Any]],
+    ) -> str | None:
+        """Run the caller's after-round hook with the latest response view."""
+        if after_round is None:
+            return None
+        event = {
+            "kind": "round_completed",
+            "data": {
+                "responses": list(round_responses),
+                "current_responses": list(current_responses),
+            },
+            "text": "",
+        }
+        return await after_round(event, list(current_responses))
 
     async def _plan_openchat_next(
         self,

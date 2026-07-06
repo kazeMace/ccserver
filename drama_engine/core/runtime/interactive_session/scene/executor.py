@@ -62,14 +62,17 @@ class SceneExecutor:
                 response,
                 current_responses,
             ),
+            after_round=lambda event, current_responses: self._handle_round_event(
+                ctx,
+                scene,
+                event,
+                current_responses,
+            ),
         )
         responses = list(schedule_result.get("responses") or [])
         ctx.last_responses = responses
         await self._run_schedule_hooks(ctx, scene, schedule_patch_count)
         result = schedule_result.get("result")
-        if result is not None:
-            return await self._finish_scene(ctx, scene, responses, result)
-        result = await self._check_referee_events(ctx, scene, "after_round", [{"kind": "round_completed"}])
         if result is not None:
             return await self._finish_scene(ctx, scene, responses, result)
         await self._run_hooks(ctx, scene, "on_after_action")
@@ -97,6 +100,17 @@ class SceneExecutor:
         ctx.last_responses = list(current_responses)
         await self._run_hooks(ctx, scene, "on_message", event=response)
         return await self._check_referee_events(ctx, scene, "after_message", [response])
+
+    async def _handle_round_event(
+        self,
+        ctx: InteractiveExecutionContext,
+        scene: SceneSpec,
+        event: dict[str, Any],
+        current_responses: list[dict[str, Any]],
+    ) -> str | None:
+        """Run after_round referee checks after one schedule round."""
+        ctx.last_responses = list(current_responses)
+        return await self._check_referee_events(ctx, scene, "after_round", [event])
 
     async def _finish_scene(
         self,

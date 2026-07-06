@@ -6,8 +6,11 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
+import inspect
 from itertools import combinations
+import threading
 from typing import Any, Callable
 
 from drama_engine.core.engine import SetAttr
@@ -124,7 +127,41 @@ class PluginRegistry:
         handler = self._conditions.get(name)
         if handler is None:
             raise ValueError(f"未知 plugin condition: {name}")
-        return bool(handler(spec, context))
+        result = handler(spec, context)
+        if inspect.isawaitable(result):
+            result = self._await_sync(result)
+        return bool(result)
+
+    async def evaluate_condition_async(self, name: str, spec: dict, context: Any) -> bool:
+        """执行插件 condition，支持 async handler。"""
+        handler = self._conditions.get(name)
+        if handler is None:
+            raise ValueError(f"未知 plugin condition: {name}")
+        result = handler(spec, context)
+        if inspect.isawaitable(result):
+            result = await result
+        return bool(result)
+
+    def _await_sync(self, value: Any) -> Any:
+        """Wait for an awaitable from a sync compatibility path."""
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(value)
+        result: dict[str, Any] = {}
+
+        def run_in_thread() -> None:
+            try:
+                result["value"] = asyncio.run(value)
+            except BaseException as exc:  # noqa: BLE001 - re-raise in caller thread.
+                result["error"] = exc
+
+        thread = threading.Thread(target=run_in_thread, daemon=True)
+        thread.start()
+        thread.join()
+        if "error" in result:
+            raise result["error"]
+        return result.get("value")
 
     def has_condition(self, name: str) -> bool:
         """检查是否存在指定 condition。"""

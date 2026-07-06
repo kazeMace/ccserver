@@ -15,6 +15,7 @@ from drama_engine.core.runtime.interactive_session.models import (
     ScopeSpec,
 )
 from drama_engine.core.runtime.interactive_session.patch.validators import PatchValidator
+from drama_engine.core.runtime.interactive_session.schedule.modes import ScheduleModePlanner
 from drama_engine.core.runtime.interactive_session.services.runtime_services import RuntimeServiceCaller
 
 
@@ -26,6 +27,7 @@ class DynamicScheduleExecutor:
         self._participant_actions = participant_actions or ParticipantActionExecutor()
         self._validator = PatchValidator()
         self._services = RuntimeServiceCaller()
+        self._planner = ScheduleModePlanner()
 
     async def maybe_run(
         self,
@@ -182,13 +184,17 @@ class DynamicScheduleExecutor:
             visibility=str(scope_spec.get("visibility") or "private"),
             members=[str(item) for item in scope_spec.get("members", participants) or participants],
         )
+        mode = str(patch.get("mode") or "openchat")
+        max_turns = int(patch.get("max_turns") or 1)
+        max_rounds = int(patch.get("max_rounds") or (max_turns if mode != "openchat" else 1) or 1)
         schedule = ScheduleSpec(
-            mode=str(patch.get("mode") or "openchat"),
+            mode=mode,
             actor=patch.get("first_speaker") or patch.get("actor"),
+            order=dict(patch.get("order") or {}),
             planner=dict(patch.get("planner") or {}),
             opening=patch.get("opening") or patch.get("cue") or "",
-            max_turns=int(patch.get("max_turns") or 1),
-            max_rounds=int(patch.get("max_rounds") or 1),
+            max_turns=max_turns,
+            max_rounds=max_rounds,
             timeout_ms=patch.get("timeout_ms"),
             stop_when=patch.get("stop_when") or patch.get("until"),
         )
@@ -204,26 +210,73 @@ class DynamicScheduleExecutor:
             "patch": patch,
         })
         responses = []
+        result = None
         cue = str(schedule.opening or "临时子对话，请根据当前私密上下文发言。")
-        if schedule.mode == "openchat":
-            child_result = await self._run_openchat_child(
-                ctx,
-                schedule,
-                parent_action,
-                scope,
-                participants,
-                cue,
-                patch,
-                source_response,
-                after_response,
-                parent_responses,
-            )
-            responses = list(child_result.get("responses") or [])
-            result = child_result.get("result")
-        else:
-            result = None
-            actor_order = participants
-            for _round_index in range(max(1, schedule.max_rounds)):
+        try:
+            if schedule.mode == "openchat":
+                child_result = await self._run_openchat_child(
+                    ctx,
+                    schedule,
+                    parent_action,
+                    scope,
+                    participants,
+                    cue,
+                    patch,
+                    source_response,
+                    after_response,
+                    parent_responses,
+                )
+                responses = list(child_result.get("responses") or [])
+                result = child_result.get("result")
+            else:
+                result = await self._run_basic_child(
+                    ctx=ctx,
+                    schedule=schedule,
+                    parent_action=parent_action,
+                    scope=scope,
+                    participants=participants,
+                    cue=cue,
+                    after_response=after_response,
+                    parent_responses=parent_responses,
+                    responses=responses,
+                )
+        finally:
+            pop_patch = {"type": "pop_schedule", "parent_scene": ctx.current_scene_id}
+            ctx.patch_journal.append("schedule_patch", pop_patch, {"scene": ctx.current_scene_id})
+            ctx.emit_public({
+                "kind": "interactive_schedule_popped",
+                "runtime_type": "interactive_session",
+                "scene": ctx.current_scene_id,
+                "patch": pop_patch,
+            })
+        merge_back = patch.get("merge_back") or dynamic.merge_back
+        if merge_back:
+            await self._merge_back(ctx, merge_back, responses, patch)
+            ctx.emit_host({
+                "kind": "interactive_schedule_merge",
+                "scene": ctx.current_scene_id,
+                "merge_back": merge_back,
+                "responses": responses,
+            })
+        return {"responses": responses, "result": result}
+
+    async def _run_basic_child(
+        self,
+        ctx: InteractiveExecutionContext,
+        schedule: ScheduleSpec,
+        parent_action: ParticipantActionSpec,
+        scope: ScopeSpec,
+        participants: list[str],
+        cue: str,
+        after_response: Callable[[dict[str, Any], list[dict[str, Any]]], Awaitable[str | None]] | None,
+        parent_responses: list[dict[str, Any]],
+        responses: list[dict[str, Any]],
+    ) -> str | None:
+        """Run a non-openchat child schedule with the normal schedule planner."""
+        result = None
+        for _round_index in range(max(1, schedule.max_rounds)):
+            actor_order = self._planner.order(ctx, participants, schedule)
+            if schedule.mode == "simultaneous":
                 round_responses = await self._participant_actions.collect_many(
                     ctx=ctx,
                     actor_names=actor_order,
@@ -244,29 +297,33 @@ class DynamicScheduleExecutor:
                         after_response,
                     )
                     if result is not None:
-                        break
-                if result is not None:
-                    break
-                if await self._should_stop(ctx, schedule):
-                    break
-        pop_patch = {"type": "pop_schedule", "parent_scene": ctx.current_scene_id}
-        ctx.patch_journal.append("schedule_patch", pop_patch, {"scene": ctx.current_scene_id})
-        ctx.emit_public({
-            "kind": "interactive_schedule_popped",
-            "runtime_type": "interactive_session",
-            "scene": ctx.current_scene_id,
-            "patch": pop_patch,
-        })
-        merge_back = patch.get("merge_back") or dynamic.merge_back
-        if merge_back:
-            await self._merge_back(ctx, merge_back, responses, patch)
-            ctx.emit_host({
-                "kind": "interactive_schedule_merge",
-                "scene": ctx.current_scene_id,
-                "merge_back": merge_back,
-                "responses": responses,
-            })
-        return {"responses": responses, "result": result}
+                        return result
+            else:
+                for actor_name in actor_order:
+                    actor_responses = await self._participant_actions.collect_many(
+                        ctx=ctx,
+                        actor_names=[actor_name],
+                        action=parent_action,
+                        scope=scope,
+                        participants=participants,
+                        mode=schedule.mode,
+                        cue=cue,
+                        timeout_ms=schedule.timeout_ms,
+                    )
+                    for response in actor_responses:
+                        responses.append(response)
+                        result = await self._handle_child_response(
+                            ctx,
+                            parent_responses,
+                            responses,
+                            response,
+                            after_response,
+                        )
+                        if result is not None:
+                            return result
+            if await self._should_stop(ctx, schedule):
+                break
+        return result
 
     async def _run_openchat_child(
         self,

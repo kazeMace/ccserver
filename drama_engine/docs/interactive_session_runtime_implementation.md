@@ -142,7 +142,8 @@ InteractiveSessionRunner
 - `pop_schedule`
 - private/public 临时 scope
 - 子调度结束后回到父调度
-- patch journal 记录
+- patch journal 记录；`push_schedule` 后即使 actor/hook/referee 抛错，也会在 `finally`
+  中写入对应 `pop_schedule`，避免 journal 留下未闭合子调度
 - `detector` 通过 runtime service 调用
 - `dynamic.check_on` 支持 `after_message` 和 `after_round`
 - 父级 `mode: openchat` 也支持 `dynamic.check_on: after_round`；每个 openchat turn
@@ -150,7 +151,10 @@ InteractiveSessionRunner
 - `dynamic.patch` 作为默认 patch 合并
 - `dynamic.merge_back` 在子调度结束后生效，`mode: summary` 会写入 `merge_back.to` 指定的状态路径
 - 子调度尊重 patch 的 `mode / max_turns / max_rounds`
-- 子调度尊重 patch 的 `planner / opening / first_speaker / timeout_ms / stop_when`
+- 子调度尊重 patch 的 `order / actor / planner / opening / first_speaker / timeout_ms / stop_when`
+- 子调度的非 `openchat` mode 复用常规 `ScheduleModePlanner`，因此 `single` 会尊重
+  `actor/first_speaker`，`sequential/random_order/loop_until` 会尊重对应 order 和 round
+  语义；非 `openchat` patch 未声明 `max_rounds` 时会用 `max_turns` 作为兼容轮数
 - 子调度 `mode: openchat` 每次只收集一个 actor，发言后调用 planner；planner
   可返回 `next_speaker`、`cue` 或 `stop: true`
 - 子调度 `mode: openchat` 未显式声明 `scope.visibility` 时默认按公开聊天发布；显式 private/public scope 会覆盖默认值
@@ -272,6 +276,11 @@ scene executor 支持：
 `sequential`、`single`、`openchat` 的 participant message 会逐条触发 `on_message`
 和 `referee.check_on: after_message`；一旦 referee 返回结果，后续 actor 不再执行。
 `simultaneous` 会等待并发批次完成后逐条检查已完成响应。
+`referee.check_on: after_round` 会在每个 schedule round 后立即检查；`loop_until`
+如果第一轮已经满足结束条件，不会继续执行后续 round。
+
+private scope 的 participant message 会发送给 scope members 的 private sink，同时保留
+host 可观测事件；public scope 仍走 public sink。
 
 内置 `summarize` effect 可以在 hook 中把当前 responses/controller_result 汇总到
 状态路径，默认写入文本，`format: object` 时写入结构化摘要。
@@ -319,7 +328,17 @@ result:
 `tie_policy: runoff` 会写入 `RESOLUTION.needs_runoff` 与
 `RESOLUTION.runoff_candidates`，并可通过 `runoff.to` 请求下一步 flow target。
 
-## 12. Candidate Validation
+## 12. Validation Scope
+
+`runtime.type: interactive_session` 的静态校验由 `InteractiveSessionCompiler` 负责。
+当前会在编译期拒绝未知 `schedule.mode`、未知 `dynamic.check_on` 和未知
+`referee.check_on`，避免拼写错误在运行时静默失效。
+
+`drama_engine/scripts/interactive_session/...` 是新版 DSL 示例脚本。`fixed_flow`、
+`group_chat`、`dynamic_story` 和 `presets` 目录仍属于各自 runtime 的脚本，不强制迁移
+为 `interactive_session`。
+
+## 13. Candidate Validation
 
 `ParticipantActionExecutor` 会在 runtime 层校验结构化结果：
 
@@ -331,7 +350,7 @@ result:
 返回值必须落在 `candidates` 解析出的集合中。非法输出会重新提示 actor，最多重试 3 次。
 必选目标类 action 如果 candidates 解析失败，会直接报错，不再静默放行。
 
-## 13. Validation And CLI
+## 14. Validation And CLI
 
 `DslValidator` 会根据 `runtime.type` 分派：
 
@@ -340,7 +359,7 @@ result:
 
 CLI `simulate` 也支持 `interactive_session`，不会把新脚本交给旧 compiler。
 
-## 14. New Example Scripts
+## 15. New Example Scripts
 
 新增新版 DSL 示例：
 
@@ -351,13 +370,13 @@ drama_engine/scripts/interactive_session/deduction/dynamic_schedule_discussion.y
 
 两个脚本全部使用新版语法。
 
-## 15. Legacy Script Compatibility
+## 16. Legacy Script Compatibility
 
 旧 CLI/测试入口 `drama_engine/core/scripts/*.yaml` 作为兼容层保留，使用 symlink
 指向 `drama_engine/scripts/fixed_flow/...` 中的真实脚本源文件，避免维护两份 DSL。
 `drama_engine/core/presets/werewolf_9p_normal.preset.yaml` 保留为旧 preset 入口。
 
-## 16. Verification
+## 17. Verification
 
 已增加测试：
 

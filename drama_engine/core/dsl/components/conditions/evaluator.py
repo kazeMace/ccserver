@@ -221,6 +221,31 @@ class ConditionEvaluator:
                     extra,
                     entity,
                 )
+            if evaluator == "plugin":
+                plugin_name = cond.get("plugin") or cond.get("name") or cond.get("id")
+                if not plugin_name:
+                    raise ValueError(f"plugin evaluator 缺少 name/id/plugin: {cond}")
+                return await self._plugin.evaluate_async(
+                    str(plugin_name),
+                    cond,
+                    state,
+                    actor,
+                    candidate,
+                    responses,
+                    extra,
+                    entity,
+                )
+        if "plugin" in cond:
+            return await self._plugin.evaluate_async(
+                str(cond["plugin"]),
+                cond,
+                state,
+                actor,
+                candidate,
+                responses,
+                extra,
+                entity,
+            )
         return self.evaluate(cond, state, actor, candidate, responses, extra, entity)
 
     def _evaluate_by_evaluator(

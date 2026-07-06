@@ -41,6 +41,12 @@ class DynamicScheduleSpec:
     patch: dict[str, Any] = field(default_factory=dict)
     merge_back: dict[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        """Validate dynamic schedule lifecycle hook names."""
+        assert self.check_on in {"after_message", "after_round"}, (
+            "dynamic.check_on 必须是 after_message 或 after_round"
+        )
+
 
 @dataclass(slots=True)
 class ScheduleSpec:
@@ -116,6 +122,12 @@ class RefereeSpec:
     rules: list[dict[str, Any]] = field(default_factory=list)
     evaluator: dict[str, Any] | None = None
     result: Any = None
+
+    def __post_init__(self) -> None:
+        """Validate referee lifecycle hook names."""
+        allowed = {"after_scene", "after_message", "after_round", "after_generated_beat"}
+        invalid = [item for item in self.check_on if item not in allowed]
+        assert not invalid, f"referee.check_on 包含未知值: {invalid}"
 
 
 @dataclass(slots=True)

@@ -273,4 +273,8 @@ class ParticipantActionExecutor:
         if scope.visibility == "public":
             ctx.emit_public(event)
         else:
-            ctx.emit_host({**event, "visibility": "private"})
+            private_event = {**event, "visibility": "private"}
+            if ctx.emit_private is not None:
+                for name in members:
+                    ctx.emit_private(str(name), private_event)
+            ctx.emit_host(private_event)

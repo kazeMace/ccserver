@@ -11,6 +11,7 @@ import yaml
 from drama_engine.core.dsl.components import CandidateResolver, EffectExecutor, ValueResolver
 from drama_engine.core.dsl.components.conditions import ConditionEvaluator
 from drama_engine.core.dsl.plugins import build_default_plugin_registry
+from drama_engine.core.dsl.validator import DslValidator
 from drama_engine.core.engine import Cast, SetAttr, State, StateWriter, Vocabulary
 from drama_engine.core.ports.input import InputBridge
 from drama_engine.core.ports.memory import RuntimeMemoryStore
@@ -122,6 +123,14 @@ class _ScriptedActor:
         return self.responses.pop(0)
 
 
+class _FailingActor(_ScriptedActor):
+    """Actor that raises during action collection."""
+
+    async def act(self, cue: str, collect=None) -> dict:
+        """Raise a deterministic failure."""
+        raise RuntimeError(f"{self.name} failed")
+
+
 class _AsyncInsideAgent:
     """Test ccserver-like Agent with async run()."""
 
@@ -193,6 +202,30 @@ def test_interactive_session_compiler_compiles_new_scripts():
     assert list(story.scenes) == ["intro", "first_choice"]
     assert discussion.flow.type == "state_machine"
     assert discussion.scenes["day_discussion"].schedule.dynamic.enabled is True
+
+
+def test_interactive_session_validator_rejects_bad_dynamic_check_on():
+    """interactive_session validation should reject misspelled dynamic.check_on values."""
+    doc = {
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["A"]},
+        "flow": {"type": "sequence", "scenes": ["talk"]},
+        "scenes": {
+            "talk": {
+                "participants": {"static": ["A"]},
+                "schedule": {
+                    "mode": "single",
+                    "dynamic": {"enabled": True, "check_on": "after mesage"},
+                },
+                "participant_action": {"kind": "speak", "response": {"mode": "text"}},
+            }
+        },
+    }
+
+    report = DslValidator().validate_text(yaml.safe_dump(doc), source_name="bad_check_on.yaml")
+
+    assert report.passed() is False
+    assert any("dynamic.check_on" in issue.message for issue in report.issues)
 
 
 def test_builtin_condition_supports_count_ref_where():
@@ -853,6 +886,139 @@ async def test_dynamic_child_message_hooks_receive_parent_and_child_responses():
 
 
 @pytest.mark.asyncio
+async def test_dynamic_child_single_mode_respects_actor():
+    """dynamic child single schedules should honor actor/first_speaker."""
+    actors = [
+        _ScriptedActor("A", [{"actor": "A", "text": "start", "data": None}]),
+        _ScriptedActor("B", [{"actor": "B", "text": "wrong actor", "data": None}]),
+        _ScriptedActor("C", [{"actor": "C", "text": "chosen actor", "data": None}]),
+    ]
+    ctx = _interactive_ctx({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["A", "B", "C"]},
+        "flow": {"type": "sequence", "scenes": ["chat"]},
+        "scenes": {
+            "chat": {
+                "participants": {"static": ["A", "B", "C"]},
+                "schedule": {
+                    "mode": "single",
+                    "actor": "A",
+                    "dynamic": {
+                        "enabled": True,
+                        "check_on": "after_message",
+                        "detector": {
+                            "patch": {
+                                "type": "push_schedule",
+                                "mode": "single",
+                                "participants": ["B", "C"],
+                                "actor": "C",
+                                "scope": {"id": "child_public", "visibility": "public"},
+                                "max_turns": 1,
+                            }
+                        },
+                    },
+                },
+                "participant_action": {"kind": "speak", "response": {"mode": "text"}},
+            }
+        },
+    }, actors=actors)
+    public_events = []
+    ctx.emit_public = public_events.append
+
+    await SceneExecutor().execute(ctx, ctx.script.scenes["chat"])
+
+    messages = [event for event in public_events if event.get("kind") == "interactive_message"]
+    assert [event["sender"] for event in messages] == ["A", "C"]
+    assert actors[1].responses == [{"actor": "B", "text": "wrong actor", "data": None}]
+
+
+@pytest.mark.asyncio
+async def test_dynamic_child_schedule_pops_when_actor_fails():
+    """dynamic child schedules should close their journal frame on failure."""
+    actors = [
+        _ScriptedActor("A", [{"actor": "A", "text": "start", "data": None}]),
+        _FailingActor("B", []),
+    ]
+    ctx = _interactive_ctx({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["A", "B"]},
+        "flow": {"type": "sequence", "scenes": ["chat"]},
+        "scenes": {
+            "chat": {
+                "participants": {"static": ["A", "B"]},
+                "schedule": {
+                    "mode": "single",
+                    "actor": "A",
+                    "dynamic": {
+                        "enabled": True,
+                        "check_on": "after_message",
+                        "detector": {
+                            "patch": {
+                                "type": "push_schedule",
+                                "mode": "single",
+                                "participants": ["B"],
+                                "max_turns": 1,
+                            }
+                        },
+                    },
+                },
+                "participant_action": {"kind": "speak", "response": {"mode": "text"}},
+            }
+        },
+    }, actors=actors)
+
+    with pytest.raises(RuntimeError, match="B failed"):
+        await SceneExecutor().execute(ctx, ctx.script.scenes["chat"])
+
+    schedule_patches = [record.payload for record in ctx.patch_journal.by_type("schedule_patch")]
+    assert [patch.get("type") for patch in schedule_patches] == ["push_schedule", "pop_schedule"]
+
+
+@pytest.mark.asyncio
+async def test_after_round_referee_stops_loop_until_between_rounds():
+    """after_round referee should run after each round, before later rounds execute."""
+    actors = [
+        _ScriptedActor(
+            "A",
+            [
+                {"actor": "A", "text": "round one", "data": None},
+                {"actor": "A", "text": "round two", "data": None},
+            ],
+        )
+    ]
+    ctx = _interactive_ctx({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["A"]},
+        "flow": {"type": "sequence", "scenes": ["loop"]},
+        "scenes": {
+            "loop": {
+                "participants": {"static": ["A"]},
+                "schedule": {"mode": "loop_until", "max_rounds": 2},
+                "participant_action": {"kind": "speak", "response": {"mode": "text"}},
+                "referee": {
+                    "enabled": True,
+                    "check_on": "after_round",
+                    "rules": [
+                        {
+                            "when": {"left": "MESSAGE.kind", "op": "equal", "right": "round_completed"},
+                            "result": {"end": "round_done"},
+                        }
+                    ],
+                },
+            }
+        },
+    }, actors=actors)
+    public_events = []
+    ctx.emit_public = public_events.append
+
+    result = await SceneExecutor().execute(ctx, ctx.script.scenes["loop"])
+
+    messages = [event for event in public_events if event.get("kind") == "interactive_message"]
+    assert result == "round_done"
+    assert [event["sender"] for event in messages] == ["A"]
+
+
+@pytest.mark.asyncio
 async def test_flow_patch_failure_does_not_pollute_journal():
     """Invalid flow_patch should fail before journal append."""
     ctx = _interactive_ctx({
@@ -1321,6 +1487,33 @@ async def test_candidate_when_inside_provider_uses_async_agent():
 
 
 @pytest.mark.asyncio
+async def test_async_plugin_condition_is_awaited():
+    """plugin conditions used from async runtime paths should await async handlers."""
+    plugins = build_default_plugin_registry()
+
+    async def async_false(_spec: dict, _context: dict) -> bool:
+        return False
+
+    plugins.register_condition("async_false", async_false)
+    ctx = _interactive_ctx({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["A"]},
+        "flow": {"type": "sequence", "scenes": ["start"]},
+        "scenes": {"start": {"participants": {"static": []}}},
+    })
+    ctx.condition_evaluator = ConditionEvaluator(plugins)
+
+    result = await ctx.condition_evaluator.evaluate_async(
+        {"evaluator": "plugin", "name": "async_false"},
+        ctx.state,
+        actor=None,
+        extra=ctx.condition_extra(),
+    )
+
+    assert result is False
+
+
+@pytest.mark.asyncio
 async def test_http_condition_ignores_runtime_only_extra(monkeypatch):
     """HTTP evaluator should not JSON-encode runtime-only Python handles."""
     ctx = _interactive_ctx({
@@ -1477,6 +1670,38 @@ async def test_dynamic_openchat_partial_scope_defaults_public():
     ]
     assert public_messages and public_messages[0]["scope"] == "open_side_chat"
     assert private_messages == []
+
+
+@pytest.mark.asyncio
+async def test_private_scope_messages_are_routed_to_private_sink():
+    """private participant messages should be visible to player private streams."""
+    actors = [
+        _ScriptedActor("A", [{"actor": "A", "text": "secret", "data": None}]),
+        _ScriptedActor("B", []),
+    ]
+    ctx = _interactive_ctx({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["A", "B"]},
+        "flow": {"type": "sequence", "scenes": ["whisper"]},
+        "scenes": {
+            "whisper": {
+                "scope": {"id": "private_a_b", "visibility": "private", "members": ["A", "B"]},
+                "participants": {"static": ["A", "B"]},
+                "schedule": {"mode": "single", "actor": "A"},
+                "participant_action": {"kind": "speak", "response": {"mode": "text"}},
+            }
+        },
+    }, actors=actors)
+    public_events = []
+    private_events = []
+    ctx.emit_public = public_events.append
+    ctx.emit_private = lambda seat_id, event: private_events.append({"seat_id": seat_id, **event})
+
+    await SceneExecutor().execute(ctx, ctx.script.scenes["whisper"])
+
+    assert not [event for event in public_events if event.get("kind") == "interactive_message"]
+    assert [event["seat_id"] for event in private_events] == ["A", "B"]
+    assert all(event["text"] == "secret" for event in private_events)
 
 
 @pytest.mark.asyncio
