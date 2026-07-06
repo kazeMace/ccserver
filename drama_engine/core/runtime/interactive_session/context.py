@@ -41,6 +41,8 @@ class InteractiveExecutionContext:
     current_scene_id: str = ""
     ended: bool = False
     result: str | None = None
+    # 惰性缓存的信息隔离层（按 script.visibility 构建），供 project_for_actor 复用。
+    _firewall: Any = None
 
     def runtime_extra(self) -> dict[str, Any]:
         """Build common extra context for evaluators."""
@@ -141,3 +143,34 @@ class InteractiveExecutionContext:
             return
         at_beat = int(self.state.get_attr("GAME", "round", 0) or 0)
         self.disclosure_ledger.record(actor, fact_ref, value, at_beat=at_beat)
+
+    def project_for_actor(self, actor_name: str, purpose: str = "prompt") -> dict[str, Any]:
+        """为指定 actor 生成受限上下文投影（KnowledgeFirewall）。
+
+        结合三层可见性：
+          - 静态：script.visibility.secret_attrs（他人秘密属性遮蔽）。
+          - 动态：disclosure_ledger.facts_for(actor)（已被披露的事实，如验人结果）。
+          - 授权：actor 视角始终是 restricted（不给全局 state）。
+
+        参数：
+          actor_name — 目标 actor 名（seat_id）。
+          purpose    — 投影用途，默认 "prompt"。
+
+        返回：受限上下文 dict（含 self / others / game / disclosed）。
+        """
+        # 惰性构建 firewall：秘密属性来自编译后的 visibility 策略。
+        if self._firewall is None:
+            from drama_engine.core.visibility.knowledge_firewall import (
+                build_knowledge_firewall_from_policy,
+            )
+            policy = getattr(self.script, "visibility", None)
+            self._firewall = build_knowledge_firewall_from_policy(policy)
+        disclosed = None
+        if self.disclosure_ledger is not None and actor_name:
+            disclosed = self.disclosure_ledger.facts_for(actor_name)
+        return self._firewall.project_context(
+            state=self.state,
+            audience=f"agent:{actor_name}",
+            purpose=purpose,
+            disclosed_facts=disclosed,
+        )

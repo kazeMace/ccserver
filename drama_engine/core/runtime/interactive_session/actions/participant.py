@@ -46,7 +46,7 @@ class ParticipantActionExecutor:
         if hasattr(actor, "set_scene_context"):
             actor.set_scene_context(ctx.current_scene_id, ctx.current_scene_id)
         collect_model = self._models.build(action.kind, action.response, action.target)
-        prompt = self._build_prompt(cue, action, candidates)
+        prompt = self._build_prompt(cue, action, candidates, ctx, actor_name)
         response = await self._act_with_validation(
             actor=actor,
             prompt=prompt,
@@ -239,8 +239,15 @@ class ParticipantActionExecutor:
         cue: str,
         action: ParticipantActionSpec,
         candidates: list[str],
+        ctx: InteractiveExecutionContext | None = None,
+        actor_name: str = "",
     ) -> str:
-        """Build the task prompt sent to actor."""
+        """Build the task prompt sent to actor.
+
+        通过 KnowledgeFirewall 为该 actor 生成受限上下文投影（自己的属性 + 已披露事实），
+        并入 prompt。firewall 保证：只给该 actor「自己天生该知道 + 被告知过」的信息，
+        绝不泄露他人秘密属性——因此这是安全的「加法」，不会造成剧透/开天眼。
+        """
         parts = []
         if cue:
             parts.append(cue)
@@ -248,8 +255,42 @@ class ParticipantActionExecutor:
             parts.append(str(action.cue))
         if candidates:
             parts.append("候选项：" + "、".join(self._candidate_labels(candidates)))
+        # 注入 firewall 受限投影：仅当 ctx/actor 就绪时启用。
+        knowledge = self._build_actor_knowledge(ctx, actor_name)
+        if knowledge:
+            parts.append(knowledge)
         prompt = "\n".join(parts).strip()
         return prompt or "请根据当前场景行动。"
+
+    def _build_actor_knowledge(
+        self,
+        ctx: InteractiveExecutionContext | None,
+        actor_name: str,
+    ) -> str:
+        """把 firewall 受限投影渲染成一段「你已知的信息」文本，供并入 prompt。
+
+        无 ctx / actor 时返回空串（不影响原有 prompt）。只渲染 self 私有属性与
+        已披露事实这两类「该 actor 独有」的信息；公开信息由感知缓冲的场上消息承载。
+        """
+        if ctx is None or not actor_name:
+            return ""
+        try:
+            view = ctx.project_for_actor(actor_name, purpose="prompt")
+        except Exception as exc:  # noqa: BLE001 - 投影失败不应中断发言，仅记录告警。
+            logger.warning("[ParticipantActionExecutor] firewall 投影失败 actor=%s: %s", actor_name, exc)
+            return ""
+        lines: list[str] = []
+        self_attrs = view.get("self") or {}
+        if self_attrs:
+            pairs = "、".join(f"{key}={value}" for key, value in self_attrs.items())
+            lines.append(f"你的身份与状态：{pairs}")
+        disclosed = view.get("disclosed") or {}
+        if disclosed:
+            pairs = "；".join(f"{ref}：{value}" for ref, value in disclosed.items())
+            lines.append(f"你已获知的信息：{pairs}")
+        if not lines:
+            return ""
+        return "【你已知的信息】\n" + "\n".join(lines)
 
     def _candidate_labels(self, candidates: list) -> list[str]:
         """把候选项渲染为可读文本，兼容字符串候选与 {id,text} 结构候选。"""
