@@ -75,3 +75,18 @@ class PatchJournal:
             }
             for record in self._records
         ]
+
+    def restore(self, snapshot: list[dict[str, Any]]) -> None:
+        """从 snapshot() 的快照整体恢复 journal 记录（用于回滚）。"""
+        assert isinstance(snapshot, list), "snapshot 必须是 list"
+        records: list[PatchRecord] = []
+        for item in snapshot:
+            assert isinstance(item, dict), "patch 快照项必须是 dict"
+            records.append(PatchRecord(
+                patch_id=str(item.get("patch_id") or str(uuid.uuid4())),
+                patch_type=str(item.get("patch_type") or ""),
+                payload=dict(item.get("payload") or {}),
+                created_at=float(item.get("created_at") or 0.0),
+                source=dict(item.get("source") or {}),
+            ))
+        self._records = records

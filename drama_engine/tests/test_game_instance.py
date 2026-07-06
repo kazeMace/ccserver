@@ -88,4 +88,4 @@ async def test_control_and_rollback_apis_are_explicitly_unimplemented() -> None:
     with pytest.raises(NotImplementedError):
         instance.submit_control_action("writer", {})
     with pytest.raises(NotImplementedError):
-        instance.rollback_points()
+        instance.apply_control_proposal({})

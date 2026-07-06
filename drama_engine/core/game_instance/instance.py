@@ -16,7 +16,9 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from drama_engine.core.game_instance.rollback import RollbackManager
 from drama_engine.core.game_instance.session_control import SessionControl
+from drama_engine.core.game_instance.snapshots import SnapshotManager
 from drama_engine.core.session.view_projection import (
     build_host_snapshot,
     build_player_snapshot,
@@ -43,7 +45,31 @@ class GameInstance:
             event_store=runtime.event_store,
             action_service=runtime.action_service,
         )
+        # 让 SnapshotManager 能取到 runtime 轻量状态（phase 等）。
+        self.session_control.runtime = runtime
+        self.snapshots = SnapshotManager(
+            session_control=self.session_control,
+            state_provider=self._current_game_state,
+            journal_provider=self._current_patch_journal,
+            memory_provider=lambda: runtime.memory_store,
+        )
+        self.rollback = RollbackManager(
+            session_control=self.session_control,
+            state_provider=self._current_game_state,
+            journal_provider=self._current_patch_journal,
+            memory_provider=lambda: runtime.memory_store,
+        )
         logger.info("[GameInstance] 绑定 session=%s", self.session_id)
+
+    def _current_game_state(self) -> Any:
+        """返回当前游戏事实 engine.State；runner 未就绪时为 None。"""
+        runner = getattr(self.runtime, "runner", None)
+        return getattr(runner, "game_state", None) if runner is not None else None
+
+    def _current_patch_journal(self) -> Any:
+        """返回当前 patch journal；runner 未就绪时为 None。"""
+        runner = getattr(self.runtime, "runner", None)
+        return getattr(runner, "patch_journal", None) if runner is not None else None
 
     # ---- 基本标识 ----
 
@@ -188,21 +214,30 @@ class GameInstance:
         """返回 seat 摘要。"""
         return self.runtime.seat_summary()
 
-    # ---- 回滚（阶段4接入）----
+    # ---- 回滚（Checkpoint + append-only timeline）----
+
+    def checkpoint(self, reason: str) -> dict[str, Any]:
+        """在当前时刻创建一个 checkpoint，返回其摘要。"""
+        assert reason, "reason 不能为空"
+        return self.snapshots.create_checkpoint(reason).to_summary()
 
     def rollback_points(self) -> list[dict[str, Any]]:
-        """返回可回滚的 checkpoint 列表。
-
-        阶段4 SnapshotManager/RollbackManager 接入后实现。
-        """
-        raise NotImplementedError("rollback_points 将在 Checkpoint/Rollback 阶段实现")
+        """返回可回滚的 checkpoint 摘要列表。"""
+        return self.snapshots.list_points()
 
     async def rollback_to(self, checkpoint_id: str) -> None:
         """回滚到指定 checkpoint。
 
-        阶段4 接入后实现。
+        先暂停正在运行的 runner task（若有），再由 RollbackManager 恢复会话过程、
+        游戏状态、patch journal 与记忆。
         """
-        raise NotImplementedError("rollback_to 将在 Checkpoint/Rollback 阶段实现")
+        assert checkpoint_id, "checkpoint_id 不能为空"
+        checkpoint = self.snapshots.get(checkpoint_id)
+        # 暂停后台 flow task，避免回滚与执行竞争；保留 ctx 以便在同一状态上恢复。
+        runner = getattr(self.runtime, "runner", None)
+        if runner is not None and hasattr(runner, "cancel_task"):
+            await runner.cancel_task()
+        self.rollback.restore(checkpoint, policy=self.runtime.session.rollback_policy)
 
 
 __all__ = ["GameInstance"]

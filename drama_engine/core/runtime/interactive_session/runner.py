@@ -111,8 +111,12 @@ class InteractiveSessionRunner(BasicGameRunner):
         self._emit_public({"kind": "session_started", "runtime_type": "interactive_session"})
         self.runtime_state.task = asyncio.create_task(self._run_flow())
 
-    async def reset_runtime_state(self) -> None:
-        """Cancel current task and clear transient runtime state."""
+    async def cancel_task(self) -> None:
+        """仅取消正在运行的 flow task，保留 script/ctx（用于回滚前暂停）。
+
+        与 reset_runtime_state 不同，本方法不清空 ctx，因此回滚后仍可继续在同一
+        InteractiveExecutionContext（含 game_state、patch_journal）上恢复执行。
+        """
         runtime_state = self.runtime_state
         if runtime_state.task is not None and not runtime_state.task.done():
             runtime_state.task.cancel()
@@ -121,8 +125,25 @@ class InteractiveSessionRunner(BasicGameRunner):
             except asyncio.CancelledError:
                 pass
         runtime_state.task = None
+
+    async def reset_runtime_state(self) -> None:
+        """Cancel current task and clear transient runtime state."""
+        await self.cancel_task()
         self._script = None
         self._ctx = None
+
+    @property
+    def game_state(self) -> Any:
+        """返回当前游戏事实状态 engine.State；未 assign 时为 None。
+
+        供 GameInstance 的 SnapshotManager/RollbackManager 采集 GameState 快照。
+        """
+        return self._ctx.state if self._ctx is not None else None
+
+    @property
+    def patch_journal(self) -> Any:
+        """返回当前 patch journal；未 assign 时为 None。"""
+        return self._ctx.patch_journal if self._ctx is not None else None
 
     def summary(self, audience: str, seat_id: str | None = None) -> dict[str, Any]:
         """Return current summary for host/player views."""

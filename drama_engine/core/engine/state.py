@@ -259,9 +259,46 @@ class State:
         返回当前状态的快照（用于调试打印）。
 
         返回：
-          状态字典的副本
+          状态字典的副本（只含实体属性，不含关系）
         """
         return {name: attrs.copy() for name, attrs in self._attrs.items()}
+
+    def full_snapshot(self) -> dict:
+        """
+        返回可完整恢复的深快照，供 checkpoint / 回滚使用。
+
+        与 snapshot() 不同，本方法同时包含实体属性和关系，restore() 可据此
+        把状态完整还原到快照时刻。
+
+        返回：
+          {"attrs": {实体: {属性: 值}}, "relations": [[关系名, 起点, 终点], ...]}
+        """
+        import copy
+
+        return {
+            "attrs": {name: copy.deepcopy(attrs) for name, attrs in self._attrs.items()},
+            "relations": [list(rel) for rel in self._relations],
+        }
+
+    def restore(self, snapshot: dict) -> None:
+        """
+        从 full_snapshot() 的深快照恢复状态。
+
+        会整体替换实体属性、关系和变更日志（日志清空，因为回滚后从 checkpoint
+        重新累积）。词汇表不变。
+
+        参数：
+          snapshot — full_snapshot() 返回的字典
+        """
+        import copy
+
+        assert isinstance(snapshot, dict), "snapshot 必须是 dict"
+        attrs = snapshot.get("attrs") or {}
+        relations = snapshot.get("relations") or []
+        assert isinstance(attrs, dict), "snapshot.attrs 必须是 dict"
+        self._attrs = {name: copy.deepcopy(value) for name, value in attrs.items()}
+        self._relations = {tuple(rel) for rel in relations}
+        self._log = []
 
 
 class StateWriter:
