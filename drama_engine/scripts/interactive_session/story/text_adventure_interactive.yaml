@@ -84,6 +84,66 @@ scenes:
           evaluator: plugin
           name: map_free_text_to_choice
 
+  enter_house_scene:
+    type: scene
+    scope:
+      id: story
+      visibility: public
+    participants:
+      static: []
+    schedule:
+      mode: none
+    participant_action:
+      kind: none
+      response:
+        mode: none
+    controller_action:
+      enabled: true
+      controller:
+        type: system
+      kind: narration
+    publication:
+      messages:
+        - audience:
+            scope: story
+          content:
+            text: "门轴发出低沉的响声，黑暗中的大厅缓缓向你展开。"
+    resolution:
+      effects:
+        - type: set_state
+          path: GAME.ended
+          value: true
+
+  leave_scene:
+    type: scene
+    scope:
+      id: story
+      visibility: public
+    participants:
+      static: []
+    schedule:
+      mode: none
+    participant_action:
+      kind: none
+      response:
+        mode: none
+    controller_action:
+      enabled: true
+      controller:
+        type: system
+      kind: narration
+    publication:
+      messages:
+        - audience:
+            scope: story
+          content:
+            text: "你转身离开旧宅，雨声把身后的低语彻底淹没。"
+    resolution:
+      effects:
+        - type: set_state
+          path: GAME.ended
+          value: true
+
 referee:
   enabled: true
   check_on: after_scene

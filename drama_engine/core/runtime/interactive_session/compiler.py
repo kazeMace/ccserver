@@ -8,6 +8,7 @@ from typing import Any
 
 import yaml
 
+from drama_engine.core.dsl.registry import build_default_dsl_registry
 from drama_engine.core.runtime.interactive_session.models import (
     ControllerActionSpec,
     DynamicScheduleSpec,
@@ -35,6 +36,7 @@ class InteractiveSessionCompiler:
         """初始化 compiler。"""
         self._normalizer = InteractiveSessionNormalizer()
         self._runtime_registry = build_default_runtime_registry()
+        self._dsl_registry = build_default_dsl_registry()
 
     def compile(self, yaml_path: str, params: dict[str, Any] | None = None) -> InteractiveScript:
         """Read and compile a YAML file."""
@@ -63,6 +65,7 @@ class InteractiveSessionCompiler:
             scopes.setdefault(scene.scope.id, scene.scope)
         flow = self._compile_flow(canonical["flow"], scenes)
         referee = self._compile_referee(canonical.get("referee") or {})
+        self._validate_script_contract(scenes, flow, scopes, referee)
         return InteractiveScript(
             meta=dict(canonical.get("meta") or {}),
             runtime=runtime,
@@ -103,6 +106,9 @@ class InteractiveSessionCompiler:
     def _compile_scene(self, scene_id: str, spec: dict[str, Any]) -> SceneSpec:
         """Compile one scene."""
         assert isinstance(spec, dict), "scene spec 必须是 dict"
+        self._validate_participants_spec(spec.get("participants") or {"static": []}, scene_id)
+        self._validate_resolution_spec(spec.get("resolution") or {}, scene_id)
+        self._validate_publication_spec(spec.get("publication") or {}, scene_id)
         return SceneSpec(
             id=str(spec.get("id") or scene_id),
             type=str(spec.get("type") or "scene"),
@@ -122,14 +128,15 @@ class InteractiveSessionCompiler:
     def _compile_schedule(self, spec: dict[str, Any]) -> ScheduleSpec:
         """Compile schedule spec."""
         dynamic_spec = spec.get("dynamic") if isinstance(spec.get("dynamic"), dict) else {}
+        self._validate_schedule_spec(spec, dynamic_spec)
         return ScheduleSpec(
             mode=str(spec.get("mode") or "none"),
             actor=spec.get("actor"),
             order=dict(spec.get("order") or {}),
             planner=dict(spec.get("planner") or {}),
             opening=spec.get("opening") or spec.get("cue") or "",
-            max_turns=int(spec.get("max_turns") or spec.get("rounds") or 1),
-            max_rounds=int(spec.get("max_rounds") or spec.get("rounds") or 1),
+            max_turns=self._int_from_keys(spec, ("max_turns", "rounds"), 1),
+            max_rounds=self._int_from_keys(spec, ("max_rounds", "rounds"), 1),
             timeout_ms=spec.get("timeout_ms"),
             stop_when=spec.get("stop_when") or spec.get("until"),
             dynamic=DynamicScheduleSpec(
@@ -154,6 +161,7 @@ class InteractiveSessionCompiler:
 
     def _compile_controller_action(self, spec: dict[str, Any]) -> ControllerActionSpec:
         """Compile controller action spec."""
+        self._validate_controller_action_spec(spec)
         return ControllerActionSpec(
             enabled=bool(spec.get("enabled", False)),
             controller=dict(spec.get("controller") or {"type": "none"}),
@@ -229,6 +237,249 @@ class InteractiveSessionCompiler:
         """Ensure all flow scene ids exist."""
         for scene_id in scene_ids:
             assert scene_id in scenes, f"flow 引用了未定义 scene: {scene_id}"
+
+    def _int_from_keys(self, spec: dict[str, Any], keys: tuple[str, ...], default: int) -> int:
+        """Read an integer field while preserving explicit zero for validation."""
+        for key in keys:
+            if key in spec and spec.get(key) is not None:
+                return int(spec[key])
+        return default
+
+    def _validate_participants_spec(self, spec: Any, scene_id: str) -> None:
+        """Validate participants selector shape for interactive_session."""
+        if spec == "all":
+            return
+        if isinstance(spec, list):
+            assert all(isinstance(item, str) for item in spec), (
+                f"scene {scene_id} participants 列表必须只包含字符串"
+            )
+            return
+        assert isinstance(spec, dict), f"scene {scene_id} participants 必须是 dict/list/all"
+        allowed = {
+            "static",
+            "filter",
+            "source",
+            "where",
+            "from_state",
+            "from_state_set",
+            "ordered",
+            "order_by",
+            "limit",
+            "min",
+            "evaluator",
+            "provider",
+            "plugin",
+            "name",
+            "id",
+            "input",
+            "fallback",
+            "protocol",
+            "envelope",
+        }
+        unknown = sorted(key for key in spec if key not in allowed)
+        assert not unknown, f"scene {scene_id} participants 包含未知字段 {unknown}"
+        if "static" in spec:
+            assert isinstance(spec.get("static"), list), f"scene {scene_id} participants.static 必须是列表"
+        if "filter" in spec:
+            assert isinstance(spec.get("filter"), dict), f"scene {scene_id} participants.filter 必须是字典"
+        if "where" in spec:
+            assert isinstance(spec.get("where"), dict), f"scene {scene_id} participants.where 必须是条件字典"
+        if "from_state" in spec:
+            assert isinstance(spec.get("from_state"), str), f"scene {scene_id} participants.from_state 必须是字符串"
+        if "from_state_set" in spec:
+            assert isinstance(spec.get("from_state_set"), str), (
+                f"scene {scene_id} participants.from_state_set 必须是字符串"
+            )
+        if "ordered" in spec:
+            assert isinstance(spec.get("ordered"), bool), f"scene {scene_id} participants.ordered 必须是布尔值"
+        if "limit" in spec:
+            assert isinstance(spec.get("limit"), int) and spec.get("limit") > 0, (
+                f"scene {scene_id} participants.limit 必须是正整数"
+            )
+        if "min" in spec:
+            assert isinstance(spec.get("min"), int) and spec.get("min") >= 0, (
+                f"scene {scene_id} participants.min 必须是非负整数"
+            )
+        self._validate_service_provider(spec, f"scene {scene_id} participants")
+
+    def _validate_controller_action_spec(self, spec: dict[str, Any]) -> None:
+        """Validate controller action details that dataclass cannot see."""
+        free_input = spec.get("free_input") or {}
+        if isinstance(free_input, dict) and "mode" in free_input:
+            modes = {"choose_mapping", "branch_then_return", "constrained_continue", "free_continue", "grow_flow"}
+            mode = str(free_input.get("mode") or "")
+            assert mode in modes, f"未知 free_input.mode: {mode}"
+        controller = spec.get("controller") or {}
+        if isinstance(controller, dict):
+            controller_type = str(controller.get("type") or "none")
+            allowed = {"human", "agent", "system", "plugin", "none"}
+            assert controller_type in allowed, f"未知 controller.type: {controller_type}"
+            if controller_type == "plugin":
+                self._validate_service_provider({"provider": "plugin", **controller}, "controller_action.controller")
+
+    def _validate_schedule_spec(self, spec: dict[str, Any], dynamic_spec: dict[str, Any]) -> None:
+        """Validate schedule service declarations."""
+        planner = spec.get("planner")
+        if isinstance(planner, dict):
+            self._validate_service_provider(planner, "schedule.planner")
+        order = spec.get("order")
+        if isinstance(order, dict) and (
+            order.get("evaluator") or order.get("provider") or order.get("type")
+        ):
+            self._validate_service_provider(order, "schedule.order")
+        detector = dynamic_spec.get("detector")
+        if isinstance(detector, dict) and (
+            detector.get("evaluator") or detector.get("provider") or detector.get("type") or detector.get("plugin")
+        ):
+            self._validate_service_provider(detector, "schedule.dynamic.detector")
+        merge_back = dynamic_spec.get("merge_back")
+        if isinstance(merge_back, dict) and str(merge_back.get("mode") or "summary") == "plugin":
+            service = merge_back.get("plugin") or merge_back.get("service") or {"provider": "plugin", **merge_back}
+            if isinstance(service, dict):
+                self._validate_service_provider(service, "schedule.dynamic.merge_back")
+
+    def _validate_resolution_spec(self, resolution: dict[str, Any], scene_id: str) -> None:
+        """Validate resolution fields that affect runtime behavior."""
+        assert isinstance(resolution, dict), f"scene {scene_id} resolution 必须是 dict"
+        selection = resolution.get("selection")
+        if selection is None:
+            return
+        assert isinstance(selection, dict), f"scene {scene_id} resolution.selection 必须是 dict"
+        allowed = {
+            "source",
+            "field",
+            "target_field",
+            "type",
+            "tie_policy",
+            "runoff",
+            "runoff_to",
+            "runoff_scene",
+            "values",
+            "weight",
+            "weights",
+            "threshold",
+            "top_k",
+        }
+        unknown = sorted(key for key in selection if key not in allowed)
+        assert not unknown, f"scene {scene_id} resolution.selection 包含未知字段 {unknown}"
+        tie_policy = selection.get("tie_policy")
+        if tie_policy is not None:
+            allowed_ties = {"alphabetical", "no_winner", "all_tied", "runoff"}
+            assert tie_policy in allowed_ties, (
+                f"scene {scene_id} resolution.selection.tie_policy 必须是 alphabetical/no_winner/all_tied/runoff"
+            )
+
+    def _validate_publication_spec(self, publication: dict[str, Any], scene_id: str) -> None:
+        """Validate publication shape and registered view kinds."""
+        assert isinstance(publication, dict), f"scene {scene_id} publication 必须是 dict"
+        for field_name in ("messages", "disclosures", "views"):
+            if field_name in publication:
+                assert isinstance(publication.get(field_name), list), (
+                    f"scene {scene_id} publication.{field_name} 必须是列表"
+                )
+        for index, view in enumerate(publication.get("views") or []):
+            assert isinstance(view, dict), f"scene {scene_id} publication.views[{index}] 必须是 dict"
+            assert view.get("id") or view.get("view_id"), f"scene {scene_id} publication.views[{index}] 缺少 id"
+            kind = view.get("kind") or view.get("view_kind")
+            assert isinstance(kind, str) and kind, f"scene {scene_id} publication.views[{index}] 缺少 kind"
+            assert self._dsl_registry.has_view_kind(kind), (
+                f"scene {scene_id} publication.views[{index}].kind '{kind}' 不合法"
+            )
+
+    def _validate_script_contract(
+        self,
+        scenes: dict[str, SceneSpec],
+        flow: FlowSpec,
+        scopes: dict[str, ScopeSpec],
+        top_referee: RefereeSpec,
+    ) -> None:
+        """Validate cross-reference contracts after scenes and flow are compiled."""
+        target_ids = set(scenes.keys()) | set(flow.states.keys())
+        scope_ids = set(scopes.keys())
+        for scene in scenes.values():
+            self._validate_controller_targets(scene, target_ids)
+            self._validate_referee_targets(scene.referee, target_ids, f"scene {scene.id}.referee")
+            self._validate_publication_audiences(scene, scope_ids)
+        self._validate_referee_targets(top_referee, target_ids, "referee")
+
+    def _validate_controller_targets(self, scene: SceneSpec, target_ids: set[str]) -> None:
+        """Ensure choice targets point at an executable scene or state."""
+        for index, choice in enumerate(scene.controller_action.choices):
+            if not isinstance(choice, dict):
+                raise AssertionError(f"scene {scene.id} controller_action.choices[{index}] 必须是 dict")
+            target = choice.get("to") or choice.get("scene") or choice.get("state")
+            if target:
+                assert str(target) in target_ids, (
+                    f"scene {scene.id} controller_action.choices[{index}].to 引用了未知 flow target: {target}"
+                )
+        free_input = scene.controller_action.free_input or {}
+        if isinstance(free_input, dict):
+            self._validate_return_to_target(scene.id, free_input.get("return_to"), target_ids)
+
+    def _validate_return_to_target(
+        self,
+        scene_id: str,
+        return_to: Any,
+        target_ids: set[str],
+    ) -> None:
+        """Ensure branch_then_return return target is static and known when declared."""
+        if not return_to:
+            return
+        if isinstance(return_to, str):
+            target = return_to
+        elif isinstance(return_to, dict):
+            target = return_to.get("id") or return_to.get("scene") or return_to.get("state") or return_to.get("to")
+        else:
+            raise AssertionError(f"scene {scene_id} controller_action.free_input.return_to 必须是字符串或字典")
+        if target:
+            assert str(target) in target_ids, (
+                f"scene {scene_id} controller_action.free_input.return_to 引用了未知 flow target: {target}"
+            )
+
+    def _validate_referee_targets(self, referee: RefereeSpec, target_ids: set[str], label: str) -> None:
+        """Validate referee result jump targets where they are static strings."""
+        for index, rule in enumerate(referee.rules):
+            if not isinstance(rule, dict):
+                raise AssertionError(f"{label}.rules[{index}] 必须是 dict")
+            result = rule.get("result")
+            if isinstance(result, dict):
+                target = result.get("jump") or result.get("to")
+                if target:
+                    assert str(target) in target_ids, f"{label}.rules[{index}].result.to 未定义: {target}"
+        if isinstance(referee.result, dict):
+            target = referee.result.get("jump") or referee.result.get("to")
+            if target:
+                assert str(target) in target_ids, f"{label}.result.to 未定义: {target}"
+
+    def _validate_publication_audiences(self, scene: SceneSpec, scope_ids: set[str]) -> None:
+        """Validate string/scope publication audiences."""
+        publication = scene.publication or {}
+        for field_name in ("messages", "disclosures", "views"):
+            for index, item in enumerate(publication.get(field_name) or []):
+                if not isinstance(item, dict):
+                    continue
+                audience = item.get("audience") or item.get("scope")
+                scope_name = None
+                if isinstance(audience, str):
+                    scope_name = audience
+                elif isinstance(audience, dict):
+                    scope_name = audience.get("scope") or audience.get("id")
+                if scope_name:
+                    assert str(scope_name) in scope_ids, (
+                        f"scene {scene.id} publication.{field_name}[{index}] 引用了未知 scope: {scope_name}"
+                    )
+
+    def _validate_service_provider(self, spec: dict[str, Any], label: str) -> None:
+        """Validate runtime-service provider names when present."""
+        if not isinstance(spec, dict):
+            return
+        provider = spec.get("provider") or spec.get("evaluator") or spec.get("type")
+        if provider is None and spec.get("plugin"):
+            provider = "plugin"
+        if provider is None:
+            return
+        allowed = {"builtin", "plugin", "inside", "http", "llm"}
+        assert str(provider) in allowed, f"{label}.provider/evaluator 未知: {provider}"
 
     def _resolve_params(self, doc: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
         """Resolve params defaults and overrides."""

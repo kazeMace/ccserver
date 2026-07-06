@@ -180,6 +180,101 @@ def _interactive_ctx(script_doc: dict, actors: list[_ScriptedActor] | None = Non
     )
 
 
+def test_interactive_session_validator_rejects_contract_gaps():
+    """interactive_session validate should reject typo fields and bad enums."""
+    compiler = InteractiveSessionCompiler()
+    base = {
+        "runtime": {"type": "interactive_session"},
+        "flow": {"type": "sequence", "scenes": ["s"]},
+        "scenes": {"s": {"participants": {"static": []}, "schedule": {"mode": "none"}}},
+    }
+    cases = [
+        {
+            "runtime": base["runtime"],
+            "flow": base["flow"],
+            "scenes": {"s": {"participants": {"plguin": "typo"}, "schedule": {"mode": "none"}}},
+        },
+        {
+            "runtime": base["runtime"],
+            "flow": base["flow"],
+            "scenes": {
+                "s": {
+                    "participants": {"static": []},
+                    "controller_action": {
+                        "enabled": True,
+                        "kind": "free_text",
+                        "controller": {"type": "alien"},
+                    },
+                }
+            },
+        },
+        {
+            "runtime": base["runtime"],
+            "flow": base["flow"],
+            "scenes": {
+                "s": {
+                    "participants": {"static": []},
+                    "resolution": {"selection": {"field": "vote", "tie_policy": "random"}},
+                }
+            },
+        },
+        {
+            "runtime": base["runtime"],
+            "flow": base["flow"],
+            "scenes": {
+                "s": {
+                    "participants": {"static": []},
+                    "publication": {"views": [{"id": "v", "kind": "unsupported_view"}]},
+                }
+            },
+        },
+        {
+            "runtime": base["runtime"],
+            "flow": base["flow"],
+            "scenes": {"s": {"participants": {"static": []}, "schedule": {"mode": "openchat", "max_turns": 0}}},
+        },
+        {
+            "runtime": base["runtime"],
+            "flow": base["flow"],
+            "scenes": {
+                "s": {
+                    "participants": {"static": []},
+                    "controller_action": {
+                        "enabled": True,
+                        "kind": "free_text",
+                        "free_input": {"mode": "branch_then_return", "return_to": {"scene": "missing"}},
+                    },
+                }
+            },
+        },
+    ]
+
+    for doc in cases:
+        assert compiler.validate(doc)
+
+
+def test_interactive_session_validator_rejects_unknown_choice_target():
+    """controller choices should point to an existing scene or state."""
+    errors = InteractiveSessionCompiler().validate({
+        "runtime": {"type": "interactive_session"},
+        "flow": {"type": "sequence", "scenes": ["choice"]},
+        "scenes": {
+            "choice": {
+                "participants": {"static": []},
+                "controller_action": {
+                    "enabled": True,
+                    "kind": "choice",
+                    "controller": {"type": "system"},
+                    "choices": [{"id": "missing", "to": "missing_scene"}],
+                },
+            }
+        },
+    })
+
+    assert errors
+    assert "missing_scene" in errors[0]
+
+
 def test_interactive_session_declaration_and_dispatch():
     """runtime.type=interactive_session should dispatch to the new runner."""
     script_path = "drama_engine/scripts/interactive_session/story/text_adventure_interactive.yaml"
@@ -199,7 +294,8 @@ def test_interactive_session_compiler_compiles_new_scripts():
     discussion = compiler.compile("drama_engine/scripts/interactive_session/deduction/dynamic_schedule_discussion.yaml")
 
     assert story.flow.type == "sequence"
-    assert list(story.scenes) == ["intro", "first_choice"]
+    assert list(story.scenes) == ["intro", "first_choice", "enter_house_scene", "leave_scene"]
+    assert story.scenes["first_choice"].controller_action.choices[0]["to"] == "enter_house_scene"
     assert discussion.flow.type == "state_machine"
     assert discussion.scenes["day_discussion"].schedule.dynamic.enabled is True
 
@@ -1016,6 +1112,213 @@ async def test_after_round_referee_stops_loop_until_between_rounds():
     messages = [event for event in public_events if event.get("kind") == "interactive_message"]
     assert result == "round_done"
     assert [event["sender"] for event in messages] == ["A"]
+
+
+@pytest.mark.asyncio
+async def test_after_round_referee_prevents_dynamic_schedule():
+    """after_round referee should stop before dynamic.check_on=after_round runs."""
+    actors = [
+        _ScriptedActor("A", [{"actor": "A", "text": "round one", "data": None}]),
+        _ScriptedActor("B", [{"actor": "B", "text": "child should not run", "data": None}]),
+    ]
+    ctx = _interactive_ctx({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["A", "B"]},
+        "flow": {"type": "sequence", "scenes": ["loop"]},
+        "scenes": {
+            "loop": {
+                "participants": {"static": ["A"]},
+                "schedule": {
+                    "mode": "loop_until",
+                    "max_rounds": 1,
+                    "dynamic": {
+                        "enabled": True,
+                        "check_on": "after_round",
+                        "detector": {
+                            "patch": {
+                                "type": "push_schedule",
+                                "mode": "single",
+                                "participants": ["B"],
+                                "max_turns": 1,
+                            }
+                        },
+                    },
+                },
+                "participant_action": {"kind": "speak", "response": {"mode": "text"}},
+                "referee": {
+                    "enabled": True,
+                    "check_on": "after_round",
+                    "rules": [
+                        {
+                            "when": {"left": "MESSAGE.kind", "op": "equal", "right": "round_completed"},
+                            "result": {"end": "round_done"},
+                        }
+                    ],
+                },
+            }
+        },
+    }, actors=actors)
+
+    result = await SceneExecutor().execute(ctx, ctx.script.scenes["loop"])
+
+    assert result == "round_done"
+    assert ctx.patch_journal.by_type("schedule_patch") == []
+    assert actors[1].responses == [{"actor": "B", "text": "child should not run", "data": None}]
+
+
+@pytest.mark.asyncio
+async def test_after_scene_referee_check_runs_hook_first():
+    """on_referee_check should also run before after_scene referee checks."""
+    ctx = _interactive_ctx({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["A"]},
+        "flow": {"type": "sequence", "scenes": ["end"]},
+        "scenes": {
+            "end": {
+                "participants": {"static": []},
+                "schedule": {"mode": "none"},
+                "hooks": {
+                    "on_referee_check": [
+                        {"type": "set_state", "path": "SCENE.checked", "value": True}
+                    ]
+                },
+                "referee": {
+                    "enabled": True,
+                    "check_on": "after_scene",
+                    "rules": [
+                        {
+                            "when": {"left": "SCENE.checked", "op": "equal", "right": True},
+                            "result": {"end": "checked"},
+                        }
+                    ],
+                },
+            }
+        },
+    })
+
+    result = await SceneExecutor().execute(ctx, ctx.script.scenes["end"])
+
+    assert result == "checked"
+    assert ctx.state.get_attr("SCENE", "checked") is True
+
+
+@pytest.mark.asyncio
+async def test_schedule_push_pop_hooks_run_from_dynamic_schedule():
+    """Dynamic schedule push/pop should trigger lifecycle hooks."""
+    actors = [
+        _ScriptedActor("A", [{"actor": "A", "text": "ask B", "data": None}]),
+        _ScriptedActor("B", [{"actor": "B", "text": "child", "data": None}]),
+    ]
+    ctx = _interactive_ctx({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["A", "B"]},
+        "flow": {"type": "sequence", "scenes": ["chat"]},
+        "scenes": {
+            "chat": {
+                "participants": {"static": ["A"]},
+                "schedule": {
+                    "mode": "single",
+                    "dynamic": {
+                        "enabled": True,
+                        "check_on": "after_message",
+                        "detector": {
+                            "patch": {
+                                "type": "push_schedule",
+                                "mode": "single",
+                                "participants": ["B"],
+                                "max_turns": 1,
+                            }
+                        },
+                    },
+                },
+                "participant_action": {"kind": "speak", "response": {"mode": "text"}},
+                "hooks": {
+                    "on_schedule_push": [
+                        {"type": "set_state", "path": "SCENE.pushed", "value": True}
+                    ],
+                    "on_schedule_pop": [
+                        {"type": "set_state", "path": "SCENE.popped", "value": True}
+                    ],
+                },
+            }
+        },
+    }, actors=actors)
+
+    await SceneExecutor().execute(ctx, ctx.script.scenes["chat"])
+
+    assert ctx.state.get_attr("SCENE", "pushed") is True
+    assert ctx.state.get_attr("SCENE", "popped") is True
+
+
+@pytest.mark.asyncio
+async def test_participants_source_and_order_by_are_resolved():
+    """participants.source should resolve state refs and apply where/order/limit."""
+    ctx = _interactive_ctx({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["A", "B", "C"]},
+        "flow": {"type": "sequence", "scenes": ["select"]},
+        "scenes": {
+            "select": {
+                "participants": {
+                    "source": "SCENE.group",
+                    "where": {"left": "alive", "op": "equal", "right": True},
+                    "order_by": "seat_index",
+                    "limit": 1,
+                },
+                "schedule": {"mode": "none"},
+            }
+        },
+    }, actors=[
+        _ScriptedActor("A", []),
+        _ScriptedActor("B", []),
+        _ScriptedActor("C", []),
+    ])
+    StateWriter(ctx.state).apply(SetAttr("SCENE", "group", ["B", "C"]))
+    StateWriter(ctx.state).apply(SetAttr("B", "seat_index", 2))
+    StateWriter(ctx.state).apply(SetAttr("C", "seat_index", 1))
+
+    participants = await SceneExecutor()._resolve_participants(ctx, ctx.script.scenes["select"])
+
+    assert participants == ["C"]
+
+
+@pytest.mark.asyncio
+async def test_participants_service_uses_fallback_and_options():
+    """participants service fallback should still apply order_by and limit."""
+
+    class _EmptyParticipantService:
+        async def call_async(self, ctx, spec, purpose, payload):
+            return {"participants": []}
+
+    ctx = _interactive_ctx({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["A", "B", "C"]},
+        "flow": {"type": "sequence", "scenes": ["select"]},
+        "scenes": {
+            "select": {
+                "participants": {
+                    "provider": "plugin",
+                    "name": "select_missing",
+                    "fallback": ["B", "C"],
+                    "order_by": "seat_index",
+                    "limit": 1,
+                },
+                "schedule": {"mode": "none"},
+            }
+        },
+    }, actors=[
+        _ScriptedActor("A", []),
+        _ScriptedActor("B", []),
+        _ScriptedActor("C", []),
+    ])
+    StateWriter(ctx.state).apply(SetAttr("B", "seat_index", 2))
+    StateWriter(ctx.state).apply(SetAttr("C", "seat_index", 1))
+    executor = SceneExecutor()
+    executor._services = _EmptyParticipantService()
+
+    participants = await executor._resolve_participants(ctx, ctx.script.scenes["select"])
+
+    assert participants == ["C"]
 
 
 @pytest.mark.asyncio

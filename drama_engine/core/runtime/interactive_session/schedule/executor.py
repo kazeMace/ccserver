@@ -41,6 +41,7 @@ class ScheduleExecutor:
         cue: str = "",
         after_response: Callable[[dict[str, Any], list[dict[str, Any]]], Awaitable[str | None]] | None = None,
         after_round: Callable[[dict[str, Any], list[dict[str, Any]]], Awaitable[str | None]] | None = None,
+        on_schedule_event: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
     ) -> dict[str, Any]:
         """Execute schedule and return collected responses plus early result."""
         if schedule.mode == "none":
@@ -55,6 +56,7 @@ class ScheduleExecutor:
                 cue,
                 after_response,
                 after_round,
+                on_schedule_event,
             )
         responses = []
         for _round_index in range(self._planner.rounds(schedule)):
@@ -81,6 +83,7 @@ class ScheduleExecutor:
                         responses,
                         response,
                         after_response,
+                        on_schedule_event,
                     )
                     if result is not None:
                         return {"responses": responses, "result": result}
@@ -107,13 +110,14 @@ class ScheduleExecutor:
                             responses,
                             response,
                             after_response,
+                            on_schedule_event,
                         )
                         if result is not None:
                             return {"responses": responses, "result": result}
-            if schedule.dynamic.check_on == "after_message":
-                # Handled per response in _handle_one_response.
-                pass
-            elif schedule.dynamic.check_on == "after_round":
+            result = await self._handle_round_event(after_round, round_responses, responses)
+            if result is not None:
+                return {"responses": responses, "result": result}
+            if schedule.dynamic.check_on == "after_round":
                 child_result = await self._dynamic.maybe_run(
                     ctx=ctx,
                     dynamic=schedule.dynamic,
@@ -126,6 +130,7 @@ class ScheduleExecutor:
                     },
                     after_response=after_response,
                     parent_responses=list(responses),
+                    on_schedule_event=on_schedule_event,
                 )
                 child_responses = list(child_result.get("responses") or [])
                 if child_responses:
@@ -133,9 +138,6 @@ class ScheduleExecutor:
                     ctx.last_responses = list(responses)
                 if child_result.get("result") is not None:
                     return {"responses": responses, "result": child_result.get("result")}
-            result = await self._handle_round_event(after_round, round_responses, responses)
-            if result is not None:
-                return {"responses": responses, "result": result}
             if await self._should_stop(ctx, schedule):
                 break
         return {"responses": responses, "result": None}
@@ -149,6 +151,7 @@ class ScheduleExecutor:
         responses: list[dict[str, Any]],
         response: dict[str, Any],
         after_response: Callable[[dict[str, Any], list[dict[str, Any]]], Awaitable[str | None]] | None,
+        on_schedule_event: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
     ) -> str | None:
         """Record and process one participant response."""
         ctx.last_responses = list(responses)
@@ -173,6 +176,7 @@ class ScheduleExecutor:
                 source_response=response,
                 after_response=after_response,
                 parent_responses=list(responses),
+                on_schedule_event=on_schedule_event,
             )
             child_responses = list(child_result.get("responses") or [])
             if child_responses:
@@ -192,6 +196,7 @@ class ScheduleExecutor:
         cue: str,
         after_response: Callable[[dict[str, Any], list[dict[str, Any]]], Awaitable[str | None]] | None,
         after_round: Callable[[dict[str, Any], list[dict[str, Any]]], Awaitable[str | None]] | None,
+        on_schedule_event: Callable[[dict[str, Any]], Awaitable[None]] | None,
     ) -> dict[str, Any]:
         """Execute open chat one speaker at a time with planner support."""
         responses = []
@@ -222,9 +227,13 @@ class ScheduleExecutor:
                     responses,
                     response,
                     after_response,
+                    on_schedule_event,
                 )
                 if result is not None:
                     return {"responses": responses, "result": result}
+            result = await self._handle_round_event(after_round, round_responses, responses)
+            if result is not None:
+                return {"responses": responses, "result": result}
             if schedule.dynamic.check_on == "after_round":
                 child_result = await self._dynamic.maybe_run(
                     ctx=ctx,
@@ -238,6 +247,7 @@ class ScheduleExecutor:
                     },
                     after_response=after_response,
                     parent_responses=list(responses),
+                    on_schedule_event=on_schedule_event,
                 )
                 child_responses = list(child_result.get("responses") or [])
                 if child_responses:
@@ -245,9 +255,6 @@ class ScheduleExecutor:
                     ctx.last_responses = list(responses)
                 if child_result.get("result") is not None:
                     return {"responses": responses, "result": child_result.get("result")}
-            result = await self._handle_round_event(after_round, round_responses, responses)
-            if result is not None:
-                return {"responses": responses, "result": result}
             if await self._should_stop(ctx, schedule):
                 break
             plan = await self._plan_openchat_next(

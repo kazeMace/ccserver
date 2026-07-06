@@ -38,6 +38,7 @@ class DynamicScheduleExecutor:
         source_response: dict[str, Any],
         after_response: Callable[[dict[str, Any], list[dict[str, Any]]], Awaitable[str | None]] | None = None,
         parent_responses: list[dict[str, Any]] | None = None,
+        on_schedule_event: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
     ) -> dict[str, Any]:
         """Check detector output and run a child schedule when requested."""
         if not dynamic.enabled:
@@ -55,6 +56,7 @@ class DynamicScheduleExecutor:
             return {"responses": [], "result": None}
         if patch.get("type") == "pop_schedule":
             ctx.patch_journal.append("schedule_patch", patch, {"scene": ctx.current_scene_id})
+            await self._notify_schedule_event(on_schedule_event, patch)
             return {"responses": [], "result": None}
         return await self._run_child_schedule(
             ctx,
@@ -65,6 +67,7 @@ class DynamicScheduleExecutor:
             source_response,
             after_response,
             list(parent_responses or []),
+            on_schedule_event,
         )
 
     async def _detect_patch(
@@ -163,6 +166,7 @@ class DynamicScheduleExecutor:
         source_response: dict[str, Any],
         after_response: Callable[[dict[str, Any], list[dict[str, Any]]], Awaitable[str | None]] | None,
         parent_responses: list[dict[str, Any]],
+        on_schedule_event: Callable[[dict[str, Any]], Awaitable[None]] | None,
     ) -> dict[str, Any]:
         """Execute a pushed child schedule immediately."""
         participants = [
@@ -209,6 +213,7 @@ class DynamicScheduleExecutor:
             "scene": ctx.current_scene_id,
             "patch": patch,
         })
+        await self._notify_schedule_event(on_schedule_event, patch)
         responses = []
         result = None
         cue = str(schedule.opening or "临时子对话，请根据当前私密上下文发言。")
@@ -249,6 +254,7 @@ class DynamicScheduleExecutor:
                 "scene": ctx.current_scene_id,
                 "patch": pop_patch,
             })
+            await self._notify_schedule_event(on_schedule_event, pop_patch)
         merge_back = patch.get("merge_back") or dynamic.merge_back
         if merge_back:
             await self._merge_back(ctx, merge_back, responses, patch)
@@ -259,6 +265,16 @@ class DynamicScheduleExecutor:
                 "responses": responses,
             })
         return {"responses": responses, "result": result}
+
+    async def _notify_schedule_event(
+        self,
+        callback: Callable[[dict[str, Any]], Awaitable[None]] | None,
+        patch: dict[str, Any],
+    ) -> None:
+        """Notify scene lifecycle hooks immediately after a schedule patch."""
+        if callback is None:
+            return
+        await callback({"kind": str(patch.get("type") or ""), "patch": dict(patch)})
 
     async def _run_basic_child(
         self,
@@ -506,9 +522,14 @@ class DynamicScheduleExecutor:
         mode = str(merge_back.get("mode") or "summary")
         value: Any
         if mode == "plugin":
+            service_spec = merge_back.get("plugin") or merge_back.get("service")
+            if isinstance(service_spec, str):
+                service_spec = {"provider": "plugin", "name": service_spec}
+            elif not isinstance(service_spec, dict):
+                service_spec = {"provider": "plugin", **merge_back}
             service_result = await self._services.call_async(
                 ctx,
-                merge_back.get("plugin") or merge_back.get("service") or {"provider": "plugin", **merge_back},
+                service_spec,
                 "schedule_merge_back",
                 {
                     **ctx.full_context_payload(),

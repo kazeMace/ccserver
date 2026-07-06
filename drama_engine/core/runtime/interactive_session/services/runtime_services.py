@@ -163,7 +163,7 @@ class RuntimeServiceCaller:
 
     def _service_provider(self, spec: dict[str, Any]) -> str:
         """Resolve the provider family for a runtime service declaration."""
-        evaluator = spec.get("evaluator") or spec.get("type")
+        evaluator = spec.get("provider") or spec.get("evaluator") or spec.get("type")
         if evaluator:
             return str(evaluator)
         if spec.get("provider"):

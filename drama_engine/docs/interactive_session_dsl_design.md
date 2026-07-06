@@ -656,13 +656,15 @@ schedule:
 | 值 | 触发时机 | `include_message` / `source_response` 形状 |
 | --- | --- | --- |
 | `after_message` | 每条 participant message 发布、`hooks.on_message` 与 `referee.check_on: after_message` 检查之后 | 当前单条 actor response，例如 `{actor, text, data}` |
-| `after_round` | 当前 schedule round 完成后、`schedule.stop_when` 与下一轮 planner 之前 | `{kind: round_completed, data: {responses: [...]}, text: ""}` |
+| `after_round` | 当前 schedule round 完成后、`referee.check_on: after_round` 未终止时，`schedule.stop_when` 与下一轮 planner 之前 | `{kind: round_completed, data: {responses: [...]}, text: ""}` |
 
 `single`、`sequential`、`simultaneous` 的 `after_round` 表示一轮 actor 集合执行完成。
 `openchat` 每个 turn 只收集一个 actor，因此 `after_round` 表示一个开放聊天 turn 完成。
 
 `after_message` 适合根据某个 actor 的发言即时插入子调度，例如“A 要求 B 和 C 开放聊天”。
 `after_round` 适合等本轮公开发言都完成后再分析是否插入私聊、分组聊或补充讨论。
+如果同一轮的 `referee.check_on: after_round` 已经返回终局或跳转，runtime 不会再执行
+`dynamic.check_on: after_round` 的 detector。
 
 `after_generated_beat` 不属于 `schedule.dynamic.check_on`，它属于 `referee.check_on`，
 用于 controller free input 生成剧情 beat 后逐段判断是否结束。
@@ -714,6 +716,8 @@ schedule_patch:
 - patch 没有显式声明 `max_rounds` 时，非 `openchat` 子调度会把 `max_turns` 作为兼容轮数。
 - `push_schedule` 写入 journal 后，无论子调度是否抛错，runtime 都会写入配对的
   `pop_schedule`，保证 patch journal 不留下未闭合调度帧。
+- `hooks.on_schedule_push` / `hooks.on_schedule_pop` 在 push/pop journal 写入当下触发，
+  不等父 schedule 完整结束后再回放。
 
 子调度结束后 runtime 执行：
 
@@ -1047,6 +1051,9 @@ hooks:
 - `on_schedule_push`
 - `on_schedule_pop`
 
+`on_referee_check` 会在 scene 级和顶层 referee 的每次检查前触发，包括
+`after_message`、`after_round`、`after_generated_beat` 和 `after_scene`。
+
 ## 16. Resolution
 
 `resolution` 负责处理 action 或 schedule 产生的结果。
@@ -1187,6 +1194,12 @@ schedule_patch:
 `dynamic.check_on` 只允许 `after_message` 和 `after_round`；`referee.check_on`
 只允许 `after_scene`、`after_message`、`after_round` 和 `after_generated_beat`。
 这些值会在 interactive_session 编译/validate 阶段校验，拼写错误不会静默通过。
+`controller_action.choices[].to`、`controller_action.free_input.return_to`、referee
+`result.to/jump` 等静态目标必须引用已存在 scene 或 state；unknown target 在
+validate 阶段视为错误。
+`participants`、`controller.type`、`resolution.selection.tie_policy` 和
+`publication.views.kind` 会做静态 shape/枚举校验，拼写错误不会 fallback 到默认全员或
+system controller。
 
 ## 19. Four Story Interaction Modes
 

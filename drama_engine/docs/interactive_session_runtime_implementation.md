@@ -148,6 +148,8 @@ InteractiveSessionRunner
 - `dynamic.check_on` 支持 `after_message` 和 `after_round`
 - 父级 `mode: openchat` 也支持 `dynamic.check_on: after_round`；每个 openchat turn
   只收集一个 actor，因此一个 turn 即一个 round
+- `dynamic.check_on: after_round` 在本轮 `referee.check_on: after_round` 未终止时才运行；
+  referee 返回终局或跳转后不会再 push 子调度
 - `dynamic.patch` 作为默认 patch 合并
 - `dynamic.merge_back` 在子调度结束后生效，`mode: summary` 会写入 `merge_back.to` 指定的状态路径
 - 子调度尊重 patch 的 `mode / max_turns / max_rounds`
@@ -160,6 +162,7 @@ InteractiveSessionRunner
 - 子调度 `mode: openchat` 未显式声明 `scope.visibility` 时默认按公开聊天发布；显式 private/public scope 会覆盖默认值
 - 子调度消息触发 `on_message/referee.after_message` 时，`responses` 使用父调度已收集
   responses 与当前子调度 responses 的合并视图
+- `on_schedule_push` / `on_schedule_pop` 在 push/pop journal 写入当下触发
 
 基础 schedule order 支持 `seat_order` 和 `reverse_seat_order`，优先读取 state
 中的 `seat_index`，缺失时按玩家名数字后缀自然排序。
@@ -278,6 +281,7 @@ scene executor 支持：
 `simultaneous` 会等待并发批次完成后逐条检查已完成响应。
 `referee.check_on: after_round` 会在每个 schedule round 后立即检查；`loop_until`
 如果第一轮已经满足结束条件，不会继续执行后续 round。
+`on_referee_check` 在每次 referee 检查前触发，包括 `after_scene`。
 
 private scope 的 participant message 会发送给 scope members 的 private sink，同时保留
 host 可观测事件；public scope 仍走 public sink。

@@ -74,8 +74,8 @@ class ScheduleSpec:
             "loop_until",
         }
         assert self.mode in valid_modes, f"未知 schedule.mode: {self.mode}"
-        assert self.max_turns >= 0, "schedule.max_turns 必须是非负整数"
-        assert self.max_rounds >= 0, "schedule.max_rounds 必须是非负整数"
+        assert self.max_turns > 0, "schedule.max_turns 必须是正整数"
+        assert self.max_rounds > 0, "schedule.max_rounds 必须是正整数"
 
 
 @dataclass(slots=True)
@@ -108,7 +108,10 @@ class ControllerActionSpec:
 
     def __post_init__(self) -> None:
         valid_kinds = {"choice", "free_text", "narration", "none"}
+        valid_controllers = {"human", "agent", "system", "plugin", "none"}
         assert self.kind in valid_kinds, f"未知 controller_action.kind: {self.kind}"
+        controller_type = str(self.controller.get("type") or "none")
+        assert controller_type in valid_controllers, f"未知 controller.type: {controller_type}"
 
 
 @dataclass(slots=True)
