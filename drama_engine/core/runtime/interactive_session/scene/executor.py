@@ -582,13 +582,17 @@ class SceneExecutor:
                 "audience": self._audience_label(audience, scene.scope.id),
                 "text": text,
             }
+            private_default = bool(item.get("private", True))
             self._emit_to_audience(
                 ctx,
                 event,
                 audience,
                 default_scope=scene.scope.id,
-                private_default=bool(item.get("private", True)),
+                private_default=private_default,
             )
+            # 记录披露：把「这条事实被告知给哪些席位」写入披露账本，
+            # 供 KnowledgeFirewall 后续为这些席位合成 actor view（如预言家验人结果）。
+            self._record_disclosure(ctx, item, audience, scene.scope.id, private_default)
         for view in publication.get("views", []) or []:
             if not isinstance(view, dict):
                 continue
@@ -692,6 +696,71 @@ class SceneExecutor:
             ctx.emit_private(seat_id, event)
             return
         ctx.emit_host({**event, "seat_id": seat_id})
+
+    def _record_disclosure(
+        self,
+        ctx: InteractiveExecutionContext,
+        item: dict[str, Any],
+        audience: Any,
+        default_scope: str,
+        private_default: bool,
+    ) -> None:
+        """把一条 disclosure 的接收席位与事实值写入披露账本。
+
+        只记录「私发给具体席位」的披露（这才是 firewall 需要合成到 actor view 的动态事实）；
+        公开发布（进 public sink）无需记录，因为它本就人人可见。
+
+        参数：
+          item            — 单条 disclosure DSL 声明。
+          audience        — 已解析出的 audience（str 或 dict）。
+          default_scope   — 该 scene 的默认 scope id。
+          private_default — 该 disclosure 是否默认按私有处理。
+        """
+        # 计算接收席位：复用与 _emit_to_audience 一致的路由判定。
+        recipients = self._private_recipients(audience, private_default)
+        if not recipients:
+            return
+        # fact_ref：优先取 content.ref（如 "GAME.last_inspection_result"），
+        # 否则用 scene 级合成键，保证账本里能区分不同披露。
+        content = item.get("content") or item.get("message") or {}
+        fact_ref = ""
+        if isinstance(content, dict) and content.get("ref"):
+            fact_ref = str(content["ref"])
+        if not fact_ref:
+            fact_ref = f"disclosure:{self._audience_label(audience, default_scope)}"
+        # value：优先取 ref 解析出的原始值（结构化），否则退化为渲染文本。
+        value = self._disclosure_value(ctx, item, content)
+        for seat_id in recipients:
+            ctx.record_disclosure(seat_id, fact_ref, value)
+
+    def _private_recipients(self, audience: Any, private_default: bool) -> list[str]:
+        """返回一条披露实际私发到的席位列表（公开发布返回空）。"""
+        if isinstance(audience, dict):
+            players = audience.get("players") or audience.get("seats")
+            if isinstance(players, list) and players:
+                return [str(seat_id) for seat_id in players]
+            visibility = audience.get("visibility")
+            if visibility == "private" or private_default:
+                return [str(seat_id) for seat_id in (audience.get("members") or [])]
+            return []
+        # audience 是纯字符串：private_default 时进 host（无具体席位），不记账本。
+        return []
+
+    def _disclosure_value(
+        self,
+        ctx: InteractiveExecutionContext,
+        item: dict[str, Any],
+        content: Any,
+    ) -> Any:
+        """解析披露的具体值：ref 取原始（结构化）值，否则取渲染文本。"""
+        if isinstance(content, dict) and "ref" in content:
+            return ctx.value_resolver.resolve(
+                {"ref": content["ref"]},
+                state=ctx.state,
+                responses=ctx.last_responses,
+                extra=ctx.runtime_extra(),
+            )
+        return self._publication_text(ctx, item)
 
     def _audience_label(self, audience: Any, default_scope: str) -> Any:
         """Return a compact audience label for event payloads."""

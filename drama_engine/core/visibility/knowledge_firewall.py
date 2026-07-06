@@ -46,6 +46,7 @@ class KnowledgeFirewall:
         audience: str,
         purpose: str,
         full_payload: dict[str, Any] | None = None,
+        disclosed_facts: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """为指定 audience + purpose 生成受限上下文。
 
@@ -55,6 +56,9 @@ class KnowledgeFirewall:
           purpose      — prompt | action_validation | referee | view | recap | html。
           full_payload — 可选的完整运行时 payload（含 messages/patches 等），授权 audience
                          直接返回它；受限 audience 只从中取白名单片段。
+          disclosed_facts — 可选的「该 actor 已被披露的动态事实」（fact_ref -> value），
+                            由 DisclosureLedger.facts_for(actor) 提供，合成进受限视图的
+                            self.disclosed。授权 audience 不需要（本就拿全量）。
         """
         assert audience, "audience 不能为空"
         assert purpose, "purpose 不能为空"
@@ -64,9 +68,9 @@ class KnowledgeFirewall:
                 return dict(full_payload)
             return {"state": state.snapshot() if state is not None else {}}
 
-        # 受限：actor view —— 只给自己的属性 + 公共信息，隐藏他人秘密。
+        # 受限：actor view —— 只给自己的属性 + 公共信息，隐藏他人秘密，并叠加已披露事实。
         actor = self._actor_of(audience)
-        return self._actor_view(state, actor, purpose)
+        return self._actor_view(state, actor, purpose, disclosed_facts)
 
     def _is_privileged(self, audience: str, purpose: str) -> bool:
         """判断该 audience / purpose 是否授权拿全局上下文。"""
@@ -83,10 +87,24 @@ class KnowledgeFirewall:
                 return audience[len(prefix):]
         return None
 
-    def _actor_view(self, state: Any, actor: str | None, purpose: str) -> dict[str, Any]:
-        """构造 actor view：自己的完整属性 + 他人的公开属性。"""
+    def _actor_view(
+        self,
+        state: Any,
+        actor: str | None,
+        purpose: str,
+        disclosed_facts: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """构造 actor view：自己的完整属性 + 他人的公开属性 + 已披露的动态事实。"""
+        facts = dict(disclosed_facts or {})
         if state is None:
-            return {"audience_kind": "restricted", "purpose": purpose, "self": {}, "others": {}}
+            return {
+                "audience_kind": "restricted",
+                "purpose": purpose,
+                "actor": actor,
+                "self": {},
+                "others": {},
+                "disclosed": facts,
+            }
         snapshot = state.snapshot()
         game = dict(snapshot.get("GAME") or {})
         # GAME 里也可能有秘密（如未公开的身份表），一并遮蔽。
@@ -101,9 +119,10 @@ class KnowledgeFirewall:
             "audience_kind": "restricted",
             "purpose": purpose,
             "actor": actor,
-            "self": self_attrs,   # 自己可见全部属性
-            "others": others,     # 他人只见非秘密属性
+            "self": self_attrs,      # 自己可见全部属性
+            "others": others,        # 他人只见非秘密属性
             "game": public_game,
+            "disclosed": facts,      # 已被披露的动态事实（如验人结果）
         }
 
     def _redact(self, attrs: dict[str, Any]) -> dict[str, Any]:

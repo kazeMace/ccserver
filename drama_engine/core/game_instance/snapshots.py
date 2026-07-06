@@ -42,6 +42,8 @@ class SessionCheckpoint:
     events_snapshot: dict[str, Any] = field(default_factory=dict)
     actions_snapshot: dict[str, Any] = field(default_factory=dict)
     actor_memory_snapshot: dict[str, Any] | None = None
+    # 披露账本快照：回滚时一并恢复（截断语义，与 patch journal 对称）。
+    disclosure_ledger_snapshot: list[dict[str, Any]] = field(default_factory=list)
 
     def to_summary(self) -> dict[str, Any]:
         """返回面向 API 的轻量摘要（不含完整状态体）。"""
@@ -71,22 +73,25 @@ class SnapshotManager:
         state_provider: Any = None,
         journal_provider: Any = None,
         memory_provider: Any = None,
+        disclosure_provider: Any = None,
         clock: Any = None,
     ) -> None:
         """绑定快照来源。
 
         参数：
-          session_control  — SessionControl 实例。
-          state_provider   — 无参可调用，返回当前 engine.State（可为 None，例如 assign 前）。
-          journal_provider — 无参可调用，返回当前 PatchJournal（可为 None）。
-          memory_provider  — 无参可调用，返回 RuntimeMemoryStore（可为 None）。
-          clock            — 无参可调用，返回 ISO 时间字符串；便于测试注入确定性时间。
+          session_control     — SessionControl 实例。
+          state_provider      — 无参可调用，返回当前 engine.State（可为 None，例如 assign 前）。
+          journal_provider    — 无参可调用，返回当前 PatchJournal（可为 None）。
+          memory_provider     — 无参可调用，返回 RuntimeMemoryStore（可为 None）。
+          disclosure_provider — 无参可调用，返回当前 DisclosureLedger（可为 None）。
+          clock               — 无参可调用，返回 ISO 时间字符串；便于测试注入确定性时间。
         """
         assert session_control is not None, "session_control 不能为空"
         self._control = session_control
         self._state_provider = state_provider
         self._journal_provider = journal_provider
         self._memory_provider = memory_provider
+        self._disclosure_provider = disclosure_provider
         self._clock = clock or _default_clock
         self._checkpoints: dict[str, SessionCheckpoint] = {}
         self._order: list[str] = []
@@ -107,6 +112,9 @@ class SnapshotManager:
         memory = self._memory_provider() if self._memory_provider is not None else None
         memory_snapshot = memory.snapshot() if memory is not None else None
 
+        ledger = self._disclosure_provider() if self._disclosure_provider is not None else None
+        disclosure_snapshot = ledger.snapshot() if ledger is not None else []
+
         self._counter += 1
         checkpoint_id = f"ckpt-{self._counter}"
         checkpoint = SessionCheckpoint(
@@ -123,6 +131,7 @@ class SnapshotManager:
             events_snapshot=control_snapshot.get("events", {}),
             actions_snapshot=control_snapshot.get("actions", {}),
             actor_memory_snapshot=memory_snapshot,
+            disclosure_ledger_snapshot=disclosure_snapshot,
         )
         self._checkpoints[checkpoint_id] = checkpoint
         self._order.append(checkpoint_id)

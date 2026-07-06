@@ -32,6 +32,7 @@ class RollbackManager:
         state_provider: Any = None,
         journal_provider: Any = None,
         memory_provider: Any = None,
+        disclosure_provider: Any = None,
     ) -> None:
         """绑定恢复目标（与 SnapshotManager 对称）。"""
         assert session_control is not None, "session_control 不能为空"
@@ -39,6 +40,7 @@ class RollbackManager:
         self._state_provider = state_provider
         self._journal_provider = journal_provider
         self._memory_provider = memory_provider
+        self._disclosure_provider = disclosure_provider
 
     def restore(self, checkpoint: SessionCheckpoint, policy: str = "branch") -> None:
         """把会话恢复到 checkpoint 时刻。
@@ -82,6 +84,11 @@ class RollbackManager:
         if memory is not None and checkpoint.actor_memory_snapshot is not None:
             memory.clear()
             memory.load(checkpoint.actor_memory_snapshot)
+
+        # 5.5 恢复披露账本（截断语义）：回滚到 checkpoint 时刻，其后新增的披露一并撤销。
+        ledger = self._disclosure_provider() if self._disclosure_provider is not None else None
+        if ledger is not None:
+            ledger.restore(checkpoint.disclosure_ledger_snapshot)
 
         # 6. 事件流记录回滚，供 host/回放观察。
         self._control.append_host({

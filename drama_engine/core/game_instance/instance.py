@@ -54,12 +54,14 @@ class GameInstance:
             state_provider=self._current_game_state,
             journal_provider=self._current_patch_journal,
             memory_provider=lambda: runtime.memory_store,
+            disclosure_provider=self._current_disclosure_ledger,
         )
         self.rollback = RollbackManager(
             session_control=self.session_control,
             state_provider=self._current_game_state,
             journal_provider=self._current_patch_journal,
             memory_provider=lambda: runtime.memory_store,
+            disclosure_provider=self._current_disclosure_ledger,
         )
         # 视图统一走 ViewProjector；信息隔离走 KnowledgeFirewall。
         self.views = ViewProjector(runtime)
@@ -78,6 +80,11 @@ class GameInstance:
         """返回当前 patch journal；runner 未就绪时为 None。"""
         runner = getattr(self.runtime, "runner", None)
         return getattr(runner, "patch_journal", None) if runner is not None else None
+
+    def _current_disclosure_ledger(self) -> Any:
+        """返回当前披露账本；runner 未就绪时为 None。"""
+        runner = getattr(self.runtime, "runner", None)
+        return getattr(runner, "disclosure_ledger", None) if runner is not None else None
 
     # ---- 基本标识 ----
 
@@ -257,12 +264,32 @@ class GameInstance:
     # ---- 受限上下文投影（KnowledgeFirewall）----
 
     def project_context(self, audience: str, purpose: str) -> dict[str, Any]:
-        """按 audience + purpose 生成受限上下文（信息隔离）。"""
+        """按 audience + purpose 生成受限上下文（信息隔离）。
+
+        受限 audience（player/agent）会额外叠加该 actor 已被披露的动态事实
+        （如预言家的验人结果），来源为 DisclosureLedger。
+        """
+        disclosed_facts = self._disclosed_facts_for(audience)
         return self.firewall.project_context(
             state=self._current_game_state(),
             audience=audience,
             purpose=purpose,
+            disclosed_facts=disclosed_facts,
         )
+
+    def _disclosed_facts_for(self, audience: str) -> dict[str, Any] | None:
+        """解析 audience 对应 actor 已被披露的事实（player:/agent: 前缀）。"""
+        ledger = self._current_disclosure_ledger()
+        if ledger is None:
+            return None
+        actor = None
+        for prefix in ("player:", "agent:"):
+            if audience.startswith(prefix):
+                actor = audience[len(prefix):]
+                break
+        if not actor:
+            return None
+        return ledger.facts_for(actor)
 
     # ---- Timeline / 事件 ----
 

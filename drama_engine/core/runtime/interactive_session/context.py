@@ -31,6 +31,9 @@ class InteractiveExecutionContext:
     emit_host: Any
     session_metadata: dict[str, Any]
     emit_private: Any = None
+    # 披露账本：记录「谁被告知了哪条动态事实」，供 KnowledgeFirewall 合成 actor view。
+    # None 时 record_disclosure 静默跳过（兼容不需要披露账本的最小 runtime）。
+    disclosure_ledger: Any = None
     base_raw: dict[str, Any] = field(default_factory=dict)
     last_responses: list[dict[str, Any]] = field(default_factory=list)
     message_history: list[dict[str, Any]] = field(default_factory=list)
@@ -122,3 +125,19 @@ class InteractiveExecutionContext:
         except (TypeError, ValueError):
             return
         self.message_history.append(item)
+
+    def record_disclosure(self, actor: str, fact_ref: str, value: Any) -> None:
+        """把一条披露记录写入披露账本（若已挂载）。
+
+        参数：
+          actor    — 被披露的对象（seat_id / actor 名）。
+          fact_ref — 事实引用键（如 "GAME.last_inspection_result"）。
+          value    — 披露的具体值。
+        当 disclosure_ledger 为 None 时静默跳过。at_beat 取当前 GAME.round。
+        """
+        if self.disclosure_ledger is None:
+            return
+        if not actor or not fact_ref:
+            return
+        at_beat = int(self.state.get_attr("GAME", "round", 0) or 0)
+        self.disclosure_ledger.record(actor, fact_ref, value, at_beat=at_beat)
