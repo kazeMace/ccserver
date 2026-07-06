@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
+from typing import Any
+
 from drama_engine.core.runtime.interactive_session.actions.participant import ParticipantActionExecutor
 from drama_engine.core.runtime.interactive_session.context import InteractiveExecutionContext
 from drama_engine.core.runtime.interactive_session.models import (
@@ -36,41 +39,80 @@ class ScheduleExecutor:
         scope: ScopeSpec,
         participants: list[str],
         cue: str = "",
-    ) -> list[dict]:
-        """Execute schedule and return collected responses."""
+        after_response: Callable[[dict[str, Any], list[dict[str, Any]]], Awaitable[str | None]] | None = None,
+    ) -> dict[str, Any]:
+        """Execute schedule and return collected responses plus early result."""
         if schedule.mode == "none":
-            return []
+            return {"responses": [], "result": None}
         if schedule.mode == "openchat":
-            return await self._execute_openchat(ctx, schedule, action, scope, participants, cue)
+            return await self._execute_openchat(
+                ctx,
+                schedule,
+                action,
+                scope,
+                participants,
+                cue,
+                after_response,
+            )
         responses = []
         for _round_index in range(self._planner.rounds(schedule)):
             actor_order = self._planner.order(ctx, participants, schedule)
-            round_responses = await self._participant_actions.collect_many(
-                ctx=ctx,
-                actor_names=actor_order,
-                action=action,
-                scope=scope,
-                participants=participants,
-                mode=schedule.mode,
-                cue=cue,
-                timeout_ms=schedule.timeout_ms,
-            )
-            responses.extend(round_responses)
-            ctx.last_responses = list(responses)
-            if schedule.dynamic.check_on == "after_message":
+            round_responses: list[dict[str, Any]] = []
+            if schedule.mode == "simultaneous":
+                round_responses = await self._participant_actions.collect_many(
+                    ctx=ctx,
+                    actor_names=actor_order,
+                    action=action,
+                    scope=scope,
+                    participants=participants,
+                    mode=schedule.mode,
+                    cue=cue,
+                    timeout_ms=schedule.timeout_ms,
+                )
                 for response in round_responses:
-                    child_responses = await self._dynamic.maybe_run(
-                        ctx=ctx,
-                        dynamic=schedule.dynamic,
-                        parent_action=action,
-                        parent_participants=participants,
-                        source_response=response,
+                    responses.append(response)
+                    result = await self._handle_one_response(
+                        ctx,
+                        schedule,
+                        action,
+                        participants,
+                        responses,
+                        response,
+                        after_response,
                     )
-                    if child_responses:
-                        responses.extend(child_responses)
-                        ctx.last_responses = list(responses)
+                    if result is not None:
+                        return {"responses": responses, "result": result}
+            else:
+                for actor_name in actor_order:
+                    actor_responses = await self._participant_actions.collect_many(
+                        ctx=ctx,
+                        actor_names=[actor_name],
+                        action=action,
+                        scope=scope,
+                        participants=participants,
+                        mode=schedule.mode,
+                        cue=cue,
+                        timeout_ms=schedule.timeout_ms,
+                    )
+                    for response in actor_responses:
+                        round_responses.append(response)
+                        responses.append(response)
+                        result = await self._handle_one_response(
+                            ctx,
+                            schedule,
+                            action,
+                            participants,
+                            responses,
+                            response,
+                            after_response,
+                        )
+                        if result is not None:
+                            return {"responses": responses, "result": result}
+            if schedule.dynamic.check_on == "after_message":
+                # Handled per response in _handle_one_response.
+                pass
             elif schedule.dynamic.check_on == "after_round":
-                child_responses = await self._dynamic.maybe_run(
+                child_result = await self._dynamic.maybe_run(
                     ctx=ctx,
                     dynamic=schedule.dynamic,
                     parent_action=action,
@@ -80,13 +122,58 @@ class ScheduleExecutor:
                         "data": {"responses": list(round_responses)},
                         "text": "",
                     },
+                    after_response=after_response,
                 )
+                child_responses = list(child_result.get("responses") or [])
                 if child_responses:
                     responses.extend(child_responses)
                     ctx.last_responses = list(responses)
+                if child_result.get("result") is not None:
+                    return {"responses": responses, "result": child_result.get("result")}
             if await self._should_stop(ctx, schedule):
                 break
-        return responses
+        return {"responses": responses, "result": None}
+
+    async def _handle_one_response(
+        self,
+        ctx: InteractiveExecutionContext,
+        schedule: ScheduleSpec,
+        action: ParticipantActionSpec,
+        participants: list[str],
+        responses: list[dict[str, Any]],
+        response: dict[str, Any],
+        after_response: Callable[[dict[str, Any], list[dict[str, Any]]], Awaitable[str | None]] | None,
+    ) -> str | None:
+        """Record and process one participant response."""
+        ctx.last_responses = list(responses)
+        ctx.record_message({
+            "kind": "interactive_message",
+            "runtime_type": "interactive_session",
+            "scene": ctx.current_scene_id,
+            "sender": response.get("actor"),
+            "text": response.get("text", ""),
+            "data": response.get("data"),
+        })
+        if after_response is not None:
+            result = await after_response(response, list(responses))
+            if result is not None:
+                return result
+        if schedule.dynamic.check_on == "after_message":
+            child_result = await self._dynamic.maybe_run(
+                ctx=ctx,
+                dynamic=schedule.dynamic,
+                parent_action=action,
+                parent_participants=participants,
+                source_response=response,
+                after_response=after_response,
+            )
+            child_responses = list(child_result.get("responses") or [])
+            if child_responses:
+                responses.extend(child_responses)
+                ctx.last_responses = list(responses)
+            if child_result.get("result") is not None:
+                return str(child_result["result"])
+        return None
 
     async def _execute_openchat(
         self,
@@ -96,7 +183,8 @@ class ScheduleExecutor:
         scope: ScopeSpec,
         participants: list[str],
         cue: str,
-    ) -> list[dict]:
+        after_response: Callable[[dict[str, Any], list[dict[str, Any]]], Awaitable[str | None]] | None,
+    ) -> dict[str, Any]:
         """Execute open chat one speaker at a time with planner support."""
         responses = []
         current_actor = self._planner.openchat_first_actor(ctx, participants, schedule)
@@ -116,19 +204,19 @@ class ScheduleExecutor:
             )
             if not round_responses:
                 break
-            responses.extend(round_responses)
-            ctx.last_responses = list(responses)
             for response in round_responses:
-                child_responses = await self._dynamic.maybe_run(
-                    ctx=ctx,
-                    dynamic=schedule.dynamic,
-                    parent_action=action,
-                    parent_participants=participants,
-                    source_response=response,
+                responses.append(response)
+                result = await self._handle_one_response(
+                    ctx,
+                    schedule,
+                    action,
+                    participants,
+                    responses,
+                    response,
+                    after_response,
                 )
-                if child_responses:
-                    responses.extend(child_responses)
-                    ctx.last_responses = list(responses)
+                if result is not None:
+                    return {"responses": responses, "result": result}
             if await self._should_stop(ctx, schedule):
                 break
             plan = await self._plan_openchat_next(
@@ -143,7 +231,7 @@ class ScheduleExecutor:
                 break
             current_actor = str(plan.get("next_speaker") or "")
             current_cue = str(plan.get("cue") or cue or "")
-        return responses
+        return {"responses": responses, "result": None}
 
     async def _plan_openchat_next(
         self,

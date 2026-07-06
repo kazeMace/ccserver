@@ -11,6 +11,7 @@ import os
 import urllib.error
 import urllib.request
 import inspect
+import asyncio
 from difflib import SequenceMatcher
 from typing import Any
 
@@ -106,9 +107,9 @@ class RuntimeServiceCaller:
         if provider == "plugin":
             return await self._call_plugin_async(ctx, service_spec, purpose, service_payload)
         if provider == "http":
-            return self._call_http(ctx, service_spec, purpose, service_payload)
+            return await self._call_http_async(ctx, service_spec, purpose, service_payload)
         if provider == "llm":
-            return self._call_llm(ctx, service_spec, purpose, service_payload)
+            return await asyncio.to_thread(self._call_llm, ctx, service_spec, purpose, service_payload)
         if provider == "builtin":
             return self._call_builtin(ctx, service_spec, purpose, service_payload)
         return self.call_sync(ctx, service_spec, purpose, service_payload)
@@ -260,6 +261,16 @@ class RuntimeServiceCaller:
                 "purpose": purpose,
             })
             return {}
+
+    async def _call_http_async(
+        self,
+        ctx: InteractiveExecutionContext,
+        spec: dict[str, Any],
+        purpose: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Call an HTTP runtime service without blocking the event loop."""
+        return await asyncio.to_thread(self._call_http, ctx, spec, purpose, payload)
 
     def _call_llm(
         self,

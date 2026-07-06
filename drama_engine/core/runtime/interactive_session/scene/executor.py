@@ -38,6 +38,7 @@ class SceneExecutor:
 
         await self._run_hooks(ctx, scene, "on_enter")
         participants = await self._resolve_participants(ctx, scene)
+        ctx.session_metadata["interactive_current_participants"] = list(participants)
         cue = self._render_cue(ctx, scene.participant_action.cue)
         ctx.emit_public({
             "kind": "interactive_scene_started",
@@ -48,19 +49,24 @@ class SceneExecutor:
 
         await self._run_hooks(ctx, scene, "on_before_action")
         schedule_patch_count = len(ctx.patch_journal.by_type("schedule_patch"))
-        responses = await self._schedule.execute(
+        schedule_result = await self._schedule.execute(
             ctx=ctx,
             schedule=scene.schedule,
             action=scene.participant_action,
             scope=scene.scope,
             participants=participants,
             cue=cue,
+            after_response=lambda response, current_responses: self._handle_message_event(
+                ctx,
+                scene,
+                response,
+                current_responses,
+            ),
         )
+        responses = list(schedule_result.get("responses") or [])
         ctx.last_responses = responses
         await self._run_schedule_hooks(ctx, scene, schedule_patch_count)
-        for response in responses:
-            await self._run_hooks(ctx, scene, "on_message", event=response)
-        result = await self._check_referee_events(ctx, scene, "after_message", responses)
+        result = schedule_result.get("result")
         if result is not None:
             return await self._finish_scene(ctx, scene, responses, result)
         result = await self._check_referee_events(ctx, scene, "after_round", [{"kind": "round_completed"}])
@@ -79,6 +85,18 @@ class SceneExecutor:
         if result is None:
             result = await self._referee.check(ctx, ctx.script.referee, "after_scene", scene=scene)
         return await self._finish_scene(ctx, scene, responses, result)
+
+    async def _handle_message_event(
+        self,
+        ctx: InteractiveExecutionContext,
+        scene: SceneSpec,
+        response: dict[str, Any],
+        current_responses: list[dict[str, Any]],
+    ) -> str | None:
+        """Run on_message hooks and after_message referee for one response."""
+        ctx.last_responses = list(current_responses)
+        await self._run_hooks(ctx, scene, "on_message", event=response)
+        return await self._check_referee_events(ctx, scene, "after_message", [response])
 
     async def _finish_scene(
         self,
@@ -121,6 +139,7 @@ class SceneExecutor:
                 "beat": item,
                 "controller_result": controller_result,
             }
+            ctx.record_message(event)
             ctx.emit_public(event)
             result = await self._check_referee_events(ctx, scene, "after_generated_beat", [event])
             if result is not None:

@@ -33,6 +33,7 @@ class InteractiveExecutionContext:
     emit_private: Any = None
     base_raw: dict[str, Any] = field(default_factory=dict)
     last_responses: list[dict[str, Any]] = field(default_factory=list)
+    message_history: list[dict[str, Any]] = field(default_factory=list)
     current_state_id: str = ""
     current_scene_id: str = ""
     ended: bool = False
@@ -47,6 +48,9 @@ class InteractiveExecutionContext:
             "patch_journal": self.patch_journal.snapshot(),
             "metadata": self.serializable_metadata(),
             "base_flow": deepcopy(self.base_raw),
+            "messages": deepcopy(self.message_history),
+            "players": list(self.state.get_attr("GAME", "players", []) or []),
+            "participants": list(self.session_metadata.get("interactive_current_participants") or []),
         }
 
     def serializable_metadata(self) -> dict[str, Any]:
@@ -101,10 +105,20 @@ class InteractiveExecutionContext:
             "runtime_type": "interactive_session",
             "state": self.state.snapshot(),
             "players": list(self.state.get_attr("GAME", "players", []) or []),
+            "participants": list(self.session_metadata.get("interactive_current_participants") or []),
             "current_state": self.current_state_id,
             "current_scene": self.current_scene_id,
             "last_responses": list(self.last_responses),
+            "messages": deepcopy(self.message_history),
             "patches": self.patch_journal.snapshot(),
             "metadata": self.serializable_metadata(),
             "base_flow": deepcopy(self.base_raw),
         }
+
+    def record_message(self, event: dict[str, Any]) -> None:
+        """Append a serializable message-like event to runtime history."""
+        try:
+            item = json.loads(json.dumps(event, ensure_ascii=False))
+        except (TypeError, ValueError):
+            return
+        self.message_history.append(item)

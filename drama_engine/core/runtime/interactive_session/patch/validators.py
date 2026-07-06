@@ -50,6 +50,11 @@ class PatchValidator:
                 errors.append("add_scene 需要 scene 字典")
             elif not (scene.get("id") or scene.get("name")):
                 errors.append("add_scene.scene 需要 id 或 name")
+            if script is not None and patch.get("state"):
+                state_names = set(getattr(script.flow, "states", {}).keys())
+                state_id = str(patch.get("state"))
+                if state_id not in state_names:
+                    errors.append(f"add_scene.state 不存在: {state_id}")
         if patch_type == "add_transition":
             if not patch.get("from") or not patch.get("to"):
                 errors.append("add_transition 需要 from/to")

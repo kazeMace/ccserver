@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import random
+import re
 from typing import Any
 
 from drama_engine.core.runtime.interactive_session.context import InteractiveExecutionContext
@@ -28,9 +29,21 @@ class ScheduleModePlanner:
             result = list(participants)
             random.shuffle(result)
             return result
+        if schedule.order.get("strategy") in {"seat_order", "seat_index"}:
+            return sorted(participants, key=lambda name: self._seat_sort_key(ctx, name))
         if schedule.order.get("strategy") == "reverse_seat_order":
-            return list(reversed(participants))
+            return sorted(participants, key=lambda name: self._seat_sort_key(ctx, name), reverse=True)
         return list(participants)
+
+    def _seat_sort_key(self, ctx: InteractiveExecutionContext, name: str) -> tuple:
+        """Sort by state seat_index, then by natural numeric suffix."""
+        seat_index = ctx.state.get_attr(str(name), "seat_index")
+        if seat_index is not None:
+            return (0, int(seat_index), str(name))
+        match = re.search(r"(\d+)$", str(name))
+        if match:
+            return (1, int(match.group(1)), str(name))
+        return (2, str(name))
 
     def rounds(self, schedule: ScheduleSpec) -> int:
         """Return number of schedule rounds."""

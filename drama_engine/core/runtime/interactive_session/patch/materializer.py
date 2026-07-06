@@ -87,7 +87,9 @@ class FlowMaterializer:
             return
         states = flow.setdefault("states", {})
         state_key = state_id or str(flow.get("initial") or next(iter(states), "main"))
-        state = states.setdefault(state_key, {"scenes": [], "transitions": []})
+        if state_key not in states:
+            raise ValueError(f"add_scene.state 不存在: {state_key}")
+        state = states[state_key]
         self._insert_after(state.setdefault("scenes", []), scene_id, after)
 
     def _insert_after(self, items: list[Any], value: str, after: str) -> None:

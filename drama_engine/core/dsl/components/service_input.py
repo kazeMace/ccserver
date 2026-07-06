@@ -124,11 +124,14 @@ class ServiceInputBuilder:
 
     def _messages(self, payload: dict[str, Any]) -> list[Any]:
         """Return the best available message/response list."""
+        fallback: list[Any] = []
         for key in ("messages", "last_responses", "responses"):
             value = payload.get(key)
             if isinstance(value, list):
-                return deepcopy(value)
-        return []
+                if value:
+                    return deepcopy(value)
+                fallback = value
+        return deepcopy(fallback)
 
     def _last_message(self, payload: dict[str, Any]) -> Any:
         """Return one source message if present."""

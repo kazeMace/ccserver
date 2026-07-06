@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from drama_engine.core.engine import SetAttr
@@ -33,13 +34,14 @@ class DynamicScheduleExecutor:
         parent_action: ParticipantActionSpec,
         parent_participants: list[str],
         source_response: dict[str, Any],
-    ) -> list[dict[str, Any]]:
+        after_response: Callable[[dict[str, Any], list[dict[str, Any]]], Awaitable[str | None]] | None = None,
+    ) -> dict[str, Any]:
         """Check detector output and run a child schedule when requested."""
         if not dynamic.enabled:
-            return []
+            return {"responses": [], "result": None}
         patch = await self._detect_patch(ctx, dynamic, parent_participants, source_response)
         if not patch:
-            return []
+            return {"responses": [], "result": None}
         errors = self._validator.validate_schedule_patch(patch)
         if errors:
             ctx.emit_host({
@@ -47,10 +49,10 @@ class DynamicScheduleExecutor:
                 "message": f"schedule_patch 校验失败: {errors}",
                 "scene": ctx.current_scene_id,
             })
-            return []
+            return {"responses": [], "result": None}
         if patch.get("type") == "pop_schedule":
             ctx.patch_journal.append("schedule_patch", patch, {"scene": ctx.current_scene_id})
-            return []
+            return {"responses": [], "result": None}
         return await self._run_child_schedule(
             ctx,
             patch,
@@ -58,6 +60,7 @@ class DynamicScheduleExecutor:
             parent_action,
             parent_participants,
             source_response,
+            after_response,
         )
 
     async def _detect_patch(
@@ -154,7 +157,8 @@ class DynamicScheduleExecutor:
         parent_action: ParticipantActionSpec,
         parent_participants: list[str],
         source_response: dict[str, Any],
-    ) -> list[dict[str, Any]]:
+        after_response: Callable[[dict[str, Any], list[dict[str, Any]]], Awaitable[str | None]] | None,
+    ) -> dict[str, Any]:
         """Execute a pushed child schedule immediately."""
         participants = [
             str(name)
@@ -168,7 +172,7 @@ class DynamicScheduleExecutor:
                 "scene": ctx.current_scene_id,
                 "patch": patch,
             })
-            return []
+            return {"responses": [], "result": None}
         scope_spec = patch.get("scope") or {}
         scope = ScopeSpec(
             id=str(scope_spec.get("id") or "dynamic_scope"),
@@ -199,7 +203,7 @@ class DynamicScheduleExecutor:
         responses = []
         cue = str(schedule.opening or "临时子对话，请根据当前私密上下文发言。")
         if schedule.mode == "openchat":
-            responses = await self._run_openchat_child(
+            child_result = await self._run_openchat_child(
                 ctx,
                 schedule,
                 parent_action,
@@ -208,11 +212,15 @@ class DynamicScheduleExecutor:
                 cue,
                 patch,
                 source_response,
+                after_response,
             )
+            responses = list(child_result.get("responses") or [])
+            result = child_result.get("result")
         else:
+            result = None
             actor_order = participants
             for _round_index in range(max(1, schedule.max_rounds)):
-                responses.extend(await self._participant_actions.collect_many(
+                round_responses = await self._participant_actions.collect_many(
                     ctx=ctx,
                     actor_names=actor_order,
                     action=parent_action,
@@ -221,8 +229,14 @@ class DynamicScheduleExecutor:
                     mode=schedule.mode,
                     cue=cue,
                     timeout_ms=schedule.timeout_ms,
-                ))
-                ctx.last_responses = list(responses)
+                )
+                for response in round_responses:
+                    responses.append(response)
+                    result = await self._handle_child_response(ctx, responses, response, after_response)
+                    if result is not None:
+                        break
+                if result is not None:
+                    break
                 if await self._should_stop(ctx, schedule):
                     break
         pop_patch = {"type": "pop_schedule", "parent_scene": ctx.current_scene_id}
@@ -242,7 +256,7 @@ class DynamicScheduleExecutor:
                 "merge_back": merge_back,
                 "responses": responses,
             })
-        return responses
+        return {"responses": responses, "result": result}
 
     async def _run_openchat_child(
         self,
@@ -254,9 +268,11 @@ class DynamicScheduleExecutor:
         cue: str,
         patch: dict[str, Any],
         source_response: dict[str, Any],
-    ) -> list[dict[str, Any]]:
+        after_response: Callable[[dict[str, Any], list[dict[str, Any]]], Awaitable[str | None]] | None,
+    ) -> dict[str, Any]:
         """Run a dynamic openchat child schedule through planner decisions."""
         responses: list[dict[str, Any]] = []
+        result = None
         current_actor = self._resolve_first_openchat_actor(participants, schedule.actor)
         current_cue = cue
         for turn_index in range(max(1, schedule.max_turns)):
@@ -274,8 +290,13 @@ class DynamicScheduleExecutor:
             )
             if not round_responses:
                 break
-            responses.extend(round_responses)
-            ctx.last_responses = list(responses)
+            for response in round_responses:
+                responses.append(response)
+                result = await self._handle_child_response(ctx, responses, response, after_response)
+                if result is not None:
+                    break
+            if result is not None:
+                break
             if await self._should_stop(ctx, schedule):
                 break
             plan = await self._plan_openchat_next(
@@ -292,7 +313,28 @@ class DynamicScheduleExecutor:
                 break
             current_actor = str(plan.get("next_speaker") or "")
             current_cue = str(plan.get("cue") or cue)
-        return responses
+        return {"responses": responses, "result": result}
+
+    async def _handle_child_response(
+        self,
+        ctx: InteractiveExecutionContext,
+        responses: list[dict[str, Any]],
+        response: dict[str, Any],
+        after_response: Callable[[dict[str, Any], list[dict[str, Any]]], Awaitable[str | None]] | None,
+    ) -> str | None:
+        """Record and process one child schedule response."""
+        ctx.last_responses = list(responses)
+        ctx.record_message({
+            "kind": "interactive_message",
+            "runtime_type": "interactive_session",
+            "scene": ctx.current_scene_id,
+            "sender": response.get("actor"),
+            "text": response.get("text", ""),
+            "data": response.get("data"),
+        })
+        if after_response is None:
+            return None
+        return await after_response(response, list(responses))
 
     async def _plan_openchat_next(
         self,

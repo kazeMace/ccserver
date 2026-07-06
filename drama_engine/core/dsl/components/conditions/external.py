@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import inspect
+import asyncio
 import urllib.error
 import urllib.request
 from typing import Any, Callable
@@ -123,7 +124,16 @@ class ExternalConditionEvaluator:
             )
             if client_result is not None:
                 return self._result_passes(cond, client_result, state, actor, candidate, responses, extra, entity)
-        return self.evaluate(cond, state, actor, candidate, responses, extra, entity)
+        return await asyncio.to_thread(
+            self.evaluate,
+            cond,
+            state,
+            actor,
+            candidate,
+            responses,
+            extra,
+            entity,
+        )
 
     def _result_passes(
         self,
@@ -454,6 +464,9 @@ class ExternalConditionEvaluator:
         extra = extra or {}
         return {
             "state": state.snapshot(),
+            "players": list(state.get_attr("GAME", "players") or []),
+            "participants": list(extra.get("participants") or extra.get("players") or []),
+            "messages": list(extra.get("messages") or extra.get("message_history") or []),
             "actor": actor,
             "candidate": candidate,
             "entity": entity,

@@ -1522,6 +1522,131 @@ async def test_schedule_timeout_skips_unfinished_simultaneous_actor():
 
 
 @pytest.mark.asyncio
+async def test_after_message_referee_stops_before_next_sequential_actor():
+    """after_message referee should run after each response, not after the whole schedule."""
+    actors = [
+        _ScriptedActor("A", [{"actor": "A", "text": "stop now", "data": None}]),
+        _ScriptedActor("B", [{"actor": "B", "text": "should not run", "data": None}]),
+    ]
+    ctx = _interactive_ctx({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["A", "B"]},
+        "flow": {"type": "sequence", "scenes": ["talk"]},
+        "scenes": {
+            "talk": {
+                "participants": {"static": ["A", "B"]},
+                "scope": {"id": "public", "visibility": "public"},
+                "schedule": {"mode": "sequential"},
+                "participant_action": {"kind": "speak", "response": {"mode": "text"}},
+                "referee": {
+                    "enabled": True,
+                    "check_on": "after_message",
+                    "rules": [
+                        {
+                            "when": {"left": "MESSAGE.text", "op": "contains", "right": "stop"},
+                            "result": {"end": "stopped"},
+                        }
+                    ],
+                },
+            }
+        },
+    }, actors=actors)
+    public_events = []
+    ctx.emit_public = public_events.append
+
+    result = await SceneExecutor().execute(ctx, ctx.script.scenes["talk"])
+
+    messages = [event for event in public_events if event.get("kind") == "interactive_message"]
+    assert result == "stopped"
+    assert [event["sender"] for event in messages] == ["A"]
+    assert len(ctx.message_history) == 1
+
+
+@pytest.mark.asyncio
+async def test_external_condition_input_include_players_participants_and_messages(monkeypatch):
+    """External evaluator input include flags should expose players, participants and message history."""
+    ctx = _interactive_ctx({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["A"]},
+        "flow": {"type": "sequence", "scenes": ["start"]},
+        "scenes": {"start": {"participants": {"static": []}}},
+    })
+    ctx.session_metadata["interactive_current_participants"] = ["A"]
+    ctx.record_message({"kind": "interactive_message", "sender": "A", "text": "hello"})
+    captured = []
+
+    class _Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return b'{"result": true}'
+
+    def fake_urlopen(request, timeout=0):
+        captured.append(yaml.safe_load(request.data.decode("utf-8")))
+        return _Response()
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+    passed = await ctx.condition_evaluator.evaluate_async(
+        {
+            "evaluator": "http",
+            "url": "http://127.0.0.1/check",
+            "input": {
+                "include_players": True,
+                "include_participants": True,
+                "include_messages": True,
+            },
+        },
+        ctx.state,
+        actor=None,
+        responses=[],
+        extra=ctx.condition_extra(),
+    )
+
+    assert passed is True
+    assert captured[0]["input"]["players"] == ["A"]
+    assert captured[0]["input"]["participants"] == ["A"]
+    assert captured[0]["input"]["messages"] == [
+        {"kind": "interactive_message", "sender": "A", "text": "hello"}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_schedule_seat_order_sorts_by_state_seat_index():
+    """schedule.order.strategy=seat_order should use seat_index from state."""
+    actors = [
+        _ScriptedActor("A", [{"actor": "A", "text": "A speaks", "data": None}]),
+        _ScriptedActor("B", [{"actor": "B", "text": "B speaks", "data": None}]),
+    ]
+    ctx = _interactive_ctx({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["A", "B"]},
+        "flow": {"type": "sequence", "scenes": ["talk"]},
+        "scenes": {
+            "talk": {
+                "participants": {"static": ["A", "B"]},
+                "scope": {"id": "public", "visibility": "public"},
+                "schedule": {"mode": "sequential", "order": {"strategy": "seat_order"}},
+                "participant_action": {"kind": "speak", "response": {"mode": "text"}},
+            }
+        },
+    }, actors=actors)
+    StateWriter(ctx.state).apply(SetAttr("A", "seat_index", 2))
+    StateWriter(ctx.state).apply(SetAttr("B", "seat_index", 1))
+    public_events = []
+    ctx.emit_public = public_events.append
+
+    await SceneExecutor().execute(ctx, ctx.script.scenes["talk"])
+
+    messages = [event for event in public_events if event.get("kind") == "interactive_message"]
+    assert [event["sender"] for event in messages] == ["B", "A"]
+
+
+@pytest.mark.asyncio
 async def test_dynamic_child_openchat_uses_planner_stop():
     """dynamic child openchat should ask its planner after each generated message."""
     actors = [
@@ -1717,3 +1842,29 @@ def test_add_transition_requires_existing_states():
         )
 
     assert ctx.patch_journal.by_type("flow_patch") == []
+
+
+def test_add_scene_requires_existing_state_when_state_is_declared():
+    """add_scene patches should not create undeclared state_machine states."""
+    ctx = _interactive_ctx({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["A"]},
+        "flow": {"type": "state_machine", "initial": "start", "states": {"start": {"scenes": ["noop"]}}},
+        "scenes": {"noop": {"participants": {"static": []}, "schedule": {"mode": "none"}}},
+    })
+
+    with pytest.raises(ValueError, match="add_scene.state"):
+        FreeInputExecutor()._validate_and_preview_flow_patch(
+            ctx,
+            {
+                "type": "add_scene",
+                "state": "missing",
+                "scene": {
+                    "id": "generated",
+                    "participants": {"static": []},
+                    "schedule": {"mode": "none"},
+                    "participant_action": {"kind": "none", "response": {"mode": "none"}},
+                },
+            },
+            "flow_patch",
+        )
