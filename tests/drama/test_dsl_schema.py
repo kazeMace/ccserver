@@ -14,7 +14,7 @@ def test_core_dsl_capabilities_export_registry_values():
         for item in capabilities["scene_types"]
     }
 
-    assert {"game_session", "group_chat", "dynamic_story"}.issubset(runtime_names)
+    assert runtime_names == {"interactive_session"}
     assert "openchat" in capabilities["dialogue_policies"]
     assert scene_defaults["vote"]["dialogue_policy.mode"] == "simultaneous"
     assert "player_select" in capabilities["input_widgets"]
@@ -26,14 +26,14 @@ def test_core_dsl_capabilities_export_registry_values():
     assert {"board", "cards", "story"}.issubset(extension_names)
     assert "builtin.party.free_discussion" in game_pack_plugins
     assert "builtin.board.generic" in rule_set_plugins
+    # 迁移后 authoring 模板全部指向 interactive_session 代表脚本。
     assert {
         "social_deduction",
-        "mission_vote",
         "word_guess",
         "card_game",
         "board_game",
         "map_economy",
-        "ttrpg",
+        "story",
         "group_chat",
     }.issubset(authoring_types)
 

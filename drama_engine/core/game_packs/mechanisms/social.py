@@ -59,16 +59,37 @@ def _pick_winner(counter: Counter, tie: str) -> Any:
 def _handle_eliminate(effect: dict, context: Any) -> None:
     """把指定实体标记为出局。
 
-    effect 字段：
-      target — 出局对象；缺省时读 GAME.last_vote_target。
+    effect 字段（按优先级）：
+      target — 出局对象，可为字面量名或 {ref: "ENTITY.attr"}（从状态解析）。
+      from   — 状态路径 "ENTITY.attr"，从该路径读出局对象。
+      缺省时读 GAME.last_vote_target。
     """
-    target = effect.get("target")
-    if not target:
-        target = context.state.get_attr("GAME", "last_vote_target")
+    target = _resolve_target(effect, context.state)
     if not target:
         return
     context.writer.apply(SetAttr(target, "alive", False))
     logger.debug("[eliminate] target=%s", target)
+
+
+def _resolve_target(effect: dict, state: Any) -> Any:
+    """解析出局对象：支持字面量 / {ref: path} / from 路径 / 默认 last_vote_target。"""
+    target = effect.get("target")
+    if isinstance(target, dict) and "ref" in target:
+        return _read_state_path(state, str(target["ref"]))
+    if target:
+        return target
+    from_path = effect.get("from")
+    if isinstance(from_path, str) and "." in from_path:
+        return _read_state_path(state, from_path)
+    return state.get_attr("GAME", "last_vote_target")
+
+
+def _read_state_path(state: Any, path: str) -> Any:
+    """读取 "ENTITY.attr" 状态路径的值。"""
+    if "." not in path:
+        return None
+    entity, attr = path.split(".", 1)
+    return state.get_attr(entity, attr)
 
 
 def _cond_faction_cleared(spec: dict, context: dict) -> bool:
@@ -100,10 +121,36 @@ def _split_path(path: str) -> tuple[str, str]:
     return entity, attr
 
 
+def _handle_resolve_night(effect: dict, context: Any) -> None:
+    """结算夜晚死亡：狼刀目标在未被守护/解药救下时出局。
+
+    读取状态：
+      GAME.night_target — 狼刀目标。
+      GAME.guard_target — 守卫本晚守护对象（相同则免死）。
+      GAME.witch_save   — 女巫是否对刀口用解药（True 则免死）。
+    写入：目标 alive=False（若死亡）、GAME.night_deaths 记录本晚死亡列表，并清空当晚标记。
+    """
+    state = context.state
+    target = state.get_attr("GAME", "night_target")
+    guard_target = state.get_attr("GAME", "guard_target")
+    witch_save = bool(state.get_attr("GAME", "witch_save"))
+    deaths: list[Any] = []
+    if target and not witch_save and target != guard_target:
+        context.writer.apply(SetAttr(target, "alive", False))
+        deaths.append(target)
+    context.writer.apply(SetAttr("GAME", "night_deaths", deaths))
+    # 清空当晚一次性标记，避免残留到下一晚。
+    context.writer.apply(SetAttr("GAME", "night_target", None))
+    context.writer.apply(SetAttr("GAME", "guard_target", None))
+    context.writer.apply(SetAttr("GAME", "witch_save", False))
+    logger.debug("[resolve_night] deaths=%s", deaths)
+
+
 def register(api: Any) -> None:
     """把 social 机制注册进 PluginRegistry。"""
     api.register_effect("tally_votes", _handle_tally_votes)
     api.register_effect("eliminate", _handle_eliminate)
+    api.register_effect("resolve_night", _handle_resolve_night)
     api.register_condition("social.faction_cleared", _cond_faction_cleared)
 
 

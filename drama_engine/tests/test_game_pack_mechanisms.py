@@ -130,6 +130,33 @@ def test_social_tally_votes_and_eliminate() -> None:
     assert state.get_attr("Player_1", "alive") is False
 
 
+def test_social_resolve_night_respects_guard_and_save() -> None:
+    """resolve_night：被守护或用解药则免死，否则出局。"""
+    registry = _registry_with(social)
+    # 情形1：守护免死
+    state = _new_state(2)
+    StateWriter(state).apply(SetAttr("GAME", "night_target", "Player_1"))
+    StateWriter(state).apply(SetAttr("GAME", "guard_target", "Player_1"))
+    registry.execute_effect({"type": "resolve_night"}, _ctx(state))
+    assert state.get_attr("Player_1", "alive") is True
+    assert state.get_attr("GAME", "night_deaths") == []
+
+    # 情形2：无守护、无解药则出局
+    StateWriter(state).apply(SetAttr("GAME", "night_target", "Player_2"))
+    registry.execute_effect({"type": "resolve_night"}, _ctx(state))
+    assert state.get_attr("Player_2", "alive") is False
+    assert state.get_attr("GAME", "night_deaths") == ["Player_2"]
+
+
+def test_social_eliminate_resolves_ref_target() -> None:
+    """eliminate 支持 {ref: GAME.night_target} 解析出局对象。"""
+    registry = _registry_with(social)
+    state = _new_state(2)
+    StateWriter(state).apply(SetAttr("GAME", "night_target", "Player_1"))
+    registry.execute_effect({"type": "eliminate", "target": {"ref": "GAME.night_target"}}, _ctx(state))
+    assert state.get_attr("Player_1", "alive") is False
+
+
 def test_cards_draw_play_and_hand_empty() -> None:
     """draw_card 摸牌 + play_card 出牌 + hand_empty 判定。"""
     registry = _registry_with(cards)

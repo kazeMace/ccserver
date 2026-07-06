@@ -13,12 +13,12 @@ from drama_engine.cli import author_script, run_cli
 @pytest.mark.parametrize(
     ("idea", "expected_type", "expected_runtime"),
     [
-        ("做一个 12 人狼人身份推理游戏，有夜晚行动和白天投票", "social_deduction", "game_session"),
-        ("做一个四人 UNO 卡牌游戏，玩家摸牌出牌，先清空手牌获胜", "card_game", "game_session"),
-        ("做一个双人五子棋棋盘游戏，轮流落子", "board_game", "game_session"),
-        ("做一个大富翁地图经济游戏，有骰子、资产和交易", "map_economy", "game_session"),
-        ("做一个多 Agent 圆桌群聊，讨论新游戏创意", "group_chat", "group_chat"),
-        ("做一个 DND 动态剧情冒险，由 DM 推进故事", "ttrpg", "dynamic_story"),
+        ("做一个 12 人狼人身份推理游戏，有夜晚行动和白天投票", "social_deduction", "interactive_session"),
+        ("做一个四人 UNO 卡牌游戏，玩家摸牌出牌，先清空手牌获胜", "card_game", "interactive_session"),
+        ("做一个双人五子棋棋盘游戏，轮流落子", "board_game", "interactive_session"),
+        ("做一个大富翁地图经济游戏，有骰子、资产和交易", "map_economy", "interactive_session"),
+        ("做一个多 Agent 圆桌群聊，讨论新游戏创意", "group_chat", "interactive_session"),
+        ("做一个 DND 动态剧情冒险，由 DM 推进故事", "story", "interactive_session"),
     ],
 )
 def test_authoring_acceptance_paths_generate_valid_scripts(

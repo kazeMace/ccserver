@@ -242,24 +242,27 @@ class InteractiveSessionRunner(BasicGameRunner):
         from drama_engine.core.dsl.plugins import PluginApi
         from drama_engine.core.game_packs import build_default_game_pack_runtime_registry
 
-        pack_spec = script.game_pack or script.rule_set or {}
-        plugin_id = pack_spec.get("plugin") if isinstance(pack_spec, dict) else None
-        if not plugin_id:
+        # game_pack 与 rule_set 都可能声明机制集合，需要同时安装（例如大富翁 = dice + economy）。
+        specs = [spec for spec in (script.game_pack, script.rule_set) if isinstance(spec, dict) and spec.get("plugin")]
+        if not specs:
             return
         registry = build_default_game_pack_runtime_registry()
-        assert registry.has(plugin_id), f"未知 game_pack/rule_set: {plugin_id}"
-        default_config = registry.install(plugin_id, PluginApi(plugins))
-        merged_config = dict(default_config)
-        merged_config.update(dict(pack_spec.get("config") or {}))
-        # 把 config 写入 GAME，机制通过 state.get_attr("GAME", key) 读取。
+        api = PluginApi(plugins)
         writer = StateWriter(state)
-        for key, value in merged_config.items():
-            writer.apply(SetAttr("GAME", str(key), value))
-        logger.info(
-            "[InteractiveSessionRunner] 安装 game_pack=%s config_keys=%s",
-            plugin_id,
-            sorted(merged_config.keys()),
-        )
+        for spec in specs:
+            plugin_id = spec["plugin"]
+            assert registry.has(plugin_id), f"未知 game_pack/rule_set: {plugin_id}"
+            default_config = registry.install(plugin_id, api)
+            merged_config = dict(default_config)
+            merged_config.update(dict(spec.get("config") or {}))
+            # 把 config 写入 GAME，机制通过 state.get_attr("GAME", key) 读取。
+            for key, value in merged_config.items():
+                writer.apply(SetAttr("GAME", str(key), value))
+            logger.info(
+                "[InteractiveSessionRunner] 安装 game_pack=%s config_keys=%s",
+                plugin_id,
+                sorted(merged_config.keys()),
+            )
 
     def _emit_public(self, event: dict[str, Any]) -> None:
         """Publish event to public and host streams."""

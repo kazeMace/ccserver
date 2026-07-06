@@ -1,0 +1,136 @@
+meta:
+  title: 大富翁（简化环形地图）
+  description: 用 interactive_session + builtin.dice + builtin.economy 机制实现的简化大富翁。掷骰移动、经过起点领钱、破产判定全部来自机制；步数由服务端掷骰，不信客户端。
+
+runtime:
+  type: interactive_session
+
+# 引入骰子 + 经济两个机制集合。dice 提供可回放掷骰与环形移动；economy 提供加钱/扣钱/破产。
+game_pack:
+  plugin: builtin.dice
+rule_set:
+  plugin: builtin.economy
+
+extensions:
+  dice:
+    enabled: true
+  economy:
+    enabled: true
+
+players:
+  count: 2
+  ids: [Player_1, Player_2]
+  initial_attrs:
+    alive: true
+    position: 0
+    cash: 1500
+
+state:
+  GAME:
+    board_size: 20
+    dice_seed: 7
+    start_bonus: 200
+    winner: null
+
+flow:
+  type: state_machine
+  initial: p1_turn
+  states:
+    p1_turn:
+      scenes:
+        - player1_move
+      transitions:
+        - to: p2_turn
+          when:
+            left: GAME.winner
+            op: equal
+            right: null
+    p2_turn:
+      scenes:
+        - player2_move
+      transitions:
+        - to: p1_turn
+          when:
+            left: GAME.winner
+            op: equal
+            right: null
+
+scenes:
+  player1_move:
+    type: scene
+    scope:
+      id: board
+      visibility: public
+    participants:
+      static: [Player_1]
+    schedule:
+      mode: single
+      actor: Player_1
+    participant_action:
+      kind: none
+    controller_action:
+      enabled: false
+    resolution:
+      # 掷骰 → 环形移动 → 经过起点领取奖励（服务端掷骰，防作弊）。
+      effects:
+        - type: roll_dice
+          sides: 6
+        - type: advance_on_track
+          actor: Player_1
+        - type: credit
+          target: Player_1
+          amount: 200
+    referee:
+      enabled: true
+      check_on: after_scene
+      rules:
+        - when:
+            evaluator: plugin
+            name: economy.bankrupt
+            input:
+              entity: Player_2
+          result:
+            effects:
+              - type: set_state
+                path: GAME.winner
+                value: Player_1
+            end: player_1_win
+
+  player2_move:
+    type: scene
+    scope:
+      id: board
+      visibility: public
+    participants:
+      static: [Player_2]
+    schedule:
+      mode: single
+      actor: Player_2
+    participant_action:
+      kind: none
+    controller_action:
+      enabled: false
+    resolution:
+      effects:
+        - type: roll_dice
+          sides: 6
+        - type: advance_on_track
+          actor: Player_2
+        - type: credit
+          target: Player_2
+          amount: 200
+    referee:
+      enabled: true
+      check_on: after_scene
+      rules:
+        - when:
+            evaluator: plugin
+            name: economy.bankrupt
+            input:
+              entity: Player_1
+          result:
+            effects:
+              - type: set_state
+                path: GAME.winner
+                value: Player_2
+            end: player_2_win

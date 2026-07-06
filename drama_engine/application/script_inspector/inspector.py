@@ -103,12 +103,12 @@ class ScriptInspector:
             runtime_type = spec
             config = {}
         elif isinstance(spec, dict):
-            runtime_type = spec.get("type", "game_session")
+            runtime_type = spec.get("type", "interactive_session")
             config = spec.get("config") or {}
             if not isinstance(config, dict):
                 config = {}
         else:
-            runtime_type = "game_session"
+            runtime_type = "interactive_session"
             config = {}
         return {
             "type": runtime_type,
@@ -340,6 +340,20 @@ class ScriptInspector:
         return result
 
     def _scene_docs(self, doc: dict[str, Any]) -> list[dict[str, Any]]:
+        """返回 scene 文档列表，兼容 interactive_session 的顶层 scenes map。
+
+        interactive_session：scenes 是顶层 map（scene_id -> scene）。
+        旧结构：flow.scenes 是列表。两者都支持。
+        """
+        top_scenes = doc.get("scenes")
+        if isinstance(top_scenes, dict):
+            result = []
+            for scene_id, scene in top_scenes.items():
+                if isinstance(scene, dict):
+                    merged = dict(scene)
+                    merged.setdefault("name", scene_id)
+                    result.append(merged)
+            return result
         return [scene for scene in ((doc.get("flow") or {}).get("scenes") or []) if isinstance(scene, dict)]
 
     def _scene_effects(self, scene: dict[str, Any]) -> list[dict[str, Any]]:

@@ -388,8 +388,8 @@ async def test_party_session_runtime_uses_summary_provider_for_runner_state() ->
     """Runtime summary should include BasicGameRunner status via SummaryProvider."""
     registry = SessionRegistry()
     runtime = await registry.create_session(
-        game_id="group_chat",
-        script_path="drama_engine/scripts/group_chat/chat/group_chat_room_lite.yaml",
+        game_id="werewolf",
+        script_path="drama_engine/scripts/interactive_session/deduction/werewolf.yaml",
         seat_ids=["Player_1", "Player_2"],
         params={"use_runner": True, "dry_run": True},
     )
@@ -398,34 +398,29 @@ async def test_party_session_runtime_uses_summary_provider_for_runner_state() ->
     host_summary = runtime.host_summary()
 
     assert runtime.summary_provider is not None
-    assert summary["runner"]["runtime_type"] == "group_chat"
+    assert summary["runner"]["runtime_type"] == "interactive_session"
     assert summary["runtime_state"]["phase"] == "idle"
-    assert summary["runtime_state"]["metadata"]["runner"] == "GroupChatRunner"
+    assert summary["runtime_state"]["metadata"]["runner"] == "InteractiveSessionRunner"
     assert host_summary["audience"] == "host"
-    assert host_summary["runner_summary"]["runner"] == "GroupChatRunner"
+    assert host_summary["runner_summary"]["runner"] == "InteractiveSessionRunner"
 
 
 @pytest.mark.asyncio
-async def test_specialized_runners_use_runtime_action_router_for_human_actors() -> None:
-    """GroupChat/DynamicStory human actors should receive runtime action router."""
+async def test_interactive_runner_uses_runtime_action_router_for_human_actors() -> None:
+    """interactive_session human actors should receive the runtime action router."""
     registry = SessionRegistry()
-    scenarios = [
-        ("group_chat", "drama_engine/scripts/group_chat/chat/group_chat_room_lite.yaml", "GroupChatRunner"),
-        ("dynamic_story", "drama_engine/scripts/dynamic_story/story/dynamic_story_runtime_lite.yaml", "DynamicStoryRunner"),
-    ]
-    for game_id, script_path, runner_name in scenarios:
-        runtime = await registry.create_session(
-            game_id=game_id,
-            script_path=script_path,
-            seat_ids=["Player_1", "Player_2"],
-            human_seat_ids={"Player_1"},
-            params={"use_runner": True, "dry_run": True},
-        )
-        await runtime.assign()
-        actor = runtime.actor_runtime.cast.get("Player_1")
+    runtime = await registry.create_session(
+        game_id="werewolf",
+        script_path="drama_engine/scripts/interactive_session/deduction/werewolf.yaml",
+        seat_ids=["Player_1", "Player_2"],
+        human_seat_ids={"Player_1"},
+        params={"use_runner": True, "dry_run": True},
+    )
+    await runtime.assign()
+    actor = runtime.actor_runtime.cast.get("Player_1")
 
-        assert runtime.runner.__class__.__name__ == runner_name
-        assert actor._controller._input_port._service is runtime.action_service
+    assert runtime.runner.__class__.__name__ == "InteractiveSessionRunner"
+    assert actor._controller._input_port._service is runtime.action_service
 
 
 @pytest.mark.asyncio

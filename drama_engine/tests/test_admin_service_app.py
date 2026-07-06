@@ -97,9 +97,10 @@ def test_builtin_script_catalog_reads_nested_script_library(tmp_path: Path) -> N
     repository = ScriptRepository(data_root=tmp_path / "admin_scripts")
     records = repository.list_scripts(include_builtin=True)
 
-    assert any(game.game_id == "werewolf_v1_guard" for game in games)
-    assert any("scripts/fixed_flow/deduction/werewolf_v1_guard.yaml" in game.script_path for game in games)
-    assert any(record.script_id == "builtin_group_chat_room_lite" for record in records)
+    # 迁移后脚本库只含 interactive_session 分类目录（旧脚本已归档 legacy_scripts）。
+    assert any(game.game_id == "werewolf" for game in games)
+    assert any("scripts/interactive_session/deduction/werewolf.yaml" in game.script_path for game in games)
+    assert any(record.script_id == "builtin_gomoku" for record in records)
     assert all(not record.path.endswith(".preset.yaml") for record in records if record.source == "builtin")
 
 

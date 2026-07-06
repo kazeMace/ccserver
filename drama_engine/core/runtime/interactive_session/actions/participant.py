@@ -247,9 +247,19 @@ class ParticipantActionExecutor:
         if action.cue and str(action.cue) not in parts:
             parts.append(str(action.cue))
         if candidates:
-            parts.append("候选项：" + "、".join(candidates))
+            parts.append("候选项：" + "、".join(self._candidate_labels(candidates)))
         prompt = "\n".join(parts).strip()
         return prompt or "请根据当前场景行动。"
+
+    def _candidate_labels(self, candidates: list) -> list[str]:
+        """把候选项渲染为可读文本，兼容字符串候选与 {id,text} 结构候选。"""
+        labels: list[str] = []
+        for item in candidates:
+            if isinstance(item, dict):
+                labels.append(str(item.get("text") or item.get("id") or item))
+            else:
+                labels.append(str(item))
+        return labels
 
     async def _deliver_response(
         self,

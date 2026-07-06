@@ -1,0 +1,319 @@
+meta:
+  title: 狼人杀（12 人守卫局：预女猎守）
+  description: |
+    用 interactive_session + builtin.social 机制实现的 12 人守卫板：4 狼 + 4 民 +
+    预言家 + 女巫 + 猎人 + 守卫。夜晚顺序守卫守护→狼刀→预言家查验→女巫用药，
+    夜晚结算尊重守护与解药；白天讨论投票。夜晚各角色用 private scope 物理隔离。
+
+runtime:
+  type: interactive_session
+
+game_pack:
+  plugin: builtin.social
+
+control_plane:
+  host:
+    type: system
+
+players:
+  count: 12
+  ids:
+    - Player_1
+    - Player_2
+    - Player_3
+    - Player_4
+    - Player_5
+    - Player_6
+    - Player_7
+    - Player_8
+    - Player_9
+    - Player_10
+    - Player_11
+    - Player_12
+  initial_attrs:
+    alive: true
+
+# 身份分配：4 狼 + 预女猎守 + 4 民。
+state:
+  Player_1: { role: wolf, faction: wolf }
+  Player_2: { role: wolf, faction: wolf }
+  Player_3: { role: wolf, faction: wolf }
+  Player_4: { role: wolf, faction: wolf }
+  Player_5: { role: seer, faction: good }
+  Player_6: { role: witch, faction: good }
+  Player_7: { role: hunter, faction: good }
+  Player_8: { role: guard, faction: good }
+  Player_9: { role: villager, faction: good }
+  Player_10: { role: villager, faction: good }
+  Player_11: { role: villager, faction: good }
+  Player_12: { role: villager, faction: good }
+  GAME:
+    round: 1
+    phase: night
+    night_target: null
+    guard_target: null
+    witch_save: false
+    last_vote_target: null
+
+flow:
+  type: state_machine
+  initial: night
+  states:
+    night:
+      scenes:
+        - guard_protect
+        - wolf_kill
+        - seer_check
+        - witch_action
+        - night_resolve
+      transitions:
+        - to: day
+    day:
+      scenes:
+        - day_discussion
+        - day_vote
+      transitions:
+        - to: night
+
+scenes:
+  # 守卫守护：private scope 只给守卫。守护对象写入 GAME.guard_target。
+  guard_protect:
+    type: scene
+    scope:
+      id: guard_room
+      visibility: private
+      members: [Player_8]
+    participants:
+      filter:
+        source: GAME.players
+        where:
+          left: role
+          op: equal
+          right: guard
+    schedule:
+      mode: single
+      actor: Player_8
+    participant_action:
+      kind: choose
+      target: required
+      candidates:
+        filter:
+          source: GAME.players
+          where:
+            left: alive
+            op: equal
+            right: true
+      response:
+        mode: structured
+        schema: choose
+      cue: "请选择今晚要守护的玩家（不能连续两晚守同一人）。"
+    controller_action:
+      enabled: false
+    resolution:
+      # 用计票机制把守护目标写入 GAME.guard_target（单人选择即计一票）。
+      effects:
+        - type: tally_votes
+          field: choice
+          to: GAME.guard_target
+          tie: first
+
+  # 狼队私聊选刀。
+  wolf_kill:
+    type: scene
+    scope:
+      id: wolf_den
+      visibility: private
+      members: [Player_1, Player_2, Player_3, Player_4]
+    participants:
+      filter:
+        source: GAME.players
+        where:
+          left: role
+          op: equal
+          right: wolf
+    schedule:
+      mode: simultaneous
+      timeout_ms: 30000
+    participant_action:
+      kind: vote
+      target: required
+      candidates:
+        filter:
+          source: GAME.players
+          where:
+            left: alive
+            op: equal
+            right: true
+      response:
+        mode: structured
+        schema: vote
+    controller_action:
+      enabled: false
+    resolution:
+      effects:
+        - type: tally_votes
+          field: vote
+          to: GAME.night_target
+          tie: first
+
+  # 预言家查验。
+  seer_check:
+    type: scene
+    scope:
+      id: seer_room
+      visibility: private
+      members: [Player_5]
+    participants:
+      filter:
+        source: GAME.players
+        where:
+          left: role
+          op: equal
+          right: seer
+    schedule:
+      mode: single
+      actor: Player_5
+    participant_action:
+      kind: choose
+      response:
+        mode: structured
+        schema: choose
+      cue: "请选择今晚要查验的玩家。"
+    controller_action:
+      enabled: false
+
+  # 女巫用药：救人则设 witch_save=true（示例简化，毒药可后续追加）。
+  witch_action:
+    type: scene
+    scope:
+      id: witch_room
+      visibility: private
+      members: [Player_6]
+    participants:
+      filter:
+        source: GAME.players
+        where:
+          left: role
+          op: equal
+          right: witch
+    schedule:
+      mode: single
+      actor: Player_6
+    participant_action:
+      kind: choose
+      candidates:
+        static:
+          - id: save
+            text: 使用解药救刀口
+          - id: pass
+            text: 不用药
+      response:
+        mode: structured
+        schema: choose
+      cue: "今晚刀口是否用解药？"
+    controller_action:
+      enabled: false
+    resolution:
+      # on_message/hook 里根据发言判断是否用药；此处保持 witch_save 由 hook 设置。
+      # 简化：默认不自动用药（dry-run 下 resolve_night 按未救处理）。
+      effects: []
+
+  # 夜晚结算：狼刀在未被守护/解药救下时出局。
+  night_resolve:
+    type: scene
+    scope:
+      id: public_room
+      visibility: public
+    participants:
+      static: []
+    schedule:
+      mode: none
+    participant_action:
+      kind: none
+    controller_action:
+      enabled: false
+    resolution:
+      effects:
+        - type: resolve_night
+
+  day_discussion:
+    type: scene
+    scope:
+      id: public_room
+      visibility: public
+    participants:
+      filter:
+        source: GAME.players
+        where:
+          left: alive
+          op: equal
+          right: true
+    schedule:
+      mode: openchat
+      max_turns: 12
+    participant_action:
+      kind: speak
+      response:
+        mode: text
+      cue: "请发表看法，找出可疑的狼人。"
+    controller_action:
+      enabled: false
+
+  day_vote:
+    type: scene
+    scope:
+      id: public_room
+      visibility: public
+    participants:
+      filter:
+        source: GAME.players
+        where:
+          left: alive
+          op: equal
+          right: true
+    schedule:
+      mode: simultaneous
+      timeout_ms: 30000
+    participant_action:
+      kind: vote
+      target: required
+      candidates:
+        filter:
+          source: GAME.players
+          where:
+            left: alive
+            op: equal
+            right: true
+      response:
+        mode: structured
+        schema: vote
+        include_reason: true
+    controller_action:
+      enabled: false
+    resolution:
+      effects:
+        - type: tally_votes
+          field: vote
+          to: GAME.last_vote_target
+        - type: eliminate
+
+referee:
+  enabled: true
+  check_on: after_scene
+  rules:
+    - when:
+        evaluator: plugin
+        name: social.faction_cleared
+        input:
+          faction: wolf
+          attr: faction
+      result:
+        end: good_win
+    - when:
+        evaluator: plugin
+        name: social.faction_cleared
+        input:
+          faction: good
+          attr: faction
+      result:
+        end: wolf_win

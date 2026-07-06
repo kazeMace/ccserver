@@ -1,0 +1,215 @@
+meta:
+  title: 狼人杀（9 人标准局）
+  description: 用 interactive_session + builtin.social 机制实现的狼人杀。夜晚狼刀/预言家查验/女巫用药，白天讨论投票。夜晚私聊用 private scope 隔离，胜负用阵营清空判定。
+
+runtime:
+  type: interactive_session
+
+# 引入社交推理机制集合：tally_votes（白天计票）、eliminate（出局）、social.faction_cleared（阵营清空判胜）。
+game_pack:
+  plugin: builtin.social
+
+# 控制面：主持人（system）负责公告与流程解释；不直接改权威状态。
+control_plane:
+  host:
+    type: system
+
+players:
+  count: 9
+  ids: [Player_1, Player_2, Player_3, Player_4, Player_5, Player_6, Player_7, Player_8, Player_9]
+  initial_attrs:
+    alive: true
+
+# 初始身份：3 狼 + 预言家 + 女巫 + 4 民（示例固定分配）。
+state:
+  Player_1: { role: wolf, faction: wolf }
+  Player_2: { role: wolf, faction: wolf }
+  Player_3: { role: wolf, faction: wolf }
+  Player_4: { role: seer, faction: good }
+  Player_5: { role: witch, faction: good }
+  Player_6: { role: villager, faction: good }
+  Player_7: { role: villager, faction: good }
+  Player_8: { role: villager, faction: good }
+  Player_9: { role: villager, faction: good }
+  GAME:
+    round: 1
+    phase: night
+    last_vote_target: null
+    night_target: null
+
+flow:
+  type: state_machine
+  initial: night
+  states:
+    night:
+      scenes:
+        - wolf_kill
+        - seer_check
+      transitions:
+        - to: day
+    day:
+      scenes:
+        - day_discussion
+        - day_vote
+      transitions:
+        # 未分胜负则回到夜晚，形成昼夜循环（循环是 state_machine transition 的自然结果）。
+        - to: night
+
+scenes:
+  # 夜晚：狼人私聊选刀。private scope 物理隔离，只有狼人可见。
+  wolf_kill:
+    type: scene
+    scope:
+      id: wolf_den
+      visibility: private
+      members: [Player_1, Player_2, Player_3]
+    participants:
+      filter:
+        source: GAME.players
+        where:
+          left: role
+          op: equal
+          right: wolf
+    schedule:
+      mode: simultaneous
+      timeout_ms: 30000
+    participant_action:
+      kind: vote
+      target: required
+      candidates:
+        filter:
+          source: GAME.players
+          where:
+            left: alive
+            op: equal
+            right: true
+      response:
+        mode: structured
+        schema: vote
+    controller_action:
+      enabled: false
+    resolution:
+      # 狼队计票选出今晚刀口，写入 GAME.night_target（先不出局，留给女巫救人环节）。
+      effects:
+        - type: tally_votes
+          field: vote
+          to: GAME.night_target
+          tie: first
+
+  # 夜晚：预言家查验一人（private scope 只给预言家）。
+  seer_check:
+    type: scene
+    scope:
+      id: seer_room
+      visibility: private
+      members: [Player_4]
+    participants:
+      filter:
+        source: GAME.players
+        where:
+          left: role
+          op: equal
+          right: seer
+    schedule:
+      mode: single
+      actor: Player_4
+    participant_action:
+      kind: choose
+      response:
+        mode: structured
+        schema: choose
+      cue: "请选择今晚要查验的玩家。"
+    controller_action:
+      enabled: false
+    resolution:
+      # 夜晚结算：把 night_target 出局（简化：女巫环节略，可后续追加）。
+      effects:
+        - type: eliminate
+          target:
+            ref: GAME.night_target
+
+  # 白天：全体存活玩家开放讨论。
+  day_discussion:
+    type: scene
+    scope:
+      id: public_room
+      visibility: public
+    participants:
+      filter:
+        source: GAME.players
+        where:
+          left: alive
+          op: equal
+          right: true
+    schedule:
+      mode: openchat
+      max_turns: 9
+    participant_action:
+      kind: speak
+      response:
+        mode: text
+      cue: "请发表你的看法，找出可疑的狼人。"
+    controller_action:
+      enabled: false
+
+  # 白天：投票放逐。
+  day_vote:
+    type: scene
+    scope:
+      id: public_room
+      visibility: public
+    participants:
+      filter:
+        source: GAME.players
+        where:
+          left: alive
+          op: equal
+          right: true
+    schedule:
+      mode: simultaneous
+      timeout_ms: 30000
+    participant_action:
+      kind: vote
+      target: required
+      candidates:
+        filter:
+          source: GAME.players
+          where:
+            left: alive
+            op: equal
+            right: true
+      response:
+        mode: structured
+        schema: vote
+        include_reason: true
+    controller_action:
+      enabled: false
+    resolution:
+      effects:
+        - type: tally_votes
+          field: vote
+          to: GAME.last_vote_target
+        - type: eliminate
+
+referee:
+  enabled: true
+  check_on: after_scene
+  rules:
+    # 狼全出局 → 好人胜。
+    - when:
+        evaluator: plugin
+        name: social.faction_cleared
+        input:
+          faction: wolf
+          attr: faction
+      result:
+        end: good_win
+    # 好人全出局 → 狼人胜。
+    - when:
+        evaluator: plugin
+        name: social.faction_cleared
+        input:
+          faction: good
+          attr: faction
+      result:
+        end: wolf_win

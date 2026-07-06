@@ -140,8 +140,18 @@ class MockActor:
         self.role_display_name = profile.role_display_name or profile.role_name
 
     def set_candidates(self, candidates: list) -> None:
-        """设置本幕候选目标，避免 dry-run 产出未注册的 mock_target。"""
-        self._candidates = list(candidates or [])
+        """设置本幕候选目标，避免 dry-run 产出未注册的 mock_target。
+
+        候选项可能是字符串（如玩家名）或 {id, text} 结构（如 choose 静态候选）。
+        这里统一归一化为可提交的标识（优先取 id），保证 dry-run 选出的值是合法候选。
+        """
+        normalized: list = []
+        for item in candidates or []:
+            if isinstance(item, dict):
+                normalized.append(item.get("id") if item.get("id") is not None else item.get("text"))
+            else:
+                normalized.append(item)
+        self._candidates = [item for item in normalized if item is not None]
 
     def set_candidate_constraints(self, constraints: dict) -> None:
         """设置本幕候选数量约束，供 ChooseMany dry-run 使用。"""
