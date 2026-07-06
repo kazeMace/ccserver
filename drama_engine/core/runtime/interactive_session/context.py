@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from copy import deepcopy
 from typing import Any
 
 from drama_engine.core.dsl.components import CandidateResolver, ConditionEvaluator, EffectExecutor, ValueResolver
@@ -28,6 +29,7 @@ class InteractiveExecutionContext:
     emit_public: Any
     emit_host: Any
     session_metadata: dict[str, Any]
+    base_raw: dict[str, Any] = field(default_factory=dict)
     last_responses: list[dict[str, Any]] = field(default_factory=list)
     current_state_id: str = ""
     current_scene_id: str = ""
@@ -42,6 +44,7 @@ class InteractiveExecutionContext:
             "current_scene": self.current_scene_id,
             "patch_journal": self.patch_journal.snapshot(),
             "metadata": self.session_metadata,
+            "base_flow": deepcopy(self.base_raw),
         }
 
     def full_context_payload(self) -> dict[str, Any]:
@@ -60,4 +63,5 @@ class InteractiveExecutionContext:
             "last_responses": list(self.last_responses),
             "patches": self.patch_journal.snapshot(),
             "metadata": dict(self.session_metadata),
+            "base_flow": deepcopy(self.base_raw),
         }

@@ -29,18 +29,18 @@ class FreeInputExecutor:
         """Execute one free-input mode."""
         assert mode, "free_input.mode 不能为空"
         if mode == "choose_mapping":
-            return self._choose_mapping(ctx, spec, controller_response)
+            return await self._choose_mapping(ctx, spec, controller_response)
         if mode == "branch_then_return":
-            return self._branch_then_return(ctx, spec, controller_response)
+            return await self._branch_then_return(ctx, spec, controller_response)
         if mode == "constrained_continue":
-            return self._generated_beat(ctx, spec, controller_response, constrained=True)
+            return await self._generated_beat(ctx, spec, controller_response, constrained=True)
         if mode == "free_continue":
-            return self._generated_beat(ctx, spec, controller_response, constrained=False)
+            return await self._generated_beat(ctx, spec, controller_response, constrained=False)
         if mode == "grow_flow":
-            return self._grow_flow(ctx, spec, controller_response)
+            return await self._grow_flow(ctx, spec, controller_response)
         raise ValueError(f"未知 free_input.mode: {mode}")
 
-    def _choose_mapping(
+    async def _choose_mapping(
         self,
         ctx: InteractiveExecutionContext,
         spec: dict[str, Any],
@@ -48,7 +48,7 @@ class FreeInputExecutor:
     ) -> dict[str, Any]:
         """Map free text to an existing choice."""
         choices = list(spec.get("choices") or [])
-        service_result = self._services.call_sync(
+        service_result = await self._services.call_async(
             ctx,
             spec.get("mapper") or {"name": "map_free_text_to_choice"},
             "choose_mapping",
@@ -70,14 +70,14 @@ class FreeInputExecutor:
             "confidence": service_result.get("confidence"),
         }
 
-    def _branch_then_return(
+    async def _branch_then_return(
         self,
         ctx: InteractiveExecutionContext,
         spec: dict[str, Any],
         controller_response: dict[str, Any],
     ) -> dict[str, Any]:
         """Generate a temporary branch record and return target metadata."""
-        generator_result = self._services.call_sync(
+        generator_result = await self._services.call_async(
             ctx,
             spec.get("generator") or {"name": "branch_generator"},
             "branch_generator",
@@ -93,20 +93,23 @@ class FreeInputExecutor:
             "beats": list(generator_result.get("beats") or []),
             "return_to": spec.get("return_to") or {},
         }
-        ctx.patch_journal.append("branch_patch", branch, {"scene": ctx.current_scene_id})
         flow_patch = self._branch_flow_patch(ctx, spec, generator_result, branch)
-        errors = self._validator.validate_flow_patch(flow_patch)
-        if errors:
-            raise ValueError(f"branch flow_patch 校验失败: {errors}")
-        ctx.patch_journal.append("flow_patch", flow_patch, {"scene": ctx.current_scene_id, "branch": True})
-        self._patch_applier.apply(ctx, flow_patch)
+        self._validate_and_preview_flow_patch(ctx, flow_patch, "branch flow_patch")
+        branch_record = ctx.patch_journal.append("branch_patch", branch, {"scene": ctx.current_scene_id})
+        flow_record = ctx.patch_journal.append("flow_patch", flow_patch, {"scene": ctx.current_scene_id, "branch": True})
+        try:
+            self._patch_applier.apply(ctx, flow_patch)
+        except Exception:
+            self._rollback_record(ctx, flow_record.patch_id)
+            self._rollback_record(ctx, branch_record.patch_id)
+            raise
         return_to = spec.get("return_to") or {}
         if return_to:
             ctx.session_metadata.setdefault("interactive_return_stack", []).append(return_to)
         ctx.session_metadata["interactive_next_target"] = flow_patch["scene"]["id"]
         return {"kind": "branch_then_return", "branch": branch, "flow_patch": flow_patch}
 
-    def _generated_beat(
+    async def _generated_beat(
         self,
         ctx: InteractiveExecutionContext,
         spec: dict[str, Any],
@@ -117,9 +120,9 @@ class FreeInputExecutor:
         service_spec = spec.get("generator") or {"name": "story_generator"}
         max_beats = int(spec.get("max_beats") or spec.get("max_turns") or 1)
         generated_beats = []
-        ending = self._resolve_ending(ctx, spec) if constrained else None
+        ending = await self._resolve_ending(ctx, spec) if constrained else None
         for index in range(max(1, max_beats)):
-            generator_result = self._services.call_sync(
+            generator_result = await self._services.call_async(
                 ctx,
                 service_spec,
                 "story_generator",
@@ -149,14 +152,14 @@ class FreeInputExecutor:
         ctx.patch_journal.append("story_beat", beat, {"scene": ctx.current_scene_id})
         return {"kind": "constrained_continue" if constrained else "free_continue", "beat": beat}
 
-    def _grow_flow(
+    async def _grow_flow(
         self,
         ctx: InteractiveExecutionContext,
         spec: dict[str, Any],
         controller_response: dict[str, Any],
     ) -> dict[str, Any]:
         """Generate and store a flow patch."""
-        result = self._services.call_sync(
+        result = await self._services.call_async(
             ctx,
             spec.get("generator") or spec,
             "flow_patch_generator",
@@ -168,12 +171,33 @@ class FreeInputExecutor:
         patch = result.get("patch") if isinstance(result.get("patch"), dict) else spec.get("patch")
         if not isinstance(patch, dict):
             raise ValueError("grow_flow 需要 generator 返回 patch 或 free_input.patch")
+        self._validate_and_preview_flow_patch(ctx, patch, "flow_patch")
+        record = ctx.patch_journal.append("flow_patch", patch, {"scene": ctx.current_scene_id})
+        try:
+            self._patch_applier.apply(ctx, patch)
+        except Exception:
+            self._rollback_record(ctx, record.patch_id)
+            raise
+        return {"kind": "grow_flow", "flow_patch": patch}
+
+    def _validate_and_preview_flow_patch(
+        self,
+        ctx: InteractiveExecutionContext,
+        patch: dict[str, Any],
+        label: str,
+    ) -> None:
+        """Validate and dry-run compile a flow patch before journaling."""
         errors = self._validator.validate_flow_patch(patch)
         if errors:
-            raise ValueError(f"flow_patch 校验失败: {errors}")
-        ctx.patch_journal.append("flow_patch", patch, {"scene": ctx.current_scene_id})
-        self._patch_applier.apply(ctx, patch)
-        return {"kind": "grow_flow", "flow_patch": patch}
+            raise ValueError(f"{label} 校验失败: {errors}")
+        self._patch_applier.preview(ctx, patch)
+
+    def _rollback_record(self, ctx: InteractiveExecutionContext, patch_id: str) -> None:
+        """Rollback records until the expected patch id has been removed."""
+        removed = ctx.patch_journal.rollback_last()
+        assert removed is not None and removed.patch_id == patch_id, (
+            f"patch journal 回滚顺序错误，期望 {patch_id}"
+        )
 
     def _branch_flow_patch(
         self,
@@ -211,7 +235,7 @@ class FreeInputExecutor:
             },
         }
 
-    def _resolve_ending(
+    async def _resolve_ending(
         self,
         ctx: InteractiveExecutionContext,
         spec: dict[str, Any],
@@ -221,7 +245,7 @@ class FreeInputExecutor:
         if isinstance(ending_spec, dict):
             selector = ending_spec.get("selector") or spec.get("ending_selector")
             selector = selector or {"name": "choose_ending_by_progress"}
-            result = self._services.call_sync(
+            result = await self._services.call_async(
                 ctx,
                 selector,
                 "ending_selector",
@@ -230,7 +254,7 @@ class FreeInputExecutor:
             return result.get("ending") or result.get("selected") or ending_spec.get("default")
         if ending_spec:
             return ending_spec
-        result = self._services.call_sync(
+        result = await self._services.call_async(
             ctx,
             spec.get("ending_selector") or {"name": "choose_ending_by_progress"},
             "ending_selector",

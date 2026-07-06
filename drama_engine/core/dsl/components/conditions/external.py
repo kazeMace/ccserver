@@ -153,7 +153,13 @@ class ExternalConditionEvaluator:
     ) -> dict | None:
         """Call a synchronous inside LLM client when one is provided."""
         metadata = (extra or {}).get("metadata") or {}
-        client = (extra or {}).get("llm_client") or metadata.get("llm_client") or metadata.get("llm_provider")
+        client = (
+            (extra or {}).get("inside_agent")
+            or (extra or {}).get("llm_client")
+            or metadata.get("inside_agent")
+            or metadata.get("llm_client")
+            or metadata.get("llm_provider")
+        )
         if client is None:
             return None
         payload = self._default_input(state, actor, candidate, responses, extra, entity)

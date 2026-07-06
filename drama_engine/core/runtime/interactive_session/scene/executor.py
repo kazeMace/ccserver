@@ -11,6 +11,7 @@ from drama_engine.core.runtime.interactive_session.context import InteractiveExe
 from drama_engine.core.runtime.interactive_session.models import SceneSpec
 from drama_engine.core.runtime.interactive_session.referee.executor import RefereeExecutor
 from drama_engine.core.runtime.interactive_session.schedule.executor import ScheduleExecutor
+from drama_engine.core.runtime.interactive_session.services.runtime_services import RuntimeServiceCaller
 
 
 class SceneExecutor:
@@ -26,6 +27,7 @@ class SceneExecutor:
         self._schedule = schedule_executor or ScheduleExecutor()
         self._controller = controller_executor or ControllerActionExecutor()
         self._referee = referee_executor or RefereeExecutor()
+        self._services = RuntimeServiceCaller()
 
     async def execute(self, ctx: InteractiveExecutionContext, scene: SceneSpec) -> str | None:
         """Run a scene and return referee result when ended."""
@@ -35,7 +37,7 @@ class SceneExecutor:
             return None
 
         self._run_hooks(ctx, scene, "on_enter")
-        participants = self._resolve_participants(ctx, scene)
+        participants = await self._resolve_participants(ctx, scene)
         cue = self._render_cue(ctx, scene.participant_action.cue)
         ctx.emit_public({
             "kind": "interactive_scene_started",
@@ -67,8 +69,7 @@ class SceneExecutor:
         self._run_hooks(ctx, scene, "on_after_action")
         controller_result = await self._controller.execute(ctx, scene.controller_action)
         if isinstance(controller_result, dict) and controller_result.get("beat"):
-            beat_events = self._publish_generated_beats(ctx, scene, controller_result)
-            result = self._check_referee_events(ctx, scene, "after_generated_beat", beat_events)
+            result = self._publish_generated_beats_until_referee(ctx, scene, controller_result)
             if result is not None:
                 return self._finish_scene(ctx, scene, responses, result)
         self._apply_resolution(ctx, scene, responses, controller_result)
@@ -96,18 +97,17 @@ class SceneExecutor:
         })
         return result
 
-    def _publish_generated_beats(
+    def _publish_generated_beats_until_referee(
         self,
         ctx: InteractiveExecutionContext,
         scene: SceneSpec,
         controller_result: dict[str, Any],
-    ) -> list[dict[str, Any]]:
-        """Emit generated beat events and return referee events."""
+    ) -> str | None:
+        """Emit generated beat events and stop as soon as referee ends."""
         beat = controller_result.get("beat") or {}
         beat_items = list(beat.get("beats") or [])
         if not beat_items:
             beat_items = [beat]
-        events = []
         for index, item in enumerate(beat_items):
             text = item.get("text") if isinstance(item, dict) else str(item)
             event = {
@@ -119,9 +119,11 @@ class SceneExecutor:
                 "beat": item,
                 "controller_result": controller_result,
             }
-            events.append(event)
             ctx.emit_public(event)
-        return events
+            result = self._check_referee_events(ctx, scene, "after_generated_beat", [event])
+            if result is not None:
+                return result
+        return None
 
     def _check_referee_events(
         self,
@@ -153,7 +155,7 @@ class SceneExecutor:
             extra=ctx.runtime_extra(),
         )
 
-    def _resolve_participants(
+    async def _resolve_participants(
         self,
         ctx: InteractiveExecutionContext,
         scene: SceneSpec,
@@ -196,7 +198,42 @@ class SceneExecutor:
                 ):
                     filtered.append(name)
             return filtered
+        evaluator = spec.get("evaluator") or spec.get("provider")
+        if evaluator in {"plugin", "inside", "builtin", "http", "llm"}:
+            return await self._resolve_service_participants(ctx, scene, spec, all_names)
         return list(all_names)
+
+    async def _resolve_service_participants(
+        self,
+        ctx: InteractiveExecutionContext,
+        scene: SceneSpec,
+        spec: dict[str, Any],
+        all_names: list[str],
+    ) -> list[str]:
+        """Resolve participants through a runtime service or evaluator."""
+        result = await self._services.call_async(
+            ctx,
+            spec,
+            "participants",
+            {
+                **ctx.full_context_payload(),
+                "scene": scene.id,
+                "all_participants": list(all_names),
+                "input": spec.get("input") or {},
+            },
+        )
+        raw_items = (
+            result.get("participants")
+            or result.get("selected")
+            or result.get("members")
+            or result.get("result")
+            or []
+        )
+        if isinstance(raw_items, str):
+            raw_items = [raw_items]
+        if not isinstance(raw_items, list):
+            return []
+        return [str(name) for name in raw_items if str(name) in all_names]
 
     def _render_cue(self, ctx: InteractiveExecutionContext, cue: Any) -> str:
         """Render a cue spec or template."""
@@ -275,9 +312,23 @@ class SceneExecutor:
             winner = None
         elif len(winners) > 1 and tie_policy == "all_tied":
             winner = winners
+        elif len(winners) > 1 and tie_policy == "runoff":
+            return {
+                "winner": None,
+                "counts": counts,
+                "is_tie": True,
+                "tie_policy": tie_policy,
+                "runoff_candidates": winners,
+                "needs_runoff": True,
+            }
         else:
             winner = winners[0]
-        return {"winner": winner, "counts": counts, "is_tie": len(winners) > 1}
+        return {
+            "winner": winner,
+            "counts": counts,
+            "is_tie": len(winners) > 1,
+            "tie_policy": tie_policy,
+        }
 
     def _normalize_effect(self, effect: dict[str, Any]) -> dict[str, Any]:
         """Normalize new effect path shorthand for existing EffectExecutor."""

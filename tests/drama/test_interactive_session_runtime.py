@@ -14,11 +14,14 @@ from drama_engine.core.ports.memory import RuntimeMemoryStore
 from drama_engine.core.runner.config import RuntimeConfigParser
 from drama_engine.core.runner.dispatch import build_runner_for_session, read_runtime_declaration
 from drama_engine.core.runtime.interactive_session.actions.participant import ParticipantActionExecutor
+from drama_engine.core.runtime.interactive_session.actions.free_input import FreeInputExecutor
+from drama_engine.core.runtime.interactive_session.actions.controller import ControllerActionExecutor
 from drama_engine.core.runtime.interactive_session import InteractiveSessionRunner
 from drama_engine.core.runtime.interactive_session.compiler import InteractiveSessionCompiler
 from drama_engine.core.runtime.interactive_session.context import InteractiveExecutionContext
-from drama_engine.core.runtime.interactive_session.models import ParticipantActionSpec, ScopeSpec
+from drama_engine.core.runtime.interactive_session.models import ControllerActionSpec, ParticipantActionSpec, ScopeSpec
 from drama_engine.core.runtime.interactive_session.patch.journal import PatchJournal
+from drama_engine.core.runtime.interactive_session.scene.executor import SceneExecutor
 from drama_engine.core.session.lifecycle import RuntimeState
 from drama_engine.core.session.ports import ServicePorts
 from drama_engine.core.session.summary import SummaryProvider
@@ -111,6 +114,42 @@ class _ScriptedActor:
     async def act(self, cue: str, collect=None) -> dict:
         """Return next scripted response."""
         return self.responses.pop(0)
+
+
+def _interactive_ctx(script_doc: dict, actors: list[_ScriptedActor] | None = None) -> InteractiveExecutionContext:
+    """Build a direct interactive_session execution context for focused tests."""
+    compiler = InteractiveSessionCompiler()
+    script = compiler.compile_doc(script_doc)
+    players = list((script_doc.get("players") or {}).get("ids") or ["P1"])
+    vocab = Vocabulary(roles=frozenset(), factions=frozenset(), scopes=frozenset(), abilities=frozenset())
+    state = State(vocab)
+    state.register_entity("GAME", {"players": players, "round": 1})
+    state.register_entity("SCENE", {})
+    state.register_entity("STORY", {})
+    for name in players:
+        state.register_entity(name, {"alive": True})
+    plugins = build_default_plugin_registry()
+    evaluator = ConditionEvaluator(plugins)
+    cast = Cast()
+    for actor in actors or []:
+        cast.add(actor)
+    return InteractiveExecutionContext(
+        script=script,
+        state=state,
+        writer=StateWriter(state),
+        cast=cast,
+        condition_evaluator=evaluator,
+        effect_executor=EffectExecutor(evaluator, plugins),
+        candidate_resolver=CandidateResolver(evaluator),
+        value_resolver=ValueResolver(plugins),
+        plugin_registry=plugins,
+        patch_journal=PatchJournal(),
+        emit_public=lambda event: None,
+        emit_host=lambda event: None,
+        session_metadata={},
+        current_scene_id=list(script.scenes)[0],
+        base_raw=script.raw,
+    )
 
 
 def test_interactive_session_declaration_and_dispatch():
@@ -682,3 +721,275 @@ async def test_dynamic_schedule_respects_after_round_check_on(tmp_path):
         if item["patch_type"] == "schedule_patch" and item["payload"].get("type") == "push_schedule"
     ]
     assert len(pushed) == 1
+
+
+@pytest.mark.asyncio
+async def test_flow_patch_failure_does_not_pollute_journal():
+    """Invalid flow_patch should fail before journal append."""
+    ctx = _interactive_ctx({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["P1"]},
+        "flow": {"type": "sequence", "scenes": ["start"]},
+        "scenes": {
+            "start": {
+                "participants": {"static": []},
+                "schedule": {"mode": "none"},
+                "participant_action": {"kind": "none", "response": {"mode": "none"}},
+            }
+        },
+    })
+
+    with pytest.raises(ValueError):
+        await FreeInputExecutor().execute(
+            ctx,
+            "grow_flow",
+            {"patch": {"type": "add_scene", "scene": {}}},
+            {"actor": "system", "text": "bad"},
+        )
+
+    assert ctx.patch_journal.snapshot() == []
+    assert list(ctx.script.scenes) == ["start"]
+
+
+@pytest.mark.asyncio
+async def test_materialized_flow_uses_immutable_base_flow(tmp_path):
+    """Summary should expose base_flow separately from materialized flow."""
+    script_path = tmp_path / "immutable_base.yaml"
+    script_path.write_text(yaml.safe_dump({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["P1"]},
+        "flow": {"type": "sequence", "scenes": ["start"]},
+        "scenes": {
+            "start": {
+                "participants": {"static": []},
+                "schedule": {"mode": "none"},
+                "participant_action": {"kind": "none", "response": {"mode": "none"}},
+                "controller_action": {
+                    "enabled": True,
+                    "controller": {"type": "system"},
+                    "kind": "free_text",
+                    "free_input": {
+                        "enabled": True,
+                        "mode": "grow_flow",
+                        "patch": {
+                            "type": "add_scene",
+                            "after": "start",
+                            "scene": {
+                                "id": "generated_once",
+                                "participants": {"static": []},
+                                "schedule": {"mode": "none"},
+                                "participant_action": {"kind": "none", "response": {"mode": "none"}},
+                            },
+                        },
+                    },
+                },
+            }
+        },
+    }, allow_unicode=True), encoding="utf-8")
+    runtime = _runtime_for(str(script_path))
+    runner = build_runner_for_session(runtime, dry_run=True)
+
+    await runner.assign()
+    await runner.start()
+    await runtime.runtime_state.task
+
+    summary = runner.summary("host")
+    interactive = summary["interactive_session"]
+    assert interactive["base_flow"]["flow"]["scenes"] == ["start"]
+    assert interactive["materialized_flow"]["flow"]["scenes"] == ["start", "generated_once"]
+    assert interactive["materialized_flow"]["flow"]["scenes"].count("generated_once") == 1
+
+
+@pytest.mark.asyncio
+async def test_generated_beats_stop_publishing_after_referee_result(tmp_path):
+    """after_generated_beat should be checked after each published beat."""
+    script_path = tmp_path / "beat_granularity.yaml"
+    script_path.write_text(yaml.safe_dump({
+        "runtime": {"type": "interactive_session"},
+        "plugins": [
+            {
+                "runtime_services": {
+                    "two_beats": {
+                        "result": {
+                            "beats": [
+                                {"text": "stop here"},
+                                {"text": "should not publish"},
+                            ]
+                        }
+                    }
+                }
+            }
+        ],
+        "players": {"ids": ["P1"]},
+        "flow": {"type": "sequence", "scenes": ["generate"]},
+        "scenes": {
+            "generate": {
+                "participants": {"static": []},
+                "schedule": {"mode": "none"},
+                "participant_action": {"kind": "none", "response": {"mode": "none"}},
+                "controller_action": {
+                    "enabled": True,
+                    "controller": {"type": "system"},
+                    "kind": "free_text",
+                    "free_input": {
+                        "enabled": True,
+                        "mode": "free_continue",
+                        "generator": {"evaluator": "plugin", "name": "two_beats"},
+                    },
+                },
+            }
+        },
+        "referee": {
+            "enabled": True,
+            "check_on": "after_generated_beat",
+            "rules": [
+                {
+                    "when": {"left": "MESSAGE.text", "op": "contains", "right": "stop here"},
+                    "result": {"end": "stopped"},
+                }
+            ],
+        },
+    }, allow_unicode=True), encoding="utf-8")
+    runtime = _runtime_for(str(script_path))
+    runner = build_runner_for_session(runtime, dry_run=True)
+
+    await runner.assign()
+    await runner.start()
+    await runtime.runtime_state.task
+
+    beat_texts = [
+        event["text"]
+        for event in runtime.event_store.public
+        if event.get("kind") == "generated_beat"
+    ]
+    assert runtime.session.metadata["interactive_session"]["result"] == "stopped"
+    assert beat_texts == ["stop here"]
+
+
+@pytest.mark.asyncio
+async def test_plugin_participants_are_resolved(tmp_path):
+    """participants.evaluator=plugin should select runtime participants."""
+    script_path = tmp_path / "plugin_participants.yaml"
+    script_path.write_text(yaml.safe_dump({
+        "runtime": {"type": "interactive_session"},
+        "plugins": [
+            {"runtime_services": {"select_current_scene_participants": {"result": {"participants": ["B"]}}}}
+        ],
+        "players": {"ids": ["A", "B"]},
+        "flow": {"type": "sequence", "scenes": ["talk"]},
+        "scenes": {
+            "talk": {
+                "participants": {"evaluator": "plugin", "name": "select_current_scene_participants"},
+                "schedule": {"mode": "sequential"},
+                "participant_action": {"kind": "speak", "response": {"mode": "text"}},
+            }
+        },
+    }, allow_unicode=True), encoding="utf-8")
+    runtime = _runtime_for(str(script_path))
+    runner = build_runner_for_session(runtime, dry_run=True)
+
+    await runner.assign()
+    await runner.start()
+    await runtime.runtime_state.task
+
+    started = [
+        event for event in runtime.event_store.public
+        if event.get("kind") == "interactive_scene_started"
+    ][0]
+    assert started["participants"] == ["B"]
+
+
+@pytest.mark.asyncio
+async def test_dynamic_merge_back_writes_summary_state(tmp_path):
+    """dynamic.merge_back should write the configured state target."""
+    script_path = tmp_path / "merge_back.yaml"
+    script_path.write_text(yaml.safe_dump({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["A", "B"]},
+        "flow": {"type": "sequence", "scenes": ["talk"]},
+        "scenes": {
+            "talk": {
+                "participants": {"static": ["A", "B"]},
+                "schedule": {
+                    "mode": "single",
+                    "actor": "A",
+                    "dynamic": {
+                        "enabled": True,
+                        "check_on": "after_message",
+                        "detector": {
+                            "patch": {
+                                "type": "push_schedule",
+                                "mode": "single",
+                                "participants": ["B"],
+                                "max_turns": 1,
+                            }
+                        },
+                        "merge_back": {"mode": "summary", "to": "SCENE.dynamic_schedule_summary"},
+                    },
+                },
+                "participant_action": {"kind": "speak", "response": {"mode": "text"}},
+            },
+        },
+        "referee": {
+            "enabled": True,
+            "check_on": "after_scene",
+            "rules": [
+                {
+                    "when": {"left": "SCENE.dynamic_schedule_summary", "op": "not_null", "right": True},
+                    "result": {"end": "merged"},
+                }
+            ],
+        },
+    }, allow_unicode=True), encoding="utf-8")
+    runtime = _runtime_for(str(script_path))
+    runner = build_runner_for_session(runtime, dry_run=True)
+
+    await runner.assign()
+    await runner.start()
+    await runtime.runtime_state.task
+
+    assert runtime.session.metadata["interactive_session"]["result"] == "merged"
+
+
+def test_runoff_tie_policy_marks_runoff_candidates():
+    """tie_policy=runoff should not silently pick alphabetical winner."""
+    result = SceneExecutor()._selection(
+        {"field": "vote", "tie_policy": "runoff"},
+        [
+            {"data": {"vote": "B"}},
+            {"data": {"vote": "A"}},
+        ],
+    )
+
+    assert result["winner"] is None
+    assert result["needs_runoff"] is True
+    assert result["runoff_candidates"] == ["A", "B"]
+
+
+@pytest.mark.asyncio
+async def test_human_controller_without_seat_uses_human_actor():
+    """controller.type=human should default to the human seat when omitted."""
+    human = _ScriptedActor("P1", [{"actor": "P1", "text": "human move", "data": None}])
+    human.is_human = True
+    agent = _ScriptedActor("P2", [{"actor": "P2", "text": "agent move", "data": None}])
+    ctx = _interactive_ctx({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["P1", "P2"]},
+        "flow": {"type": "sequence", "scenes": ["start"]},
+        "scenes": {
+            "start": {
+                "participants": {"static": []},
+                "schedule": {"mode": "none"},
+                "participant_action": {"kind": "none", "response": {"mode": "none"}},
+            }
+        },
+    }, actors=[human, agent])
+
+    response = await ControllerActionExecutor()._controller_response(
+        ctx,
+        ControllerActionSpec(enabled=True, controller={"type": "human"}, kind="free_text"),
+        "cue",
+    )
+
+    assert response["actor"] == "P1"
+    assert response["text"] == "human move"

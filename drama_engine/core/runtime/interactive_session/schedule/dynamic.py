@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from drama_engine.core.engine import SetAttr
 from drama_engine.core.runtime.interactive_session.actions.participant import ParticipantActionExecutor
 from drama_engine.core.runtime.interactive_session.context import InteractiveExecutionContext
 from drama_engine.core.runtime.interactive_session.models import (
@@ -36,7 +37,7 @@ class DynamicScheduleExecutor:
         """Check detector output and run a child schedule when requested."""
         if not dynamic.enabled:
             return []
-        patch = self._detect_patch(ctx, dynamic, parent_participants, source_response)
+        patch = await self._detect_patch(ctx, dynamic, parent_participants, source_response)
         if not patch:
             return []
         errors = self._validator.validate_schedule_patch(patch)
@@ -59,7 +60,7 @@ class DynamicScheduleExecutor:
             source_response,
         )
 
-    def _detect_patch(
+    async def _detect_patch(
         self,
         ctx: InteractiveExecutionContext,
         dynamic: DynamicScheduleSpec,
@@ -73,7 +74,7 @@ class DynamicScheduleExecutor:
         data = source_response.get("data")
         if isinstance(data, dict) and isinstance(data.get("schedule_patch"), dict):
             return self._apply_allowed_defaults(data["schedule_patch"], dynamic, parent_participants)
-        detector_result = self._services.call_sync(
+        detector_result = await self._services.call_async(
             ctx,
             dynamic.detector or {"name": "detect_schedule_request"},
             "schedule_detector",
@@ -197,6 +198,7 @@ class DynamicScheduleExecutor:
         })
         merge_back = patch.get("merge_back") or dynamic.merge_back
         if merge_back:
+            self._merge_back(ctx, merge_back, responses, patch)
             ctx.emit_host({
                 "kind": "interactive_schedule_merge",
                 "scene": ctx.current_scene_id,
@@ -204,3 +206,58 @@ class DynamicScheduleExecutor:
                 "responses": responses,
             })
         return responses
+
+    def _merge_back(
+        self,
+        ctx: InteractiveExecutionContext,
+        merge_back: dict[str, Any],
+        responses: list[dict[str, Any]],
+        patch: dict[str, Any],
+    ) -> None:
+        """Merge child schedule results into runtime state."""
+        assert isinstance(merge_back, dict), "merge_back 必须是 dict"
+        target = str(merge_back.get("to") or "")
+        if not target:
+            return
+        mode = str(merge_back.get("mode") or "summary")
+        value: Any
+        if mode == "plugin":
+            service_result = self._services.call_sync(
+                ctx,
+                merge_back.get("plugin") or merge_back.get("service") or {"provider": "plugin", **merge_back},
+                "schedule_merge_back",
+                {
+                    **ctx.full_context_payload(),
+                    "responses": list(responses),
+                    "schedule_patch": dict(patch),
+                    "merge_back": dict(merge_back),
+                },
+            )
+            value = service_result.get("value", service_result)
+        else:
+            value = self._summary_value(responses, patch)
+        if "." not in target:
+            raise ValueError("merge_back.to 必须是 ENTITY.attr 格式")
+        entity, attr = target.split(".", 1)
+        if not ctx.state.has_entity(entity):
+            ctx.state.register_entity(entity, {})
+        ctx.writer.apply(SetAttr(entity, attr, value))
+
+    def _summary_value(
+        self,
+        responses: list[dict[str, Any]],
+        patch: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Build a deterministic child schedule summary."""
+        texts = []
+        for response in responses:
+            text = str(response.get("text") or "")
+            if text:
+                texts.append(text)
+        return {
+            "mode": "summary",
+            "participants": list(patch.get("participants") or []),
+            "response_count": len(responses),
+            "text": "\n".join(texts),
+            "responses": list(responses),
+        }

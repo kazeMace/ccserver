@@ -44,6 +44,10 @@ class RuntimeServiceCaller:
         evaluator = service_spec.get("evaluator") or service_spec.get("type")
         provider = str(evaluator or service_spec.get("provider") or "builtin")
         if provider in {"builtin", "inside"}:
+            if provider == "inside":
+                inside_result = self._call_inside_client(ctx, service_spec, purpose, payload)
+                if inside_result is not None:
+                    return inside_result
             return self._call_builtin(ctx, service_spec, purpose, payload)
         if provider == "plugin":
             return self._call_plugin(ctx, service_spec, purpose, payload)
@@ -52,6 +56,41 @@ class RuntimeServiceCaller:
         if provider == "llm":
             return self._call_llm(ctx, service_spec, purpose, payload)
         raise ValueError(f"未知 runtime service provider: {provider}")
+
+    async def call_async(
+        self,
+        ctx: InteractiveExecutionContext,
+        spec: dict[str, Any] | None,
+        purpose: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Call one service from an async runtime path.
+
+        Args:
+            ctx: Runtime execution context.
+            spec: Provider/service declaration from DSL.
+            purpose: Semantic purpose, for built-in dispatch.
+            payload: Fully materialized runtime payload.
+
+        Returns:
+            A dictionary service result.
+        """
+        service_spec = dict(spec or {})
+        evaluator = service_spec.get("evaluator") or service_spec.get("type")
+        provider = str(evaluator or service_spec.get("provider") or "builtin")
+        if provider == "inside":
+            actor_result = await self._call_inside_actor(ctx, service_spec, purpose, payload)
+            if actor_result is not None:
+                return actor_result
+            client_result = self._call_inside_client(ctx, service_spec, purpose, payload)
+            if client_result is not None:
+                return client_result
+            return self._call_builtin(ctx, service_spec, purpose, payload)
+        if provider == "llm" and str(service_spec.get("provider") or "inside") == "inside":
+            actor_result = await self._call_inside_actor(ctx, service_spec, purpose, payload)
+            if actor_result is not None:
+                return actor_result
+        return self.call_sync(ctx, service_spec, purpose, payload)
 
     def _call_plugin(
         self,
@@ -135,10 +174,9 @@ class RuntimeServiceCaller:
         """Call an LLM provider or deterministic inside fallback."""
         provider = str(spec.get("provider") or "inside")
         if provider == "inside":
-            client = ctx.session_metadata.get("llm_client") or ctx.session_metadata.get("llm_provider")
-            if client is not None:
-                result = self._call_client(client, spec, purpose, payload)
-                return self._ensure_dict(result, "inside llm service")
+            result = self._call_inside_client(ctx, spec, purpose, payload)
+            if result is not None:
+                return result
             return self._call_builtin(ctx, spec, purpose, payload)
         return self._call_http(ctx, spec, purpose, payload)
 
@@ -309,6 +347,59 @@ class RuntimeServiceCaller:
         if callable(client):
             return client({"purpose": purpose, "prompt": prompt, "payload": payload})
         raise TypeError("llm_client 必须实现 generate_ruling、complete 或 callable")
+
+    def _call_inside_client(
+        self,
+        ctx: InteractiveExecutionContext,
+        spec: dict[str, Any],
+        purpose: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """Call a synchronous injected ccserver/LLM-like inside client."""
+        client = (
+            spec.get("client")
+            or ctx.session_metadata.get("inside_agent")
+            or ctx.session_metadata.get("llm_client")
+            or ctx.session_metadata.get("llm_provider")
+        )
+        if client is None:
+            return None
+        result = self._call_client(client, spec, purpose, payload)
+        return self._ensure_dict(result, "inside runtime service")
+
+    async def _call_inside_actor(
+        self,
+        ctx: InteractiveExecutionContext,
+        spec: dict[str, Any],
+        purpose: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """Call a live ccserver actor as the default inside agent."""
+        actor_name = str(
+            spec.get("agent_id")
+            or spec.get("seat_id")
+            or ctx.session_metadata.get("inside_agent_id")
+            or ""
+        )
+        all_names = ctx.cast.all_names()
+        if not actor_name and all_names:
+            actor_name = str(all_names[0])
+        if not actor_name or actor_name not in all_names:
+            return None
+        prompt = spec.get("prompt") or json.dumps(payload, ensure_ascii=False)
+        response = await ctx.cast.get(actor_name).act(str(prompt), None)
+        text = str(response.get("text") or "")
+        data = response.get("data")
+        if isinstance(data, dict):
+            return data
+        if text:
+            try:
+                decoded = json.loads(text)
+            except json.JSONDecodeError:
+                return {"text": text, "actor": actor_name, "purpose": purpose}
+            if isinstance(decoded, dict):
+                return decoded
+        return {"text": text, "actor": actor_name, "purpose": purpose}
 
     def _resolve_url(self, spec: dict[str, Any]) -> str:
         """Resolve URL from DSL or environment."""

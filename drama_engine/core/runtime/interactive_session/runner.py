@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from copy import deepcopy
 from typing import Any
 
 from drama_engine.core.dsl.components import CandidateResolver, ConditionEvaluator, EffectExecutor, ValueResolver
@@ -81,13 +82,16 @@ class InteractiveSessionRunner(BasicGameRunner):
             emit_public=self._emit_public,
             emit_host=self._emit_host,
             session_metadata=session_state.metadata,
+            base_raw=deepcopy(script.raw),
         )
         self._ctx = ctx
+        session_state.metadata["human_seat_ids"] = list(getattr(session_state, "human_seat_ids", set()))
         session_state.metadata["runtime_type"] = "interactive_session"
         session_state.metadata["interactive_session"] = {
             "flow_type": script.flow.type,
             "scene_count": len(script.scenes),
             "players": player_names,
+            "base_flow": deepcopy(script.raw),
         }
         session_state.set_status(SESSION_ASSIGNED)
         self._emit_public({"kind": "session_assigned", "runtime_type": "interactive_session"})
@@ -125,7 +129,12 @@ class InteractiveSessionRunner(BasicGameRunner):
                 "current_state": self._ctx.current_state_id,
                 "current_scene": self._ctx.current_scene_id,
                 "patches": self._ctx.patch_journal.snapshot(),
-                "materialized_flow": FlowMaterializer().materialize(self._ctx.script, self._ctx.patch_journal),
+                "base_flow": deepcopy(self._ctx.base_raw),
+                "materialized_flow": FlowMaterializer().materialize(
+                    self._ctx.script,
+                    self._ctx.patch_journal,
+                    self._ctx.base_raw,
+                ),
             }
         return base
 

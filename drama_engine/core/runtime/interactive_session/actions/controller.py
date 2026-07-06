@@ -114,8 +114,8 @@ class ControllerActionExecutor:
         controller_type = str(controller.get("type") or "none")
         if controller_type in {"human", "agent"}:
             actor_name = str(controller.get("agent_id") or controller.get("seat_id") or "")
-            if not actor_name and controller_type == "agent" and ctx.cast.all_names():
-                actor_name = ctx.cast.all_names()[0]
+            if not actor_name:
+                actor_name = self._default_controller_actor(ctx, controller_type)
             if actor_name in ctx.cast.all_names():
                 return await ctx.cast.get(actor_name).act(cue, None)
         if controller_type == "plugin":
@@ -131,6 +131,23 @@ class ControllerActionExecutor:
                 "data": service_result.get("data"),
             }
         return {"actor": controller_type, "text": "(system controller)", "data": None}
+
+    def _default_controller_actor(
+        self,
+        ctx: InteractiveExecutionContext,
+        controller_type: str,
+    ) -> str:
+        """Resolve a default actor for human or agent controller types."""
+        names = ctx.cast.all_names()
+        if not names:
+            return ""
+        if controller_type == "human":
+            human_seats = set(ctx.session_metadata.get("human_seat_ids") or [])
+            for name in names:
+                actor = ctx.cast.get(name)
+                if name in human_seats or getattr(actor, "is_human", False):
+                    return str(name)
+        return str(names[0])
 
     def _apply_choice_target(
         self,

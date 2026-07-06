@@ -12,14 +12,37 @@ from drama_engine.core.runtime.interactive_session.patch.journal import PatchJou
 class FlowMaterializer:
     """Build an executable flow snapshot from base script and patches."""
 
-    def materialize(self, script: InteractiveScript, journal: PatchJournal) -> dict[str, Any]:
+    def materialize(
+        self,
+        script: InteractiveScript,
+        journal: PatchJournal,
+        base_raw: dict[str, Any] | None = None,
+        extra_flow_patch: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Return a serializable materialized-flow view."""
         assert script is not None, "script 不能为空"
-        scenes = {scene_id: deepcopy(scene.raw) for scene_id, scene in script.scenes.items()}
-        flow = deepcopy(script.raw.get("flow") or {})
+        raw = deepcopy(base_raw or script.raw or {})
+        scenes = deepcopy(raw.get("scenes") or {})
+        flow = deepcopy(raw.get("flow") or {})
         for record in journal.by_type("flow_patch"):
             self._apply_flow_patch(flow, scenes, record.payload)
+        if extra_flow_patch is not None:
+            self._apply_flow_patch(flow, scenes, extra_flow_patch)
         return {"flow": flow, "scenes": scenes, "patches": journal.snapshot()}
+
+    def materialize_raw(
+        self,
+        script: InteractiveScript,
+        journal: PatchJournal,
+        base_raw: dict[str, Any] | None = None,
+        extra_flow_patch: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Return a full raw script document from base flow and patches."""
+        raw = deepcopy(base_raw or script.raw or {})
+        materialized = self.materialize(script, journal, raw, extra_flow_patch)
+        raw["flow"] = materialized["flow"]
+        raw["scenes"] = materialized["scenes"]
+        return raw
 
     def _apply_flow_patch(
         self,
