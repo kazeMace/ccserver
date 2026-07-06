@@ -12,6 +12,8 @@ _EXPORT_MODULES = {
     "SessionState": "drama_engine.core.game_instance.state",
     "SeatState": "drama_engine.core.game_instance.state",
     "ProgressState": "drama_engine.core.game_instance.state",
+    "ProgressTracker": "drama_engine.core.game_instance.progress",
+    "SessionControl": "drama_engine.core.game_instance.session_control",
     "all_session_statuses": "drama_engine.core.game_instance.state",
     "SESSION_LOBBY": "drama_engine.core.game_instance.state",
     "SESSION_ASSIGNED": "drama_engine.core.game_instance.state",
