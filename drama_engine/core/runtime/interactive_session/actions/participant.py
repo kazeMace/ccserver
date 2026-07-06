@@ -36,7 +36,7 @@ class ParticipantActionExecutor:
     ) -> dict[str, Any]:
         """Collect one actor response and deliver visible message."""
         actor = ctx.cast.get(actor_name)
-        candidates = self._resolve_candidates(ctx, action, actor_name)
+        candidates = await self._resolve_candidates(ctx, action, actor_name)
         if hasattr(actor, "set_candidates"):
             actor.set_candidates(candidates)
         if hasattr(actor, "set_scene_context"):
@@ -201,7 +201,7 @@ class ParticipantActionExecutor:
             "message": "schedule.timeout_ms 超时，已跳过未完成 actor",
         })
 
-    def _resolve_candidates(
+    async def _resolve_candidates(
         self,
         ctx: InteractiveExecutionContext,
         action: ParticipantActionSpec,
@@ -211,11 +211,12 @@ class ParticipantActionExecutor:
         if not action.candidates:
             return []
         try:
-            return ctx.candidate_resolver.resolve(
+            return await ctx.candidate_resolver.resolve_async(
                 action.candidates,
                 ctx.state,
                 ctx.last_responses,
                 actor=actor_name,
+                extra=ctx.condition_extra(),
             )
         except Exception as exc:  # noqa: BLE001 - candidate failure should be visible.
             ctx.emit_host({

@@ -123,6 +123,7 @@ class ScheduleExecutor:
                         "text": "",
                     },
                     after_response=after_response,
+                    parent_responses=list(responses),
                 )
                 child_responses = list(child_result.get("responses") or [])
                 if child_responses:
@@ -166,6 +167,7 @@ class ScheduleExecutor:
                 parent_participants=participants,
                 source_response=response,
                 after_response=after_response,
+                parent_responses=list(responses),
             )
             child_responses = list(child_result.get("responses") or [])
             if child_responses:
@@ -217,6 +219,26 @@ class ScheduleExecutor:
                 )
                 if result is not None:
                     return {"responses": responses, "result": result}
+            if schedule.dynamic.check_on == "after_round":
+                child_result = await self._dynamic.maybe_run(
+                    ctx=ctx,
+                    dynamic=schedule.dynamic,
+                    parent_action=action,
+                    parent_participants=participants,
+                    source_response={
+                        "kind": "round_completed",
+                        "data": {"responses": list(round_responses)},
+                        "text": "",
+                    },
+                    after_response=after_response,
+                    parent_responses=list(responses),
+                )
+                child_responses = list(child_result.get("responses") or [])
+                if child_responses:
+                    responses.extend(child_responses)
+                    ctx.last_responses = list(responses)
+                if child_result.get("result") is not None:
+                    return {"responses": responses, "result": child_result.get("result")}
             if await self._should_stop(ctx, schedule):
                 break
             plan = await self._plan_openchat_next(

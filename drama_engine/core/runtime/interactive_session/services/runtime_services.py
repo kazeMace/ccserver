@@ -12,9 +12,11 @@ import urllib.error
 import urllib.request
 import inspect
 import asyncio
+import threading
 from difflib import SequenceMatcher
 from typing import Any
 
+from drama_engine.core.dsl.components.interaction_protocol import InteractionProtocolBuilder
 from drama_engine.core.dsl.components.service_input import ServiceInputBuilder
 from drama_engine.core.runtime.interactive_session.context import InteractiveExecutionContext
 from drama_engine.core.runtime.interactive_session.services.inside_agent import InsideAgentFactory
@@ -26,6 +28,7 @@ class RuntimeServiceCaller:
     def __init__(self) -> None:
         """Initialize shared service helpers."""
         self._input_builder = ServiceInputBuilder()
+        self._protocol = InteractionProtocolBuilder()
         self._inside_agents = InsideAgentFactory()
 
     def call_sync(
@@ -184,7 +187,10 @@ class RuntimeServiceCaller:
             and hasattr(registry, "has_runtime_service")
             and registry.has_runtime_service(name)
         ):
-            result = registry.call_runtime_service(name, payload)
+            result = registry.call_runtime_service(
+                name,
+                self._plugin_payload(ctx, spec, purpose, payload),
+            )
             if inspect.isawaitable(result):
                 result = await result
             return self._ensure_dict(result, f"plugin service {name}")
@@ -211,7 +217,10 @@ class RuntimeServiceCaller:
             and hasattr(registry, "has_runtime_service")
             and registry.has_runtime_service(name)
         ):
-            result = registry.call_runtime_service(name, payload)
+            result = registry.call_runtime_service(
+                name,
+                self._plugin_payload(ctx, spec, purpose, payload),
+            )
             return self._ensure_dict(result, f"plugin service {name}")
         if registry is not None and hasattr(registry, "has_condition") and registry.has_condition(name):
             passed = ctx.condition_evaluator.evaluate(
@@ -236,13 +245,9 @@ class RuntimeServiceCaller:
         if not url:
             return self._fallback(spec, purpose, payload)
         timeout = int(spec.get("timeout_ms") or 10000) / 1000
-        body = {
-            "id": spec.get("id"),
-            "name": spec.get("name"),
-            "purpose": purpose,
-            "input": payload,
-            "context": payload if "input" not in spec else ctx.full_context_payload(),
-        }
+        body = self._protocol.with_legacy_aliases(
+            self._service_envelope(ctx, spec, purpose, payload, "http")
+        )
         request = urllib.request.Request(
             url,
             data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
@@ -462,13 +467,42 @@ class RuntimeServiceCaller:
     ) -> Any:
         """Call a user-provided LLM client."""
         prompt = spec.get("prompt") or json.dumps(payload, ensure_ascii=False)
-        if hasattr(client, "generate_ruling"):
-            return client.generate_ruling(prompt=prompt, action=purpose, world=payload)
-        if hasattr(client, "complete"):
-            return client.complete(prompt)
-        if callable(client):
-            return client({"purpose": purpose, "prompt": prompt, "payload": payload})
-        raise TypeError("llm_client 必须实现 generate_ruling、complete 或 callable")
+        if hasattr(client, "run"):
+            value = client.run(str(prompt))
+        elif hasattr(client, "act"):
+            value = client.act(str(prompt), None)
+        elif hasattr(client, "generate_ruling"):
+            value = client.generate_ruling(prompt=prompt, action=purpose, world=payload)
+        elif hasattr(client, "complete"):
+            value = client.complete(prompt)
+        elif callable(client):
+            value = client({"purpose": purpose, "prompt": prompt, "payload": payload})
+        else:
+            raise TypeError("llm_client 必须实现 run、act、generate_ruling、complete 或 callable")
+        if inspect.isawaitable(value):
+            return self._await_sync(value)
+        return value
+
+    def _await_sync(self, value: Any) -> Any:
+        """Wait for an awaitable from a sync compatibility path."""
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(value)
+        result: dict[str, Any] = {}
+
+        def run_in_thread() -> None:
+            try:
+                result["value"] = asyncio.run(value)
+            except BaseException as exc:  # noqa: BLE001 - re-raise in caller thread.
+                result["error"] = exc
+
+        thread = threading.Thread(target=run_in_thread, daemon=True)
+        thread.start()
+        thread.join()
+        if "error" in result:
+            raise result["error"]
+        return result.get("value")
 
     def _call_inside_client(
         self,
@@ -508,7 +542,10 @@ class RuntimeServiceCaller:
             client = self._inside_agents.get_or_create(ctx.session_metadata, spec)
         if client is None:
             return None
-        prompt = spec.get("prompt") or json.dumps(payload, ensure_ascii=False)
+        prompt = spec.get("prompt") or json.dumps(
+            self._service_envelope(ctx, spec, purpose, payload, "inside"),
+            ensure_ascii=False,
+        )
         if hasattr(client, "run"):
             value = client.run(str(prompt))
         elif hasattr(client, "act"):
@@ -548,7 +585,10 @@ class RuntimeServiceCaller:
             actor_name = str(all_names[0])
         if not actor_name or actor_name not in all_names:
             return None
-        prompt = spec.get("prompt") or json.dumps(payload, ensure_ascii=False)
+        prompt = spec.get("prompt") or json.dumps(
+            self._service_envelope(ctx, spec, purpose, payload, "inside"),
+            ensure_ascii=False,
+        )
         response = await ctx.cast.get(actor_name).act(str(prompt), None)
         text = str(response.get("text") or "")
         data = response.get("data")
@@ -594,6 +634,42 @@ class RuntimeServiceCaller:
             for ch in endpoint.upper()
         )
         return os.environ.get(env_name, "")
+
+    def _service_envelope(
+        self,
+        ctx: InteractiveExecutionContext,
+        spec: dict[str, Any],
+        purpose: str,
+        payload: dict[str, Any],
+        provider: str,
+    ) -> dict[str, Any]:
+        """Build the unified runtime-service protocol envelope."""
+        return self._protocol.build(
+            runtime_type="interactive_session",
+            purpose=purpose,
+            provider=provider,
+            input_payload=payload,
+            context_payload=ctx.full_context_payload(),
+            name=spec.get("name") or spec.get("plugin") or spec.get("id"),
+            call_id=spec.get("id"),
+            endpoint=spec.get("endpoint") or spec.get("url"),
+            metadata={
+                "current_state": ctx.current_state_id,
+                "current_scene": ctx.current_scene_id,
+            },
+        )
+
+    def _plugin_payload(
+        self,
+        ctx: InteractiveExecutionContext,
+        spec: dict[str, Any],
+        purpose: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Return legacy plugin payload or an opt-in protocol envelope."""
+        if spec.get("envelope") is True or spec.get("protocol") == "envelope":
+            return self._service_envelope(ctx, spec, purpose, payload, "plugin")
+        return payload
 
     def _ensure_dict(self, result: Any, label: str) -> dict[str, Any]:
         """Normalize a service result to dict."""

@@ -6,10 +6,12 @@ import json
 import os
 import inspect
 import asyncio
+import threading
 import urllib.error
 import urllib.request
 from typing import Any, Callable
 
+from drama_engine.core.dsl.components.interaction_protocol import InteractionProtocolBuilder
 from drama_engine.core.dsl.components.service_input import ServiceInputBuilder
 from drama_engine.core.engine import State
 
@@ -28,6 +30,7 @@ class ExternalConditionEvaluator:
         self._evaluate = evaluate_condition
         self._resolve_value_expr = resolve_value_expr
         self._input_builder = ServiceInputBuilder()
+        self._protocol = InteractionProtocolBuilder()
 
     def evaluate(
         self,
@@ -74,18 +77,20 @@ class ExternalConditionEvaluator:
         if not url:
             return bool(cond.get("fallback", False))
         default_input = self._default_input(state, actor, candidate, responses, extra, entity)
-        payload = {
-            "id": cond.get("id"),
-            "endpoint": cond.get("endpoint"),
-            "input": self._build_input(cond, default_input, state, actor, candidate, responses, extra, entity),
-            "context": {
-                "actor": actor,
-                "candidate": candidate,
-                "entity": entity,
-                "responses": responses or [],
-                "extra": self._serializable_extra(extra),
-            },
-        }
+        input_payload = self._build_input(cond, default_input, state, actor, candidate, responses, extra, entity)
+        payload = self._protocol.with_legacy_aliases(
+            self._condition_envelope(
+                cond,
+                input_payload,
+                default_input,
+                actor,
+                candidate,
+                entity,
+                responses,
+                extra,
+                provider=str(cond.get("provider") or cond.get("evaluator") or "http"),
+            )
+        )
         timeout = int(cond.get("timeout_ms") or 3000) / 1000
         request = urllib.request.Request(
             url,
@@ -184,15 +189,26 @@ class ExternalConditionEvaluator:
         extra: dict | None,
         entity: str | None,
     ) -> dict | None:
-        """Call a synchronous inside LLM client when one is provided."""
+        """Call an inside LLM/Agent client from a sync compatibility path."""
+        runtime_ctx = (extra or {}).get("__interactive_ctx")
         metadata = (extra or {}).get("metadata") or {}
         client = (
-            (extra or {}).get("inside_agent")
+            cond.get("client")
+            or (extra or {}).get("inside_agent")
             or (extra or {}).get("llm_client")
             or metadata.get("inside_agent")
             or metadata.get("llm_client")
             or metadata.get("llm_provider")
         )
+        if client is None and runtime_ctx is not None:
+            try:
+                from drama_engine.core.runtime.interactive_session.services.inside_agent import (
+                    InsideAgentFactory,
+                )
+
+                client = InsideAgentFactory().get_or_create(runtime_ctx.session_metadata, cond)
+            except Exception:  # noqa: BLE001 - keep sync evaluator deterministic.
+                client = None
         if client is None:
             return None
         payload = self._build_input(
@@ -205,8 +221,25 @@ class ExternalConditionEvaluator:
             extra,
             entity,
         )
-        prompt = cond.get("prompt") or json.dumps(payload, ensure_ascii=False)
-        if hasattr(client, "generate_ruling"):
+        prompt = cond.get("prompt") or json.dumps(
+            self._condition_envelope(
+                cond,
+                payload,
+                self._default_input(state, actor, candidate, responses, extra, entity),
+                actor,
+                candidate,
+                entity,
+                responses,
+                extra,
+                provider="inside",
+            ),
+            ensure_ascii=False,
+        )
+        if hasattr(client, "run"):
+            value = client.run(str(prompt))
+        elif hasattr(client, "act"):
+            value = client.act(str(prompt), None)
+        elif hasattr(client, "generate_ruling"):
             value = client.generate_ruling(prompt=prompt, action=cond.get("semantic_id"), world=payload)
         elif hasattr(client, "complete"):
             value = client.complete(prompt)
@@ -214,15 +247,34 @@ class ExternalConditionEvaluator:
             value = client({"condition": cond, "payload": payload})
         else:
             return None
-        if isinstance(value, dict):
-            return value
-        if isinstance(value, str):
+        if inspect.isawaitable(value):
+            value = self._await_sync(value)
+        if isinstance(value, dict) and "text" in value and "data" in value:
+            data = value.get("data")
+            if isinstance(data, dict):
+                return data
+        return self._decode_inside_value(value)
+
+    def _await_sync(self, value: Any) -> Any:
+        """Wait for an awaitable when a legacy sync caller invokes inside."""
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(value)
+        result: dict[str, Any] = {}
+
+        def run_in_thread() -> None:
             try:
-                decoded = json.loads(value)
-            except json.JSONDecodeError:
-                return {"result": value.lower() in {"1", "true", "yes", "ok"}, "text": value}
-            return decoded if isinstance(decoded, dict) else {"result": bool(decoded)}
-        return {"result": bool(value)}
+                result["value"] = asyncio.run(value)
+            except BaseException as exc:  # noqa: BLE001 - re-raise in caller thread.
+                result["error"] = exc
+
+        thread = threading.Thread(target=run_in_thread, daemon=True)
+        thread.start()
+        thread.join()
+        if "error" in result:
+            raise result["error"]
+        return result.get("value")
 
     async def _call_inside_client_async(
         self,
@@ -297,7 +349,20 @@ class ExternalConditionEvaluator:
                     extra,
                     entity,
                 )
-                prompt = cond.get("prompt") or json.dumps(payload, ensure_ascii=False)
+                prompt = cond.get("prompt") or json.dumps(
+                    self._condition_envelope(
+                        cond,
+                        payload,
+                        self._default_input(state, actor, candidate, responses, extra, entity),
+                        actor,
+                        candidate,
+                        entity,
+                        responses,
+                        extra,
+                        provider="inside",
+                    ),
+                    ensure_ascii=False,
+                )
                 value = await runtime_ctx.cast.get(actor_name).act(str(prompt), None)
                 data = value.get("data") if isinstance(value, dict) else None
                 if isinstance(data, dict):
@@ -329,7 +394,20 @@ class ExternalConditionEvaluator:
             extra,
             entity,
         )
-        prompt = cond.get("prompt") or json.dumps(payload, ensure_ascii=False)
+        prompt = cond.get("prompt") or json.dumps(
+            self._condition_envelope(
+                cond,
+                payload,
+                self._default_input(state, actor, candidate, responses, extra, entity),
+                actor,
+                candidate,
+                entity,
+                responses,
+                extra,
+                provider="inside",
+            ),
+            ensure_ascii=False,
+        )
         if hasattr(client, "run"):
             value = client.run(str(prompt))
         elif hasattr(client, "act"):
@@ -476,6 +554,42 @@ class ExternalConditionEvaluator:
             "patch_journal": extra.get("patch_journal") or [],
             "metadata": extra.get("metadata") or {},
         }
+
+    def _condition_envelope(
+        self,
+        cond: dict,
+        input_payload: dict[str, Any],
+        default_input: dict[str, Any],
+        actor: str | None,
+        candidate: str | None,
+        entity: str | None,
+        responses: list | None,
+        extra: dict | None,
+        provider: str,
+    ) -> dict[str, Any]:
+        """Build a versioned envelope for external condition calls."""
+        return self._protocol.build(
+            runtime_type="interactive_session",
+            purpose=str(cond.get("semantic_id") or cond.get("id") or "condition_evaluator"),
+            provider=provider,
+            input_payload=input_payload,
+            context_payload={
+                **default_input,
+                "actor": actor,
+                "candidate": candidate,
+                "entity": entity,
+                "responses": responses or [],
+                "extra": self._serializable_extra(extra),
+            },
+            name=cond.get("name") or cond.get("semantic_id"),
+            call_id=cond.get("id"),
+            endpoint=cond.get("endpoint") or cond.get("url"),
+            hook=(extra or {}).get("hook"),
+            metadata={
+                "current_state": (extra or {}).get("current_state"),
+                "current_scene": (extra or {}).get("current_scene"),
+            },
+        )
 
     def _serializable_extra(self, extra: dict | None) -> dict[str, Any]:
         """Return extra context that can safely be encoded as JSON."""

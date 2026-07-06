@@ -338,6 +338,94 @@ when:
 
 复杂机制优先实现为 plugin。plugin 可以内置 prompt、schema、fallback、校验逻辑，也可以内部调用 LLM、HTTP 或代码执行器。
 
+### 6.6 Runtime Interaction Protocol
+
+runtime service、HTTP evaluator、LLM/inside evaluator 使用同一个可扩展交互协议。
+协议版本固定写在 envelope 里，便于后续增加字段时保持兼容。
+
+```yaml
+protocol:
+  name: interactive_session
+  version: "1.0"
+  schema: interactive_session.v1
+
+call:
+  id: optional_call_id
+  name: plan_openchat_next
+  purpose: openchat_planner
+  provider: plugin
+  endpoint: null
+  hook: after_message
+  runtime_type: interactive_session
+
+input:
+  # 由 input/include_* 或默认完整上下文生成
+
+context:
+  runtime_type: interactive_session
+  state: {}
+  players: []
+  participants: []
+  current_state: main
+  current_scene: day_discussion
+  last_responses: []
+  messages: []
+  patches: []
+  metadata: {}
+  base_flow: {}
+
+metadata:
+  current_state: main
+  current_scene: day_discussion
+```
+
+字段约定：
+
+| 字段 | 说明 |
+| --- | --- |
+| `protocol.schema` | 协议版本标识，当前为 `interactive_session.v1` |
+| `call.purpose` | 本次调用目的，例如 `participants`、`controller`、`schedule_detector`、`openchat_planner`、`schedule_merge_back`、`story_generator`、`flow_patch_generator`、`condition_evaluator` |
+| `call.provider` | `builtin`、`plugin`、`http`、`inside`、`llm` |
+| `input` | 按 DSL `input` 物化后的入参；未声明 `input` 时使用完整上下文 |
+| `context` | 完整可序列化运行时上下文，用于外部服务需要更多信息时读取 |
+| `metadata` | 协议级扩展信息，只放可序列化数据，不放 Python 对象 |
+
+HTTP runtime service 和 HTTP evaluator 会收到完整 envelope，同时保留历史兼容字段
+`id/name/purpose/endpoint/input/context`。inside provider 未显式写 `prompt` 时，默认
+把 envelope 编码为 JSON 交给 ccserver `Agent.run()`。
+
+plugin runtime service 为了兼容已有 Python 插件，默认仍接收扁平 `input` payload。如果
+插件希望直接接收统一 envelope，可以声明：
+
+```yaml
+planner:
+  provider: plugin
+  name: plan_openchat_next
+  protocol: envelope
+```
+
+或：
+
+```yaml
+planner:
+  provider: plugin
+  name: plan_openchat_next
+  envelope: true
+```
+
+所有 provider 的返回值都必须是 dict。常见返回字段如下：
+
+| purpose | 常见返回字段 |
+| --- | --- |
+| `participants` | `participants`、`selected`、`members` |
+| `controller` | `text`、`data` |
+| `schedule_detector` | `patch` |
+| `openchat_planner` | `next_speaker`、`cue`、`stop` |
+| `schedule_merge_back` | `value` |
+| `story_generator` | `text`、`beats` |
+| `flow_patch_generator` | `patch`、`flow_patch` |
+| `condition_evaluator` | `result`、`passed`、`ended`、`confidence` |
+
 ## 7. Scope
 
 `scope` 是消息域，不只是可见性。
@@ -558,6 +646,37 @@ schedule:
       mode: summary
       to: SCENE.dynamic_schedule_summary
 ```
+
+`dynamic.check_on` 决定什么时候运行 `detector`：
+
+| 值 | 触发时机 | `include_message` / `source_response` 形状 |
+| --- | --- | --- |
+| `after_message` | 每条 participant message 发布、`hooks.on_message` 与 `referee.check_on: after_message` 检查之后 | 当前单条 actor response，例如 `{actor, text, data}` |
+| `after_round` | 当前 schedule round 完成后、`schedule.stop_when` 与下一轮 planner 之前 | `{kind: round_completed, data: {responses: [...]}, text: ""}` |
+
+`single`、`sequential`、`simultaneous` 的 `after_round` 表示一轮 actor 集合执行完成。
+`openchat` 每个 turn 只收集一个 actor，因此 `after_round` 表示一个开放聊天 turn 完成。
+
+`after_message` 适合根据某个 actor 的发言即时插入子调度，例如“A 要求 B 和 C 开放聊天”。
+`after_round` 适合等本轮公开发言都完成后再分析是否插入私聊、分组聊或补充讨论。
+
+`after_generated_beat` 不属于 `schedule.dynamic.check_on`，它属于 `referee.check_on`，
+用于 controller free input 生成剧情 beat 后逐段判断是否结束。
+
+detector 会收到统一 runtime service payload。最常用的输入声明是：
+
+```yaml
+detector:
+  provider: plugin
+  name: detect_schedule_request
+  input:
+    include_message: true
+    include_recent_messages: true
+    include_state: true
+    include_participants: true
+```
+
+detector 返回值必须包含 `patch`，或 actor response 的 `data.schedule_patch` 直接提供 patch。
 
 基于某个 agent 的发言，plugin 可以生成：
 
@@ -975,7 +1094,22 @@ publication:
         players: [seer]
       content:
         ref: GAME.last_inspection_result
+
+  views:
+    - id: private-summary
+      kind: key-value
+      audience:
+        players: [seer]
+      data:
+        rows:
+          - label: 查验结果
+            value:
+              ref: GAME.last_inspection_result
 ```
+
+`messages` 默认公开发布；`disclosures` 默认按私有信息处理；`views` 复用同一
+`audience` 路由规则。`audience.players` / `audience.seats` 会走 private sink，
+`audience.scope` 或普通字符串会走 public sink，`private: true` 且没有明确 seat 时只发给 host。
 
 ## 18. Patch Model
 

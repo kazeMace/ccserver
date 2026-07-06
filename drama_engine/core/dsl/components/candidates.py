@@ -13,8 +13,11 @@
 """
 
 from __future__ import annotations
+from typing import Any
+
 from drama_engine.core.engine import State
 from drama_engine.core.dsl.components.conditions import ConditionEvaluator
+from drama_engine.core.dsl.components.conditions.keys import CONDITION_KEYS
 from drama_engine.core.dsl.components.value_resolver import ValueResolver
 
 
@@ -130,6 +133,197 @@ class CandidateResolver:
                     candidates.append(value)
 
         return self._apply_when(candidates, spec.get("when"), state, actor, last_responses)
+
+    async def resolve_async(
+        self,
+        spec: dict,
+        state: State,
+        last_responses: list,
+        actor: str | None = None,
+        extra: dict[str, Any] | None = None,
+    ) -> list:
+        """Resolve candidates with async per-candidate conditions when needed."""
+        assert isinstance(spec, dict), f"candidates 必须是 dict，收到 {type(spec)}"
+
+        if "filter" in spec:
+            candidates = await self._filter_candidates_async(
+                self._source_entities(spec["filter"], state),
+                spec["filter"],
+                state,
+                last_responses,
+                actor,
+                extra,
+            )
+        elif "source" in spec or "where" in spec:
+            filter_spec = {"source": spec.get("source"), "where": spec.get("where") or {}}
+            candidates = await self._filter_candidates_async(
+                self._source_entities(filter_spec, state),
+                filter_spec,
+                state,
+                last_responses,
+                actor,
+                extra,
+            )
+        else:
+            candidates = self._resolve_non_filter_candidates(spec, state, last_responses, actor)
+
+        if "extra" in spec:
+            extra_values = spec["extra"]
+            if not isinstance(extra_values, list):
+                extra_values = [extra_values]
+            for value_spec in extra_values:
+                value = self._values.resolve(value_spec, state=state, actor=actor, extra=extra or {})
+                if value is not None and value not in candidates:
+                    candidates.append(value)
+
+        return await self._apply_when_async(candidates, spec.get("when"), state, actor, last_responses, extra)
+
+    def _resolve_non_filter_candidates(
+        self,
+        spec: dict,
+        state: State,
+        last_responses: list,
+        actor: str | None,
+    ) -> list:
+        """Resolve candidates for non-filter modes."""
+        if "static" in spec:
+            return list(spec["static"])
+        if "from_data" in spec:
+            field = spec["from_data"]
+            if not last_responses:
+                return []
+            data = last_responses[-1].get("data") or {}
+            value = data.get(field)
+            return [value] if value else []
+        if "from_state" in spec:
+            value = self._values.resolve({"state": spec["from_state"]}, state=state, actor=actor)
+            if value is None:
+                return []
+            if isinstance(value, (list, tuple, set)):
+                return list(value)
+            return [value]
+        return sorted(e for e in state.all_entities() if e != "GAME")
+
+    def _source_entities(self, filter_spec: Any, state: State) -> list:
+        """Resolve the entity source for a filter selector."""
+        if not isinstance(filter_spec, dict):
+            return sorted(e for e in state.all_entities() if e != "GAME")
+        source = filter_spec.get("source")
+        if source in {"GAME.players", "players"}:
+            value = state.get_attr("GAME", "players") or []
+        elif source is None:
+            return sorted(e for e in state.all_entities() if e != "GAME")
+        else:
+            if isinstance(source, dict):
+                value = self._values.resolve(source, state=state, extra={"__state": state})
+            elif isinstance(source, str) and "." in source:
+                value = self._values.resolve({"ref": source}, state=state, extra={"__state": state})
+            else:
+                value = source
+        if value is None:
+            return []
+        if isinstance(value, (list, tuple, set)):
+            return [str(item) for item in value if state.has_entity(str(item))]
+        value_text = str(value)
+        return [value_text] if state.has_entity(value_text) else []
+
+    async def _filter_candidates_async(
+        self,
+        candidates: list,
+        filter_spec: Any,
+        state: State,
+        last_responses: list,
+        actor: str | None,
+        extra: dict[str, Any] | None,
+    ) -> list:
+        """Apply selector where/legacy filter rules with async condition support."""
+        where_spec = filter_spec.get("where") if isinstance(filter_spec, dict) else filter_spec
+        if where_spec is None:
+            where_spec = {}
+        filtered = []
+        for candidate in candidates:
+            if await self._matches_filter_async(
+                str(candidate),
+                where_spec,
+                state,
+                last_responses,
+                actor,
+                extra,
+            ):
+                filtered.append(candidate)
+        return filtered
+
+    async def _matches_filter_async(
+        self,
+        candidate: str,
+        where_spec: Any,
+        state: State,
+        last_responses: list,
+        actor: str | None,
+        extra: dict[str, Any] | None,
+    ) -> bool:
+        """Return whether one candidate matches a filter spec."""
+        if not where_spec:
+            return True
+        if self._looks_like_condition(where_spec):
+            return await self._eval.evaluate_async(
+                where_spec,
+                state,
+                actor=actor,
+                candidate=candidate,
+                responses=last_responses,
+                extra=extra,
+                entity=candidate,
+            )
+        if not isinstance(where_spec, dict):
+            return False
+        for attr, expected in where_spec.items():
+            if attr == "source":
+                continue
+            if state.get_attr(candidate, attr) != expected:
+                return False
+        return True
+
+    async def _apply_when_async(
+        self,
+        candidates: list,
+        when_spec: dict | list | None,
+        state: State,
+        actor: str | None,
+        last_responses: list,
+        extra: dict[str, Any] | None,
+    ) -> list:
+        """Apply candidates.when through the async evaluator."""
+        if not when_spec:
+            return candidates
+        if isinstance(when_spec, dict):
+            conditions = [when_spec]
+        elif isinstance(when_spec, list):
+            conditions = when_spec
+        else:
+            raise ValueError(f"candidates.when 必须是 dict 或 list，收到 {type(when_spec)}")
+        filtered = []
+        for candidate in candidates:
+            passed = True
+            for cond in conditions:
+                if not await self._eval.evaluate_async(
+                    cond,
+                    state,
+                    actor=actor,
+                    candidate=candidate,
+                    responses=last_responses,
+                    extra=extra,
+                    entity=candidate,
+                ):
+                    passed = False
+                    break
+            if passed:
+                filtered.append(candidate)
+        return filtered
+
+    def _looks_like_condition(self, spec: Any) -> bool:
+        """Return whether a dict looks like a condition AST."""
+        return isinstance(spec, dict) and any(key in CONDITION_KEYS for key in spec)
 
     def _apply_when(
         self,

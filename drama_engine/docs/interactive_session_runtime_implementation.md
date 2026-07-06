@@ -145,6 +145,8 @@ InteractiveSessionRunner
 - patch journal 记录
 - `detector` 通过 runtime service 调用
 - `dynamic.check_on` 支持 `after_message` 和 `after_round`
+- 父级 `mode: openchat` 也支持 `dynamic.check_on: after_round`；每个 openchat turn
+  只收集一个 actor，因此一个 turn 即一个 round
 - `dynamic.patch` 作为默认 patch 合并
 - `dynamic.merge_back` 在子调度结束后生效，`mode: summary` 会写入 `merge_back.to` 指定的状态路径
 - 子调度尊重 patch 的 `mode / max_turns / max_rounds`
@@ -152,6 +154,8 @@ InteractiveSessionRunner
 - 子调度 `mode: openchat` 每次只收集一个 actor，发言后调用 planner；planner
   可返回 `next_speaker`、`cue` 或 `stop: true`
 - 子调度 `mode: openchat` 未显式声明 `scope.visibility` 时默认按公开聊天发布；显式 private/public scope 会覆盖默认值
+- 子调度消息触发 `on_message/referee.after_message` 时，`responses` 使用父调度已收集
+  responses 与当前子调度 responses 的合并视图
 
 基础 schedule order 支持 `seat_order` 和 `reverse_seat_order`，优先读取 state
 中的 `seat_index`，缺失时按玩家名数字后缀自然排序。
@@ -209,10 +213,12 @@ type: llm
 provider: inside
 ```
 
-`provider: inside` 在 async runtime service 路径中优先调用显式注入的
+`provider: inside` 在 runtime service 和 async condition 路径中优先调用显式注入的
 `inside_agent`、`llm_client` 或 `llm_provider`。未注入且不是 dry-run 时，会通过
 ccserver `AgentFactory.create_root(...)` 创建隐藏内部 Agent；初始化失败或 dry-run
 时才回退到当前 cast actor 或 deterministic builtin fallback。
+遗留同步 condition 路径如果拿到 inside Agent，也会阻塞等待其 async `run()` 结果；
+interactive_session runtime 自身优先使用协程路径。
 
 `inside_agent`、`llm_client`、`llm_provider` 是 Python runtime 句柄，只在内部协程路径上传递，不会进入 HTTP body、prompt 默认 JSON 或 materialized payload。
 
@@ -224,6 +230,16 @@ patch journal 和 metadata。
 
 HTTP runtime service 和 HTTP external condition 在 async 路径中通过协程 offload
 执行，不阻塞 event loop。
+
+交互协议：
+
+- HTTP runtime service 和 HTTP external condition 默认收到 `interactive_session.v1`
+  envelope，且保留 `id/name/purpose/endpoint/input/context` 兼容字段。
+- inside provider 未显式写 `prompt` 时，默认把同一个 envelope 编码为 JSON 后调用
+  ccserver `Agent.run()`。
+- plugin runtime service 默认保持历史扁平 payload；声明 `protocol: envelope` 或
+  `envelope: true` 时接收同一个 envelope。
+- envelope 固定包含 `protocol`、`call`、`input`、`context`、`metadata` 五个顶层字段。
 
 脚本顶层 `plugins` 会在 runner assign 阶段加载。支持：
 

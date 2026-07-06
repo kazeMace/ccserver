@@ -25,6 +25,7 @@ from drama_engine.core.runtime.interactive_session.context import InteractiveExe
 from drama_engine.core.runtime.interactive_session.flow.executor import FlowExecutor
 from drama_engine.core.runtime.interactive_session.models import ControllerActionSpec, ParticipantActionSpec, ScopeSpec
 from drama_engine.core.runtime.interactive_session.patch.journal import PatchJournal
+from drama_engine.core.runtime.interactive_session.schedule.executor import ScheduleExecutor
 from drama_engine.core.runtime.interactive_session.scene.executor import SceneExecutor
 from drama_engine.core.runtime.interactive_session.services.runtime_services import RuntimeServiceCaller
 from drama_engine.core.session.lifecycle import RuntimeState
@@ -742,6 +743,116 @@ async def test_dynamic_schedule_respects_after_round_check_on(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_openchat_dynamic_after_round_triggers_child_schedule():
+    """openchat should also honor dynamic.check_on=after_round."""
+    actors = [
+        _ScriptedActor("A", [{"actor": "A", "text": "open", "data": None}]),
+        _ScriptedActor("B", [{"actor": "B", "text": "child", "data": None}]),
+    ]
+    ctx = _interactive_ctx({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["A", "B"]},
+        "flow": {"type": "sequence", "scenes": ["chat"]},
+        "scenes": {
+            "chat": {
+                "participants": {"static": ["A", "B"]},
+                "schedule": {
+                    "mode": "openchat",
+                    "actor": "A",
+                    "max_turns": 1,
+                    "dynamic": {
+                        "enabled": True,
+                        "check_on": "after_round",
+                        "detector": {
+                            "patch": {
+                                "type": "push_schedule",
+                                "mode": "single",
+                                "participants": ["B"],
+                                "max_turns": 1,
+                            }
+                        },
+                    },
+                },
+                "participant_action": {"kind": "speak", "response": {"mode": "text"}},
+            }
+        },
+    }, actors=actors)
+    scene = ctx.script.scenes["chat"]
+
+    result = await ScheduleExecutor().execute(
+        ctx,
+        scene.schedule,
+        scene.participant_action,
+        scene.scope,
+        ["A", "B"],
+    )
+
+    assert [item["actor"] for item in result["responses"]] == ["A", "B"]
+    pushed = [
+        item for item in ctx.patch_journal.by_type("schedule_patch")
+        if item.payload.get("type") == "push_schedule"
+    ]
+    assert len(pushed) == 1
+
+
+@pytest.mark.asyncio
+async def test_dynamic_child_message_hooks_receive_parent_and_child_responses():
+    """Child schedule on_message callbacks should see parent + child responses."""
+    actors = [
+        _ScriptedActor("A", [{"actor": "A", "text": "ask B", "data": None}]),
+        _ScriptedActor("B", [{"actor": "B", "text": "child answer", "data": None}]),
+    ]
+    ctx = _interactive_ctx({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["A", "B"]},
+        "flow": {"type": "sequence", "scenes": ["chat"]},
+        "scenes": {
+            "chat": {
+                "participants": {"static": ["A", "B"]},
+                "schedule": {
+                    "mode": "single",
+                    "actor": "A",
+                    "dynamic": {
+                        "enabled": True,
+                        "check_on": "after_message",
+                        "detector": {
+                            "patch": {
+                                "type": "push_schedule",
+                                "mode": "single",
+                                "participants": ["B"],
+                                "max_turns": 1,
+                            }
+                        },
+                    },
+                },
+                "participant_action": {"kind": "speak", "response": {"mode": "text"}},
+            }
+        },
+    }, actors=actors)
+    scene = ctx.script.scenes["chat"]
+    seen: list[tuple[str, list[str]]] = []
+
+    async def after_response(response: dict, current_responses: list[dict]) -> None:
+        seen.append((
+            str(response.get("actor")),
+            [str(item.get("actor")) for item in current_responses],
+        ))
+        return None
+
+    await ScheduleExecutor().execute(
+        ctx,
+        scene.schedule,
+        scene.participant_action,
+        scene.scope,
+        ["A", "B"],
+        after_response=after_response,
+    )
+
+    assert ("A", ["A"]) in seen
+    assert ("B", ["A", "B"]) in seen
+
+
+@pytest.mark.asyncio
 async def test_flow_patch_failure_does_not_pollute_journal():
     """Invalid flow_patch should fail before journal append."""
     ctx = _interactive_ctx({
@@ -1139,6 +1250,76 @@ async def test_referee_inside_provider_can_call_async_agent():
     assert result == "inside_done"
 
 
+def test_sync_inside_condition_can_create_and_wait_for_agent(monkeypatch):
+    """Legacy sync condition evaluation should still use an inside Agent when available."""
+    ctx = _interactive_ctx({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["P1"]},
+        "flow": {"type": "sequence", "scenes": ["start"]},
+        "scenes": {"start": {"participants": {"static": []}}},
+    }, actors=[_ScriptedActor("P1", [])])
+    agent = _AsyncInsideAgent('{"result": true}')
+
+    from drama_engine.core.runtime.interactive_session.services.inside_agent import InsideAgentFactory
+
+    monkeypatch.setattr(
+        InsideAgentFactory,
+        "get_or_create",
+        lambda self, metadata, spec: agent,
+    )
+
+    passed = ctx.condition_evaluator.evaluate(
+        {"evaluator": "llm", "provider": "inside"},
+        ctx.state,
+        actor=None,
+        responses=[],
+        extra=ctx.condition_extra(),
+    )
+
+    assert passed is True
+    assert agent.prompts
+    assert yaml.safe_load(agent.prompts[0])["protocol"]["schema"] == "interactive_session.v1"
+
+
+@pytest.mark.asyncio
+async def test_candidate_when_inside_provider_uses_async_agent():
+    """candidate filters should use async inside evaluation instead of sync fallback."""
+    actor = _ScriptedActor("A", [{"actor": "A", "text": "choose B", "data": {"choose": "B"}}])
+    ctx = _interactive_ctx({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["A", "B"]},
+        "flow": {"type": "sequence", "scenes": ["choose"]},
+        "scenes": {
+            "choose": {
+                "participants": {"static": ["A"]},
+                "schedule": {"mode": "single", "actor": "A"},
+                "participant_action": {
+                    "kind": "choose",
+                    "candidates": {
+                        "static": ["B"],
+                        "when": {"evaluator": "llm", "provider": "inside"},
+                    },
+                    "response": {"mode": "structured", "schema": "choose"},
+                },
+            }
+        },
+    }, actors=[actor])
+    ctx.session_metadata["inside_agent"] = _AsyncInsideAgent('{"result": true}')
+    scene = ctx.script.scenes["choose"]
+
+    response = await ParticipantActionExecutor().collect_one(
+        ctx,
+        "A",
+        scene.participant_action,
+        scene.scope,
+        ["A"],
+    )
+
+    assert response["data"]["choose"] == "B"
+    assert actor.candidates == ["B"]
+    assert ctx.session_metadata["inside_agent"].prompts
+
+
 @pytest.mark.asyncio
 async def test_http_condition_ignores_runtime_only_extra(monkeypatch):
     """HTTP evaluator should not JSON-encode runtime-only Python handles."""
@@ -1390,6 +1571,46 @@ async def test_publication_supports_template_ref_and_private_players():
 
 
 @pytest.mark.asyncio
+async def test_publication_view_routes_private_player_audience():
+    """publication.views should use the same private audience routing as disclosures."""
+    ctx = _interactive_ctx({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["A"]},
+        "flow": {"type": "sequence", "scenes": ["publish"]},
+        "scenes": {
+            "publish": {
+                "participants": {"static": []},
+                "schedule": {"mode": "none"},
+                "participant_action": {"kind": "none", "response": {"mode": "none"}},
+                "publication": {
+                    "views": [
+                        {
+                            "id": "secret-view",
+                            "kind": "key-value",
+                            "audience": {"players": ["A"]},
+                            "data": {"rows": [{"label": "secret", "value": {"ref": "GAME.secret"}}]},
+                        }
+                    ]
+                },
+            }
+        },
+    }, actors=[_ScriptedActor("A", [])])
+    StateWriter(ctx.state).apply(SetAttr("GAME", "secret", "seer-only"))
+    public_events = []
+    private_events = []
+    ctx.emit_public = public_events.append
+    ctx.emit_private = lambda seat_id, event: private_events.append({"seat_id": seat_id, **event})
+
+    await SceneExecutor().execute(ctx, ctx.script.scenes["publish"])
+
+    assert not [event for event in public_events if event.get("kind") == "__view__"]
+    assert private_events[0]["seat_id"] == "A"
+    assert private_events[0]["kind"] == "__view__"
+    assert private_events[0]["view_id"] == "secret-view"
+    assert private_events[0]["data"]["rows"][0]["value"] == "seer-only"
+
+
+@pytest.mark.asyncio
 async def test_broadcast_effect_is_drained_in_interactive_session():
     """resolution broadcast should publish in interactive_session, not stay queued."""
     ctx = _interactive_ctx({
@@ -1613,6 +1834,9 @@ async def test_external_condition_input_include_players_participants_and_message
     assert captured[0]["input"]["messages"] == [
         {"kind": "interactive_message", "sender": "A", "text": "hello"}
     ]
+    assert captured[0]["protocol"]["schema"] == "interactive_session.v1"
+    assert captured[0]["call"]["purpose"] == "condition_evaluator"
+    assert captured[0]["context"]["current_scene"] == ctx.current_scene_id
 
 
 @pytest.mark.asyncio
@@ -1737,6 +1961,40 @@ async def test_runtime_service_input_include_flags_shape_payload():
     assert captured[0]["recent_messages"] == [{"actor": "A", "text": "new", "data": None}]
     assert captured[0]["secret"] == "open"
     assert "last_responses" not in captured[0]
+
+
+@pytest.mark.asyncio
+async def test_plugin_runtime_service_can_opt_into_protocol_envelope():
+    """Plugin services can receive the unified protocol envelope when requested."""
+    ctx = _interactive_ctx({
+        "runtime": {"type": "interactive_session"},
+        "players": {"ids": ["A"]},
+        "flow": {"type": "sequence", "scenes": ["start"]},
+        "scenes": {"start": {"participants": {"static": []}}},
+    })
+    captured = []
+    ctx.plugin_registry.register_runtime_service(
+        "capture_envelope",
+        lambda payload: captured.append(payload) or {"ok": True},
+    )
+
+    result = await RuntimeServiceCaller().call_async(
+        ctx,
+        {
+            "provider": "plugin",
+            "name": "capture_envelope",
+            "protocol": "envelope",
+            "input": {"include_players": True},
+        },
+        "test_input",
+        ctx.full_context_payload(),
+    )
+
+    assert result == {"ok": True}
+    assert captured[0]["protocol"]["schema"] == "interactive_session.v1"
+    assert captured[0]["call"]["provider"] == "plugin"
+    assert captured[0]["input"]["players"] == ["A"]
+    assert captured[0]["context"]["runtime_type"] == "interactive_session"
 
 
 @pytest.mark.asyncio

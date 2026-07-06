@@ -35,6 +35,7 @@ class DynamicScheduleExecutor:
         parent_participants: list[str],
         source_response: dict[str, Any],
         after_response: Callable[[dict[str, Any], list[dict[str, Any]]], Awaitable[str | None]] | None = None,
+        parent_responses: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Check detector output and run a child schedule when requested."""
         if not dynamic.enabled:
@@ -61,6 +62,7 @@ class DynamicScheduleExecutor:
             parent_participants,
             source_response,
             after_response,
+            list(parent_responses or []),
         )
 
     async def _detect_patch(
@@ -158,6 +160,7 @@ class DynamicScheduleExecutor:
         parent_participants: list[str],
         source_response: dict[str, Any],
         after_response: Callable[[dict[str, Any], list[dict[str, Any]]], Awaitable[str | None]] | None,
+        parent_responses: list[dict[str, Any]],
     ) -> dict[str, Any]:
         """Execute a pushed child schedule immediately."""
         participants = [
@@ -213,6 +216,7 @@ class DynamicScheduleExecutor:
                 patch,
                 source_response,
                 after_response,
+                parent_responses,
             )
             responses = list(child_result.get("responses") or [])
             result = child_result.get("result")
@@ -232,7 +236,13 @@ class DynamicScheduleExecutor:
                 )
                 for response in round_responses:
                     responses.append(response)
-                    result = await self._handle_child_response(ctx, responses, response, after_response)
+                    result = await self._handle_child_response(
+                        ctx,
+                        parent_responses,
+                        responses,
+                        response,
+                        after_response,
+                    )
                     if result is not None:
                         break
                 if result is not None:
@@ -269,6 +279,7 @@ class DynamicScheduleExecutor:
         patch: dict[str, Any],
         source_response: dict[str, Any],
         after_response: Callable[[dict[str, Any], list[dict[str, Any]]], Awaitable[str | None]] | None,
+        parent_responses: list[dict[str, Any]],
     ) -> dict[str, Any]:
         """Run a dynamic openchat child schedule through planner decisions."""
         responses: list[dict[str, Any]] = []
@@ -292,7 +303,13 @@ class DynamicScheduleExecutor:
                 break
             for response in round_responses:
                 responses.append(response)
-                result = await self._handle_child_response(ctx, responses, response, after_response)
+                result = await self._handle_child_response(
+                    ctx,
+                    parent_responses,
+                    responses,
+                    response,
+                    after_response,
+                )
                 if result is not None:
                     break
             if result is not None:
@@ -318,12 +335,14 @@ class DynamicScheduleExecutor:
     async def _handle_child_response(
         self,
         ctx: InteractiveExecutionContext,
-        responses: list[dict[str, Any]],
+        parent_responses: list[dict[str, Any]],
+        child_responses: list[dict[str, Any]],
         response: dict[str, Any],
         after_response: Callable[[dict[str, Any], list[dict[str, Any]]], Awaitable[str | None]] | None,
     ) -> str | None:
         """Record and process one child schedule response."""
-        ctx.last_responses = list(responses)
+        combined_responses = list(parent_responses) + list(child_responses)
+        ctx.last_responses = combined_responses
         ctx.record_message({
             "kind": "interactive_message",
             "runtime_type": "interactive_session",
@@ -334,7 +353,7 @@ class DynamicScheduleExecutor:
         })
         if after_response is None:
             return None
-        return await after_response(response, list(responses))
+        return await after_response(response, list(combined_responses))
 
     async def _plan_openchat_next(
         self,

@@ -484,13 +484,15 @@ class SceneExecutor:
             if not isinstance(view, dict):
                 continue
             try:
-                audience = str(view.get("audience") or scene.scope.id)
+                audience_spec = view.get("audience") or view.get("scope") or scene.scope.id
+                audience_label = self._audience_label(audience_spec, scene.scope.id)
+                projector_spec = {**view, "audience": audience_label}
                 view_event = ctx.plugin_registry.project_view(
-                    view,
+                    projector_spec,
                     ViewContext(
                         state=ctx.state,
                         scene_name=scene.id,
-                        audience=audience,
+                        audience=str(audience_label),
                         mutation_log=ctx.state.mutation_log(),
                         script_extensions={},
                     ),
@@ -503,7 +505,13 @@ class SceneExecutor:
                 })
                 continue
             if view_event:
-                ctx.emit_public(view_event)
+                self._emit_to_audience(
+                    ctx,
+                    view_event,
+                    audience_spec,
+                    default_scope=scene.scope.id,
+                    private_default=bool(view.get("private") or view_event.get("private")),
+                )
 
     def _publication_text(
         self,
