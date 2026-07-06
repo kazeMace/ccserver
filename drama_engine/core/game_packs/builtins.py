@@ -6,7 +6,15 @@
 
 from __future__ import annotations
 
-from drama_engine.core.game_packs.mechanisms import board, cards, dice, economy, social
+from drama_engine.core.game_packs.mechanisms import (
+    board,
+    cards,
+    dice,
+    economy,
+    inventory,
+    social,
+    stats,
+)
 from drama_engine.core.game_packs.registry import GamePackManifest, GamePackRuntimeRegistry
 
 
@@ -49,6 +57,22 @@ def register_builtin_game_packs(registry: GamePackRuntimeRegistry) -> None:
         description="社交推理机制集合：计票、出局、夜晚结算、阵营清空判定。适用狼人杀/阿瓦隆/谁是卧底。",
         register=social.register,
         mechanisms=("tally_votes", "eliminate", "resolve_night", "social.faction_cleared"),
+        default_config={},
+        required_extensions=(),
+    ))
+    registry.register(GamePackManifest(
+        plugin_id="builtin.inventory",
+        description="背包/道具机制集合：获得、消耗、转移物品，拥有判定。支持计数型与富属性型，运行中可扩展。",
+        register=inventory.register,
+        mechanisms=("grant_item", "use_item", "transfer_item", "inventory.has_item"),
+        default_config={},
+        required_extensions=(),
+    ))
+    registry.register(GamePackManifest(
+        plugin_id="builtin.stats",
+        description="角色面板机制集合：属性增量修改、阈值判定。适用血量/金币/等级/好感度等可变属性。",
+        register=stats.register,
+        mechanisms=("adjust_attr", "stats.attr_at_least", "stats.attr_below"),
         default_config={},
         required_extensions=(),
     ))

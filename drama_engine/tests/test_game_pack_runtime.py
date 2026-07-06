@@ -72,3 +72,27 @@ async def test_script_without_game_pack_has_no_board_mechanics() -> None:
     ctx = instance.runtime.runner._ctx
     assert ctx is not None
     assert ctx.plugin_registry.has_effect("board_place") is False
+
+
+@pytest.mark.asyncio
+async def test_rpg_installs_dice_inventory_stats_together() -> None:
+    """RPG 样例用列表形式引入 dice+inventory+stats 三个机制集合，均应安装并跑通。"""
+    registry = GameInstanceRegistry(store=None, load_existing=False)
+    instance = await registry.create_instance(
+        game_id="rpg",
+        script_path="drama_engine/scripts/interactive_session/rpg/dungeon_delve.yaml",
+        seat_ids=["Hero"],
+        params={"dry_run": True, "use_runner": True},
+    )
+    await instance.assign()
+    ctx = instance.runtime.runner._ctx
+    # 三个机制集合都装上了
+    assert ctx.plugin_registry.has_effect("roll_dice")
+    assert ctx.plugin_registry.has_effect("grant_item")
+    assert ctx.plugin_registry.has_effect("adjust_attr")
+    # 具名骰子定义已写入 GAME
+    defs = ctx.state.get_attr("GAME", "dice_defs")
+    assert isinstance(defs, dict) and "d20" in defs and "encounter" in defs
+    # 角色面板初始值来自 DSL
+    assert ctx.state.get_attr("Hero", "hp") == 30
+    assert ctx.state.get_attr("Hero", "inventory_healing_herb") == 2

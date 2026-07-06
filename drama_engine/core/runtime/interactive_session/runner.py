@@ -20,6 +20,7 @@ from drama_engine.core.runtime.interactive_session.patch.materializer import Flo
 from drama_engine.core.runtime.interactive_session.services.plugin_loader import InteractivePluginLoader
 from drama_engine.core.runtime_spec.registry import RuntimeSpec
 from drama_engine.core.game_instance.state import SESSION_ASSIGNED, SESSION_ENDED, SESSION_RUNNING
+from drama_engine.core.visibility.disclosure_ledger import DisclosureLedger
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +87,7 @@ class InteractiveSessionRunner(BasicGameRunner):
             emit_host=self._emit_host,
             session_metadata=session_state.metadata,
             emit_private=self._emit_private,
+            disclosure_ledger=DisclosureLedger(),
             base_raw=deepcopy(script.raw),
         )
         self._ctx = ctx
@@ -147,6 +149,15 @@ class InteractiveSessionRunner(BasicGameRunner):
     def patch_journal(self) -> Any:
         """返回当前 patch journal；未 assign 时为 None。"""
         return self._ctx.patch_journal if self._ctx is not None else None
+
+    @property
+    def disclosure_ledger(self) -> Any:
+        """返回当前披露账本；未 assign 时为 None。
+
+        供 GameInstance 的 SnapshotManager/RollbackManager 采集披露快照，
+        以及 project_context 合成 actor view 的已披露事实。
+        """
+        return self._ctx.disclosure_ledger if self._ctx is not None else None
 
     def summary(self, audience: str, seat_id: str | None = None) -> dict[str, Any]:
         """Return current summary for host/player views."""
@@ -237,6 +248,26 @@ class InteractiveSessionRunner(BasicGameRunner):
                     StateWriter(state).apply(SetAttr(name, str(key), value))
         return state
 
+    def _normalize_pack_specs(self, source: Any) -> list[dict]:
+        """把 game_pack / rule_set 声明归一为 spec 列表。
+
+        支持三种写法：
+          - 单个 dict：{plugin: ..., config: ...}
+          - dict 列表：[{plugin: ...}, {plugin: ...}]
+          - 字符串：直接是 plugin id
+        无 plugin 的项会被忽略。
+        """
+        if source is None:
+            return []
+        items = source if isinstance(source, list) else [source]
+        specs: list[dict] = []
+        for item in items:
+            if isinstance(item, str) and item:
+                specs.append({"plugin": item})
+            elif isinstance(item, dict) and item.get("plugin"):
+                specs.append(item)
+        return specs
+
     def _install_game_pack(self, script: Any, plugins: Any, state: State) -> None:
         """安装 DSL 声明的 GamePack / RuleSet 机制集合。
 
@@ -248,8 +279,11 @@ class InteractiveSessionRunner(BasicGameRunner):
         from drama_engine.core.dsl.plugins import PluginApi
         from drama_engine.core.game_packs import build_default_game_pack_runtime_registry
 
-        # game_pack 与 rule_set 都可能声明机制集合，需要同时安装（例如大富翁 = dice + economy）。
-        specs = [spec for spec in (script.game_pack, script.rule_set) if isinstance(spec, dict) and spec.get("plugin")]
+        # game_pack / rule_set 都可能声明机制集合，且各自都支持单个或列表形式，
+        # 因此一个脚本可以引入任意多个机制集合（例如 RPG = dice + inventory + stats）。
+        specs: list[dict] = []
+        for source in (script.game_pack, script.rule_set):
+            specs.extend(self._normalize_pack_specs(source))
         if not specs:
             return
         registry = build_default_game_pack_runtime_registry()

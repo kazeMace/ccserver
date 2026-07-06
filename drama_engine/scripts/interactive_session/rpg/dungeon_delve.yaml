@@ -1,0 +1,152 @@
+meta:
+  title: 地牢探险（RPG 样例）
+  description: |
+    展示自定义骰子 + 背包 + 角色面板三种机制协同的 RPG 样例。
+    角色有 hp/gold 面板属性、背包物品；探险用 d20 检定（自定义具名骰子），
+    与 NPC 互动累积好感度。全部规则来自机制，DSL 只做流程编排。
+
+runtime:
+  type: interactive_session
+
+# 同时引入骰子、背包、角色面板三个机制集合（game_pack 支持列表形式）。
+game_pack:
+  - plugin: builtin.dice
+  - plugin: builtin.inventory
+  - plugin: builtin.stats
+
+extensions:
+  dice:
+    enabled: true
+
+players:
+  count: 1
+  ids: [Hero]
+  initial_attrs:
+    hp: 30
+    gold: 10
+    level: 1
+    inventory_healing_herb: 2      # 计数型物品：初始 2 株草药
+    affinity_Sage: 0               # 与 NPC 贤者的好感度
+
+# 具名骰子定义：检定用 d20，遭遇用带权重的 encounter 骰。
+state:
+  GAME:
+    dice_seed: 20250706
+    dice_defs:
+      d20:
+        sides: 20
+      encounter:
+        faces: [trap, treasure, monster, empty]
+        weights: [0.2, 0.3, 0.3, 0.2]
+
+flow:
+  type: state_machine
+  initial: explore
+  states:
+    explore:
+      scenes:
+        - room_encounter
+      transitions:
+        - to: rest
+    rest:
+      scenes:
+        - meet_sage
+      terminal: true
+
+scenes:
+  # 探索房间：先掷遭遇骰决定房间类型，再用 d20 做检定。
+  room_encounter:
+    type: scene
+    scope:
+      id: dungeon
+      visibility: public
+    participants:
+      static: [Hero]
+    schedule:
+      mode: single
+      actor: Hero
+    participant_action:
+      kind: none
+    controller_action:
+      enabled: false
+    resolution:
+      effects:
+        # 掷遭遇骰（自定义面值+权重），结果写入 GAME.last_rolls
+        - type: roll_dice
+          die: encounter
+        # d20 检定，点数累加到 Hero 的临时属性
+        - type: roll_dice
+          die: d20
+          to: Hero.last_check
+        # 探险有风险：扣少量血（带下限，不会死于探索）
+        - type: adjust_attr
+          target: Hero
+          attr: hp
+          delta: -5
+          min: 0
+        # 找到宝藏：加金币
+        - type: adjust_attr
+          target: Hero
+          attr: gold
+          delta: 20
+    referee:
+      enabled: true
+      check_on: [after_scene]
+      rules:
+        # hp 归零则失败
+        - when:
+            evaluator: plugin
+            name: stats.attr_below
+            input:
+              entity: Hero
+              attr: hp
+              value: 1
+          result:
+            end: hero_defeated
+
+  # 与贤者互动：消耗草药换取好感度，好感达标则获得奖励物品。
+  meet_sage:
+    type: scene
+    scope:
+      id: sanctuary
+      visibility: public
+    participants:
+      static: [Hero]
+    schedule:
+      mode: single
+      actor: Hero
+    participant_action:
+      kind: none
+    controller_action:
+      enabled: false
+    resolution:
+      effects:
+        # 献上一株草药（消耗背包物品）
+        - type: use_item
+          target: Hero
+          item: healing_herb
+        # 好感度 +3
+        - type: adjust_attr
+          target: Hero
+          attr: affinity_Sage
+          delta: 3
+        # 获得奖励物品（运行中动态扩展背包，富属性型）
+        - type: grant_item
+          target: Hero
+          item: sage_amulet
+          attrs:
+            effect: hp_regen
+            power: 5
+    referee:
+      enabled: true
+      check_on: [after_scene]
+      rules:
+        - when:
+            evaluator: plugin
+            name: stats.attr_at_least
+            input:
+              entity: Hero
+              attr: affinity_Sage
+              value: 3
+          result:
+            end: sage_blessing

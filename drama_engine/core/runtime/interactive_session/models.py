@@ -234,9 +234,10 @@ class InteractiveScript:
     # 实体属性级可见性策略（哪些属性对他人隐藏），由顶层 visibility: 块编译而来。
     visibility: VisibilityPolicy = field(default_factory=VisibilityPolicy)
     plugins: list[dict[str, Any]] = field(default_factory=list)
-    # 机制集合引用：{"plugin": "builtin.board", "config": {...}}；不含规则本体。
-    game_pack: dict[str, Any] = field(default_factory=dict)
-    rule_set: dict[str, Any] = field(default_factory=dict)
+    # 机制集合引用：{"plugin": "builtin.board", "config": {...}}，或其列表（引入多个集合）；
+    # 不含规则本体。
+    game_pack: dict[str, Any] | list[dict[str, Any]] = field(default_factory=dict)
+    rule_set: dict[str, Any] | list[dict[str, Any]] = field(default_factory=dict)
     raw: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:

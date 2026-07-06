@@ -10,7 +10,15 @@ from drama_engine.core.engine import SetAttr, State, StateWriter, Vocabulary
 from drama_engine.core.dsl.components import EffectExecutor  # noqa: F401 - 先加载组件，避免循环导入
 from drama_engine.core.dsl.plugins import EffectContext, PluginApi, PluginRegistry
 from drama_engine.core.game_packs import build_default_game_pack_runtime_registry
-from drama_engine.core.game_packs.mechanisms import board, cards, dice, economy, social
+from drama_engine.core.game_packs.mechanisms import (
+    board,
+    cards,
+    dice,
+    economy,
+    inventory,
+    social,
+    stats,
+)
 
 
 def _new_state(players: int = 4) -> State:
@@ -82,6 +90,59 @@ def test_dice_roll_is_replayable() -> None:
     registry.execute_effect({"type": "roll_dice", "sides": 6}, _ctx(state_b))
     assert state_b.get_attr("GAME", "last_roll") == first
     assert 1 <= first <= 6
+
+
+def test_dice_custom_faces() -> None:
+    """自定义面值 faces 应从值集中取值，而非 1..sides。"""
+    registry = _registry_with(dice)
+    state = _new_state()
+    StateWriter(state).apply(SetAttr("GAME", "dice_seed", 5))
+    registry.execute_effect({"type": "roll_dice", "faces": [0, 0, 1, 1, 2, 5]}, _ctx(state))
+    assert state.get_attr("GAME", "last_rolls")[0] in {0, 1, 2, 5}
+
+
+def test_dice_weighted_probability_biases_result() -> None:
+    """加权概率应明显偏向高权重面。"""
+    registry = _registry_with(dice)
+    state = _new_state()
+    StateWriter(state).apply(SetAttr("GAME", "dice_seed", 1))
+    miss = 0
+    for _ in range(200):
+        registry.execute_effect(
+            {"type": "roll_dice", "faces": ["hit", "miss"], "weights": [0.1, 0.9]},
+            _ctx(state),
+        )
+        if state.get_attr("GAME", "last_rolls") == ["miss"]:
+            miss += 1
+    # 90% 权重的 miss 应占多数（远超一半）。
+    assert miss > 140
+
+
+def test_dice_named_defs_and_multi_roll() -> None:
+    """GAME.dice_defs 里的具名骰子可被 die/dice 引用，dice 支持一次多投。"""
+    registry = _registry_with(dice)
+    state = _new_state()
+    StateWriter(state).apply(SetAttr("GAME", "dice_seed", 3))
+    StateWriter(state).apply(SetAttr("GAME", "dice_defs", {
+        "d20": {"sides": 20},
+        "atk": {"faces": ["hit", "miss"], "weights": [0.5, 0.5]},
+    }))
+    registry.execute_effect({"type": "roll_dice", "dice": ["d20", "d20"]}, _ctx(state))
+    rolls = state.get_attr("GAME", "last_rolls")
+    assert len(rolls) == 2 and all(1 <= r <= 20 for r in rolls)
+    assert state.get_attr("GAME", "last_roll") == sum(rolls)
+
+    registry.execute_effect({"type": "roll_dice", "die": "atk"}, _ctx(state))
+    assert state.get_attr("GAME", "last_rolls")[0] in {"hit", "miss"}
+
+
+def test_dice_unknown_die_id_raises() -> None:
+    """引用未定义的骰子 id 应报错，不静默。"""
+    import pytest
+    registry = _registry_with(dice)
+    state = _new_state()
+    with pytest.raises(AssertionError):
+        registry.execute_effect({"type": "roll_dice", "die": "ghost"}, _ctx(state))
 
 
 def test_dice_advance_on_track_wraps_and_flags_start() -> None:
@@ -173,13 +234,74 @@ def test_cards_draw_play_and_hand_empty() -> None:
     assert registry.evaluate_condition("cards.hand_empty", {"entity": "Player_1"}, {"state": state}) is True
 
 
+def test_inventory_grant_use_transfer_and_has_item() -> None:
+    """背包：获得/消耗/转移计数型物品 + 拥有判定。"""
+    registry = _registry_with(inventory)
+    state = _new_state()
+    # 运行中动态获得物品
+    registry.execute_effect({"type": "grant_item", "item": "heal_potion", "count": 2}, _ctx(state, actor="Player_1"))
+    assert state.get_attr("Player_1", "inventory_heal_potion") == 2
+    assert registry.evaluate_condition("inventory.has_item", {"entity": "Player_1", "item": "heal_potion"}, {"state": state}) is True
+
+    # 消耗
+    registry.execute_effect({"type": "use_item", "item": "heal_potion"}, _ctx(state, actor="Player_1"))
+    assert state.get_attr("Player_1", "inventory_heal_potion") == 1
+
+    # 转移给他人
+    registry.execute_effect(
+        {"type": "transfer_item", "giver": "Player_1", "receiver": "Player_2", "item": "heal_potion"},
+        _ctx(state),
+    )
+    assert state.get_attr("Player_1", "inventory_heal_potion") == 0
+    assert state.get_attr("Player_2", "inventory_heal_potion") == 1
+
+
+def test_inventory_rich_attribute_item() -> None:
+    """背包：富属性型物品写入 items dict。"""
+    registry = _registry_with(inventory)
+    state = _new_state()
+    registry.execute_effect(
+        {"type": "grant_item", "target": "Player_1", "item": "sword", "attrs": {"atk": 10, "durability": 50}},
+        _ctx(state),
+    )
+    items = state.get_attr("Player_1", "items")
+    assert items["sword"]["atk"] == 10
+    assert registry.evaluate_condition("inventory.has_item", {"entity": "Player_1", "item": "sword"}, {"state": state}) is True
+
+
+def test_stats_adjust_attr_and_thresholds() -> None:
+    """角色面板：增量修改属性（含好感度）+ 阈值判定。"""
+    registry = _registry_with(stats)
+    state = _new_state()
+    StateWriter(state).apply(SetAttr("Player_1", "hp", 100))
+
+    # 扣血（带下限夹取）
+    registry.execute_effect({"type": "adjust_attr", "target": "Player_1", "attr": "hp", "delta": -150, "min": 0}, _ctx(state))
+    assert state.get_attr("Player_1", "hp") == 0
+    assert registry.evaluate_condition("stats.attr_below", {"entity": "Player_1", "attr": "hp", "value": 1}, {"state": state}) is True
+
+    # 好感度递增（关系型可变属性）
+    registry.execute_effect({"type": "adjust_attr", "target": "Player_1", "attr": "affinity_Npc_A", "delta": 3}, _ctx(state))
+    registry.execute_effect({"type": "adjust_attr", "target": "Player_1", "attr": "affinity_Npc_A", "delta": 2}, _ctx(state))
+    assert state.get_attr("Player_1", "affinity_Npc_A") == 5
+    assert registry.evaluate_condition("stats.attr_at_least", {"entity": "Player_1", "attr": "affinity_Npc_A", "value": 5}, {"state": state}) is True
+
+
 def test_game_pack_registry_registers_all_builtins() -> None:
-    """默认运行层注册表应包含五个内置机制集合。"""
+    """默认运行层注册表应包含全部七个内置机制集合。"""
     registry = build_default_game_pack_runtime_registry()
-    for plugin_id in ["builtin.board", "builtin.dice", "builtin.economy", "builtin.cards", "builtin.social"]:
+    for plugin_id in [
+        "builtin.board", "builtin.dice", "builtin.economy", "builtin.cards",
+        "builtin.social", "builtin.inventory", "builtin.stats",
+    ]:
         assert registry.has(plugin_id), f"缺少 {plugin_id}"
     # install 应把机制注册进 plugin registry 并返回默认 config
     plugins = PluginRegistry()
     config = registry.install("builtin.board", PluginApi(plugins))
     assert plugins.has_effect("board_place")
     assert config["board_size"] == 15
+    # inventory / stats 也能安装
+    registry.install("builtin.inventory", PluginApi(plugins))
+    registry.install("builtin.stats", PluginApi(plugins))
+    assert plugins.has_effect("grant_item")
+    assert plugins.has_effect("adjust_attr")
