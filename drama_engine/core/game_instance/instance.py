@@ -22,7 +22,10 @@ from drama_engine.core.game_instance.rollback import RollbackManager
 from drama_engine.core.game_instance.session_control import SessionControl
 from drama_engine.core.game_instance.snapshots import SnapshotManager
 from drama_engine.core.views.projector import ViewProjector
-from drama_engine.core.visibility.knowledge_firewall import build_default_knowledge_firewall
+from drama_engine.core.visibility.knowledge_firewall import (
+    build_default_knowledge_firewall,
+    build_knowledge_firewall_from_policy,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +63,7 @@ class GameInstance:
         )
         # 视图统一走 ViewProjector；信息隔离走 KnowledgeFirewall。
         self.views = ViewProjector(runtime)
+        # firewall 先给默认（无秘密）实例；assign 后按脚本 visibility 声明重建。
         self.firewall = build_default_knowledge_firewall()
         # ControlPlane 在 assign 后按脚本 control_plane 声明构建（此时才有编译产物）。
         self.control_plane = None
@@ -90,9 +94,25 @@ class GameInstance:
     # ---- 生命周期（委托 GameRuntime）----
 
     async def assign(self) -> None:
-        """执行发牌/初始化，并按脚本声明构建控制面。"""
+        """执行发牌/初始化，并按脚本声明构建控制面与信息隔离层。"""
         await self.runtime.assign()
         self._build_control_plane()
+        self._build_firewall()
+
+    def _build_firewall(self) -> None:
+        """按编译后脚本的 visibility 声明重建 KnowledgeFirewall。
+
+        脚本未声明 visibility 时保持默认（无秘密、全部公开）。
+        """
+        runner = getattr(self.runtime, "runner", None)
+        script = getattr(runner, "_script", None) if runner is not None else None
+        policy = getattr(script, "visibility", None) if script is not None else None
+        if policy is not None:
+            self.firewall = build_knowledge_firewall_from_policy(policy)
+            logger.info(
+                "[GameInstance] 按脚本 visibility 构建 firewall，secret_attrs=%s",
+                getattr(policy, "secret_attrs", ()),
+            )
 
     def _build_control_plane(self) -> None:
         """按编译后脚本的 control_plane 声明构建 ControlPlane。

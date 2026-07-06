@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+logger = logging.getLogger(__name__)
 
 from drama_engine.core.dsl.registry import build_default_dsl_registry
 from drama_engine.core.runtime.interactive_session.models import (
@@ -22,6 +25,7 @@ from drama_engine.core.runtime.interactive_session.models import (
     SceneSpec,
     ScheduleSpec,
     ScopeSpec,
+    VisibilityPolicy,
 )
 from drama_engine.core.runtime.interactive_session.normalizer import (
     InteractiveSessionNormalizer,
@@ -65,16 +69,21 @@ class InteractiveSessionCompiler:
             scopes.setdefault(scene.scope.id, scene.scope)
         flow = self._compile_flow(canonical["flow"], scenes)
         referee = self._compile_referee(canonical.get("referee") or {})
+        visibility = self._compile_visibility(canonical.get("visibility") or {})
+        state = dict(canonical.get("state") or canonical.get("initial_state") or {})
+        players = dict(canonical.get("players") or {})
         self._validate_script_contract(scenes, flow, scopes, referee)
+        self._validate_visibility_refs(visibility, state, players)
         return InteractiveScript(
             meta=dict(canonical.get("meta") or {}),
             runtime=runtime,
             flow=flow,
             scenes=scenes,
-            players=dict(canonical.get("players") or {}),
-            state=dict(canonical.get("state") or canonical.get("initial_state") or {}),
+            players=players,
+            state=state,
             scopes=scopes,
             referee=referee,
+            visibility=visibility,
             plugins=list(canonical.get("plugins") or []),
             game_pack=dict(canonical.get("game_pack") or {}),
             rule_set=dict(canonical.get("rule_set") or {}),
@@ -103,6 +112,17 @@ class InteractiveSessionCompiler:
             id=str(spec.get("id") or "public"),
             visibility=str(spec.get("visibility") or "public"),
             members=[str(item) for item in spec.get("members", []) or []],
+        )
+
+    def _compile_visibility(self, spec: dict[str, Any]) -> VisibilityPolicy:
+        """Compile 顶层 visibility 块 → VisibilityPolicy。
+
+        spec 为空 dict 时返回默认策略（无秘密，全部公开）。
+        """
+        assert isinstance(spec, dict), "visibility 块必须是 dict"
+        return VisibilityPolicy(
+            secret_attrs=[str(item) for item in spec.get("secret_attrs", []) or []],
+            self_visible=[str(item) for item in spec.get("self_visible", []) or []],
         )
 
     def _compile_scene(self, scene_id: str, spec: dict[str, Any]) -> SceneSpec:
@@ -489,6 +509,38 @@ class InteractiveSessionCompiler:
                     assert str(scope_name) in scope_ids, (
                         f"scene {scene.id} publication.{field_name}[{index}] 引用了未知 scope: {scope_name}"
                     )
+
+    def _validate_visibility_refs(
+        self,
+        visibility: VisibilityPolicy,
+        state: dict[str, Any],
+        players: dict[str, Any],
+    ) -> None:
+        """校验 visibility.secret_attrs 引用的属性名是否出现在静态声明里。
+
+        采用「软校验」（记警告而非报错）：因为 role/faction 这类属性有时由
+        casting / game_pack 在运行时动态分配，静态声明里查不到并不一定是错误。
+        但对于把 secret_attrs 拼错（如 rolee）的常见失误，这里能给出明确提示。
+        """
+        # 收集所有静态出现过的属性名：state 块每个实体的属性键 + players.initial_attrs 键。
+        known_attrs: set[str] = set()
+        for entity_attrs in state.values():
+            if isinstance(entity_attrs, dict):
+                known_attrs.update(str(key) for key in entity_attrs.keys())
+        initial_attrs = players.get("initial_attrs")
+        if isinstance(initial_attrs, dict):
+            known_attrs.update(str(key) for key in initial_attrs.keys())
+
+        # 如果整个脚本没有任何静态属性声明，说明属性完全靠运行时构建，跳过校验避免误报。
+        if not known_attrs:
+            return
+        for attr in visibility.secret_attrs:
+            if attr not in known_attrs:
+                logger.warning(
+                    "visibility.secret_attrs 声明的属性 '%s' 未在 state/players.initial_attrs 中静态出现，"
+                    "请确认它是运行时动态分配的属性，而非拼写错误。",
+                    attr,
+                )
 
     def _validate_service_provider(self, spec: dict[str, Any], label: str) -> None:
         """Validate runtime-service provider names when present."""

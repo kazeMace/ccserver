@@ -134,6 +134,34 @@ class RefereeSpec:
 
 
 @dataclass(slots=True)
+class VisibilityPolicy:
+    """实体属性级可见性策略 / Entity attribute-level visibility policy.
+
+    回答的问题是「某实体的某个属性值对谁可见」，与 scope（消息发给谁）、
+    candidate（能对谁行动）、participants（谁在场）是四个正交的维度。
+
+    - secret_attrs：这些属性名对「他人」隐藏，只有属性所有者自己（actor view 的 self）
+      与授权受众（host / referee）能看到。例如狼人杀里 role、faction。
+    - self_visible：预留字段。为空表示「所有者自己可见其全部属性」（默认行为）；
+      非空时可进一步收窄所有者自己能看到的属性范围（当前投影暂不强制裁剪，留待扩展）。
+
+    未声明（secret_attrs 为空）时表示「无秘密、全部公开」，声明成为唯一事实来源。
+    """
+
+    secret_attrs: list[str] = field(default_factory=list)
+    self_visible: list[str] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        # 断言：属性名必须是字符串，避免 YAML 写错类型导致后续遮蔽逻辑静默失效。
+        assert all(isinstance(name, str) for name in self.secret_attrs), (
+            "visibility.secret_attrs 必须全部是字符串属性名"
+        )
+        assert all(isinstance(name, str) for name in self.self_visible), (
+            "visibility.self_visible 必须全部是字符串属性名"
+        )
+
+
+@dataclass(slots=True)
 class SceneSpec:
     """Scene canonical IR."""
 
@@ -203,6 +231,8 @@ class InteractiveScript:
     state: dict[str, Any] = field(default_factory=dict)
     scopes: dict[str, ScopeSpec] = field(default_factory=dict)
     referee: RefereeSpec = field(default_factory=RefereeSpec)
+    # 实体属性级可见性策略（哪些属性对他人隐藏），由顶层 visibility: 块编译而来。
+    visibility: VisibilityPolicy = field(default_factory=VisibilityPolicy)
     plugins: list[dict[str, Any]] = field(default_factory=list)
     # 机制集合引用：{"plugin": "builtin.board", "config": {...}}；不含规则本体。
     game_pack: dict[str, Any] = field(default_factory=dict)

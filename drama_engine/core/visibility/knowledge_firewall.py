@@ -20,19 +20,24 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# 默认视为「秘密」的属性名：不应投影给普通 actor / public。
-_DEFAULT_SECRET_ATTRS = ("role", "faction", "identity", "word", "hand", "secret")
-
 # 授权拿全局上下文的 audience 前缀 / purpose。
 _PRIVILEGED_AUDIENCES = ("host",)
 _PRIVILEGED_PURPOSES = ("referee", "recap")
 
 
 class KnowledgeFirewall:
-    """按 audience + purpose 生成受限上下文投影。"""
+    """按 audience + purpose 生成受限上下文投影。
 
-    def __init__(self, secret_attrs: tuple[str, ...] = _DEFAULT_SECRET_ATTRS) -> None:
-        """初始化，指定视为秘密的属性名集合。"""
+    「什么算秘密」由 DSL 的 visibility.secret_attrs 声明驱动（见 VisibilityPolicy），
+    不再硬编码。secret_attrs 为空即表示「无秘密、全部公开」。
+    """
+
+    def __init__(self, secret_attrs: tuple[str, ...] = ()) -> None:
+        """初始化，指定视为秘密的属性名集合。
+
+        参数：
+          secret_attrs — 视为秘密、对他人隐藏的属性名集合。空集合表示无秘密。
+        """
         self._secret_attrs = tuple(secret_attrs)
 
     def project_context(
@@ -107,8 +112,25 @@ class KnowledgeFirewall:
 
 
 def build_default_knowledge_firewall() -> KnowledgeFirewall:
-    """构建默认信息隔离层。"""
+    """构建默认信息隔离层（无秘密声明，全部公开）。"""
     return KnowledgeFirewall()
 
 
-__all__ = ["KnowledgeFirewall", "build_default_knowledge_firewall"]
+def build_knowledge_firewall_from_policy(policy: Any) -> KnowledgeFirewall:
+    """根据 VisibilityPolicy 构建信息隔离层。
+
+    参数：
+      policy — VisibilityPolicy 实例，或含 secret_attrs 属性的对象；None 时返回默认（无秘密）。
+    """
+    if policy is None:
+        return KnowledgeFirewall()
+    secret_attrs = tuple(getattr(policy, "secret_attrs", ()) or ())
+    logger.debug("按 VisibilityPolicy 构建 KnowledgeFirewall，secret_attrs=%s", secret_attrs)
+    return KnowledgeFirewall(secret_attrs=secret_attrs)
+
+
+__all__ = [
+    "KnowledgeFirewall",
+    "build_default_knowledge_firewall",
+    "build_knowledge_firewall_from_policy",
+]

@@ -72,17 +72,36 @@ def test_custom_validator_can_reject() -> None:
 
 
 def test_firewall_hides_secrets_from_other_players() -> None:
-    """玩家视角只见自己完整属性，他人的 role 被遮蔽。"""
-    firewall = KnowledgeFirewall()
+    """声明 role 为秘密后，玩家视角只见自己完整属性，他人的 role 被遮蔽。"""
+    firewall = KnowledgeFirewall(secret_attrs=("role",))
     ctx = firewall.project_context(_state_with_secret(), "player:Player_1", "prompt")
     assert ctx["self"]["role"] == "werewolf"       # 自己可见
     assert "role" not in ctx["others"]["Player_2"]  # 他人秘密被遮蔽
     assert ctx["others"]["Player_2"]["alive"] is True  # 公开属性可见
 
 
+def test_firewall_without_secret_declaration_is_fully_public() -> None:
+    """未声明 secret_attrs（默认空）时，他人属性全部可见——秘密由 DSL 声明驱动。"""
+    firewall = KnowledgeFirewall()
+    ctx = firewall.project_context(_state_with_secret(), "player:Player_1", "prompt")
+    assert ctx["others"]["Player_2"]["role"] == "seer"  # 未声明为秘密，全部公开
+
+
+def test_firewall_build_from_policy() -> None:
+    """从 VisibilityPolicy 构建的 firewall 应按声明遮蔽秘密。"""
+    from drama_engine.core.runtime.interactive_session.models import VisibilityPolicy
+    from drama_engine.core.visibility.knowledge_firewall import (
+        build_knowledge_firewall_from_policy,
+    )
+
+    firewall = build_knowledge_firewall_from_policy(VisibilityPolicy(secret_attrs=["role"]))
+    ctx = firewall.project_context(_state_with_secret(), "player:Player_1", "prompt")
+    assert "role" not in ctx["others"]["Player_2"]
+
+
 def test_firewall_gives_privileged_audience_full_state() -> None:
     """host / referee 授权拿到完整 state。"""
-    firewall = KnowledgeFirewall()
+    firewall = KnowledgeFirewall(secret_attrs=("role",))
     ctx = firewall.project_context(_state_with_secret(), "host", "referee")
     assert "state" in ctx
     assert ctx["state"]["Player_1"]["role"] == "werewolf"
