@@ -50,13 +50,25 @@ export function CreatePage() {
       const seatIds = roles.map((r) => r.seat_id).filter(Boolean);
       const humanSeatIds = roles.filter((r) => r.controller === "human").map((r) => r.seat_id).filter(Boolean);
       if (!seatIds.length) throw new Error("至少需要 1 个角色座位");
+
+      // 构建角色分配 {seat_id: role_name}
+      const roleAssignments: Record<string, string> = {};
+      roles.forEach((r) => {
+        if (r.role) {
+          roleAssignments[r.seat_id] = r.role;
+        }
+      });
+
       const summary = await getClient().createSession({
         game_id: gameId,
         script_path: game?.script_path,
         seat_ids: seatIds,
         human_seat_ids: humanSeatIds,
         params: { total_players: seatIds.length, dry_run: dryRun, use_runner: true, roles },
-        metadata: { roles },
+        metadata: {
+          roles,
+          role_assignments: Object.keys(roleAssignments).length > 0 ? roleAssignments : undefined,
+        },
       });
       setResult(summary);
     } catch (e) {
@@ -125,7 +137,11 @@ export function CreatePage() {
                     <input className="form-control" value={humanCount} readOnly />
                   </div>
                 </div>
-                <RoleImporter roles={roles} onChange={setRoles} />
+                <RoleImporter
+                  roles={roles}
+                  onChange={setRoles}
+                  availableRoles={extractAvailableRoles(games.find((g) => g.game_id === gameId))}
+                />
                 <div className="form-group">
                   <label className="switch-row">
                     <input type="checkbox" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} />
@@ -197,7 +213,31 @@ function importRolesFromGame(game: GameDef): GameRoleDef[] {
   }));
 }
 
-function RoleImporter({ roles, onChange }: { roles: GameRoleDef[]; onChange: (roles: GameRoleDef[]) => void }) {
+function extractAvailableRoles(game: GameDef | undefined): Record<string, import("../api/client").RoleInfo> | undefined {
+  /**
+   * 从 GameDef.roles 提取可用角色定义。
+   * 兼容旧格式（array）和新格式（dict）。
+   */
+  if (!game || !game.roles) return undefined;
+
+  // 新格式：已经是 Record<string, RoleInfo>
+  if (!Array.isArray(game.roles)) {
+    return game.roles as Record<string, import("../api/client").RoleInfo>;
+  }
+
+  // 旧格式（array），不支持角色选择
+  return undefined;
+}
+
+function RoleImporter({
+  roles,
+  onChange,
+  availableRoles,
+}: {
+  roles: GameRoleDef[];
+  onChange: (roles: GameRoleDef[]) => void;
+  availableRoles?: Record<string, import("../api/client").RoleInfo>;  // 新增：可用角色定义
+}) {
   const patchRole = (seatId: string, patch: Partial<GameRoleDef>) => {
     onChange(roles.map((r) => (r.seat_id === seatId ? { ...r, ...patch } : r)));
   };
@@ -209,22 +249,64 @@ function RoleImporter({ roles, onChange }: { roles: GameRoleDef[]; onChange: (ro
     if (roles.length <= 1) return;
     onChange(roles.filter((r) => r.seat_id !== seatId));
   };
+
+  // 是否有可用角色定义
+  const hasAvailableRoles = availableRoles && Object.keys(availableRoles).length > 0;
+
   return (
     <div className="form-group">
       <div className="role-editor-head">
         <label>默认角色导入</label>
-        <button className="btn sm" type="button" onClick={addRole}>添加角色</button>
+        <button className="btn sm" type="button" onClick={addRole}>
+          添加角色
+        </button>
       </div>
       <div className="role-editor">
         {roles.map((r) => (
           <div className="role-edit-row" key={r.seat_id}>
-            <input className="role-emoji-input" value={r.emoji ?? ""} onChange={(e) => patchRole(r.seat_id, { emoji: e.target.value })} aria-label={`${r.seat_id} emoji`} />
+            <input
+              className="role-emoji-input"
+              value={r.emoji ?? ""}
+              onChange={(e) => patchRole(r.seat_id, { emoji: e.target.value })}
+              aria-label={`${r.seat_id} emoji`}
+            />
             <div className="role-edit-main">
               <div className="role-edit-line">
-                <input className="form-control compact" value={r.seat_id} onChange={(e) => patchRole(r.seat_id, { seat_id: e.target.value })} aria-label="座位 ID" />
-                <input className="form-control compact" value={r.name} onChange={(e) => patchRole(r.seat_id, { name: e.target.value })} aria-label="角色名" />
+                <input
+                  className="form-control compact"
+                  value={r.seat_id}
+                  onChange={(e) => patchRole(r.seat_id, { seat_id: e.target.value })}
+                  aria-label="座位 ID"
+                />
+                <input
+                  className="form-control compact"
+                  value={r.name}
+                  onChange={(e) => patchRole(r.seat_id, { name: e.target.value })}
+                  aria-label="角色名"
+                />
               </div>
-              <input className="form-control compact" value={r.role ?? ""} onChange={(e) => patchRole(r.seat_id, { role: e.target.value })} placeholder="身份 / 职能" />
+              {hasAvailableRoles ? (
+                <select
+                  className="form-control compact"
+                  value={r.role ?? ""}
+                  onChange={(e) => patchRole(r.seat_id, { role: e.target.value })}
+                >
+                  <option value="">-- 选择角色 --</option>
+                  {Object.entries(availableRoles).map(([roleId, roleInfo]) => (
+                    <option key={roleId} value={roleId}>
+                      {roleInfo.emoji ? `${roleInfo.emoji} ` : ""}
+                      {roleInfo.display_name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  className="form-control compact"
+                  value={r.role ?? ""}
+                  onChange={(e) => patchRole(r.seat_id, { role: e.target.value })}
+                  placeholder="身份 / 职能"
+                />
+              )}
               {r.description ? <div className="role-edit-desc">{r.description}</div> : null}
             </div>
             <button

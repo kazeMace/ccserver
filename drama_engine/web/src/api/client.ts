@@ -9,14 +9,25 @@ import type {
   StateView,
 } from "../types/interaction";
 
-// —— 生命周期 / 大厅相关的轻量类型（非 interaction.v1 核心，但页面需要）——
+// —— 生命周期 / 大厅相关的轻量类型（非 interaction.v1 核心,但页面需要）——
 export interface GameDef {
   game_id: string;
   script_path: string;
   title: string;
   default_seat_ids?: string[];
   default_human_seat_ids?: string[];
-  roles?: GameRoleDef[];
+  roles?: GameRoleDef[] | Record<string, RoleInfo>;  // 兼容旧格式（array）和新格式（dict）
+  recommended_player_role?: string;  // 新增：推荐玩家扮演的角色
+}
+
+export interface RoleInfo {
+  name: string;
+  display_name: string;
+  description?: string;
+  portrait_url?: string;
+  emoji?: string;
+  voice_id?: string;
+  faction?: string;
 }
 
 export interface GameRoleDef {
