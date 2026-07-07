@@ -21,7 +21,6 @@ from drama_engine.core.dsl.game_packs import (
     build_default_rule_set_registry,
 )
 from drama_engine.core.dsl.schema.types import DslCapability, DslField, DslSchema
-from drama_engine.application.authoring.generator import build_default_authoring_templates
 
 
 META_FIELD_SCHEMA = DslSchema(
@@ -315,20 +314,8 @@ def build_core_dsl_capabilities(
             "domain_extensions": extension_registry.describe_all(),
             "game_packs": game_pack_registry.describe_all(),
             "rule_sets": rule_set_registry.describe_all(),
-            "authoring_templates": [
-                {
-                    "game_type": template.game_type,
-                    "runtime_type": template.runtime_type,
-                    "script_name": template.script_name,
-                    "extensions": list(template.extensions),
-                    "rule_set": template.rule_set,
-                    "keywords": list(template.keywords),
-                    "required_questions": list(template.required_questions),
-                    "optional_questions": list(template.optional_questions),
-                    "defaults": dict(template.defaults),
-                    "risk_warnings": list(template.risk_warnings),
-                }
-                for template in build_default_authoring_templates()
-            ],
+            # 【M7.2 修复】authoring_templates 移至 application 层负责添加，
+            # core 层不应该依赖 application 层（违反分层原则）。
+            # 调用方可以在返回后自行补充 ["capabilities"]["authoring_templates"]。
         }
     }
