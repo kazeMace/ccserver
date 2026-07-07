@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from drama_engine.core.dsl.components.value_resolver import parse_state_path
 from drama_engine.core.engine import SetAttr
 from drama_engine.core.runtime.interactive_session.context import InteractiveExecutionContext
 from drama_engine.core.runtime.interactive_session.models import RefereeSpec, SceneSpec
@@ -100,9 +101,12 @@ class RefereeExecutor:
             if not isinstance(item, dict):
                 continue
             path = item.get("path")
-            if not path or "." not in str(path):
+            if not path:
                 continue
-            entity, attr = str(path).split(".", 1)
+            try:
+                entity, attr = parse_state_path(str(path))
+            except ValueError:
+                continue
             if not ctx.state.has_entity(entity):
                 ctx.state.register_entity(entity, {})
             value = ctx.value_resolver.resolve(
@@ -127,7 +131,7 @@ class RefereeExecutor:
         """Normalize set_state.path shorthand."""
         result = dict(effect)
         if result.get("type") == "set_state" and "path" in result:
-            entity, attr = str(result.pop("path")).split(".", 1)
+            entity, attr = parse_state_path(str(result.pop("path")))
             result["entity"] = entity
             result["attr"] = attr
         return result

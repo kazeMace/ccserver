@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from drama_engine.core.dsl.components.value_resolver import parse_state_path
 from drama_engine.core.runtime.interactive_session.context import InteractiveExecutionContext
 from drama_engine.core.runtime.interactive_session.models import FlowStateSpec
 from drama_engine.core.runtime.interactive_session.scene.executor import SceneExecutor
@@ -145,7 +146,7 @@ class FlowExecutor:
         for effect in effects or []:
             item = dict(effect)
             if item.get("type") == "set_state" and "path" in item:
-                entity, attr = str(item.pop("path")).split(".", 1)
+                entity, attr = parse_state_path(str(item.pop("path")))
                 item["entity"] = entity
                 item["attr"] = attr
             normalized.append(item)

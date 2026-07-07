@@ -363,3 +363,33 @@ class ValueResolver:
             if state_value is not None:
                 return state_value
         return getattr(value, key, None)
+
+
+def parse_state_path(path: str) -> tuple[str, str]:
+    """解析状态路径为 (entity, attr)。
+
+    【L1 修复】统一 path.split(".", 1) 的归一化逻辑，避免四处重复。
+
+    Args:
+        path: 状态路径，格式为 "entity.attr"（例如 "GAME.round"）
+
+    Returns:
+        (entity, attr) 元组
+
+    Raises:
+        ValueError: 路径格式不正确
+
+    Examples:
+        >>> parse_state_path("GAME.round")
+        ('GAME', 'round')
+        >>> parse_state_path("Player_1.alive")
+        ('Player_1', 'alive')
+    """
+    if not isinstance(path, str):
+        raise ValueError(f"状态路径必须是字符串，收到: {type(path)}")
+    if "." not in path:
+        raise ValueError(f"状态路径必须是 entity.attr 格式，收到: {path}")
+    entity, attr = path.split(".", 1)
+    if not entity or not attr:
+        raise ValueError(f"状态路径的 entity 和 attr 都不能为空: {path}")
+    return entity, attr

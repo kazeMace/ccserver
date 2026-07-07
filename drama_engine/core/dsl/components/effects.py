@@ -22,7 +22,7 @@ from typing import Any
 
 from drama_engine.core.engine import State, StateWriter, SetAttr, Link, Unlink
 from drama_engine.core.dsl.components.conditions import ConditionEvaluator
-from drama_engine.core.dsl.components.value_resolver import ValueResolver
+from drama_engine.core.dsl.components.value_resolver import ValueResolver, parse_state_path
 from drama_engine.core.dsl.plugins import EffectContext, RuleSetContext
 
 
@@ -364,8 +364,7 @@ class EffectExecutor:
         """
         if "path" in effect:
             path = effect["path"]
-            assert isinstance(path, str) and "." in path, f"path 必须是 entity.attr 格式: {path}"
-            entity, attr = path.split(".", 1)
+            entity, attr = parse_state_path(path)
             return (
                 self._resolve_entity(entity, actor, responses, extra, state),
                 attr,

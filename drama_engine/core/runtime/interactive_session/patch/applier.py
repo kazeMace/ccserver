@@ -5,6 +5,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
+from drama_engine.core.dsl.components.value_resolver import parse_state_path
 from drama_engine.core.engine import SetAttr
 from drama_engine.core.runtime.interactive_session.compiler import InteractiveSessionCompiler
 from drama_engine.core.runtime.interactive_session.context import InteractiveExecutionContext
@@ -73,9 +74,9 @@ class FlowPatchApplier:
         path = patch.get("path")
         if not path and patch.get("entity") and patch.get("attr"):
             path = str(patch["entity"]) + "." + str(patch["attr"])
-        if not path or "." not in str(path):
+        if not path:
             raise ValueError("set_state patch 需要 path 或 entity/attr")
-        entity, attr = str(path).split(".", 1)
+        entity, attr = parse_state_path(str(path))
         if not ctx.state.has_entity(entity):
             ctx.state.register_entity(entity, {})
         value = ctx.value_resolver.resolve(
