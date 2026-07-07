@@ -231,3 +231,25 @@ def test_projector_card_has_variant_key():
     })
     cards = msg["body"]["cards"]
     assert cards and cards[0]["kind"] == "clue" and cards[0]["variant"] == "clue:public"
+
+
+@pytest.mark.asyncio
+async def test_inbox_reset_from_after_rollback():
+    """§6：回滚后下一次 inbox 返回 reset_from（一次性），供客户端对齐游标。"""
+    from drama_engine.core.game_instance.factory import GameInstanceRegistry
+    registry = GameInstanceRegistry(store=None, load_existing=False)
+    inst = await registry.create_instance(
+        game_id="story",
+        script_path="drama_engine/scripts/interactive_session/story/text_adventure_interactive.yaml",
+        seat_ids=["Player_1"], params={"dry_run": True, "use_runner": True},
+    )
+    await inst.assign()
+    summary = inst.checkpoint("cp")
+    inst.send_message("Player_1", "回滚后应被丢弃的消息", scope="public")
+    await inst.rollback_to(summary["checkpoint_id"])
+    # 回滚后首次 inbox：reset_from 非 None
+    first = inst.inbox("public")
+    assert first["reset_from"] is not None
+    # 再次 inbox：reset_from 已清除
+    second = inst.inbox("public")
+    assert second["reset_from"] is None

@@ -89,6 +89,8 @@ class GameInstance:
         self.control_plane = None
         # interaction.v1 投影器：把内部事件/动作归一成对外协议对象。
         self.projector = InteractionProjector()
+        # 回滚对齐（§6）：回滚后置为 checkpoint 消息游标，下一次 inbox 作为 reset_from 返回一次后清除。
+        self._pending_reset_from: int | None = None
         logger.info("[GameInstance] 绑定 session=%s", self.session_id)
 
     def _current_game_state(self) -> Any:
@@ -341,6 +343,9 @@ class GameInstance:
             pending = self.runtime.action_service.get_current_request(seat_id)
         status = self.runtime.session.status
         phase = self.runtime.session.progress.current_scene if self.runtime.session.progress else None
+        # 一次性消费回滚对齐信号：置回 reset_from 后清除，避免后续 inbox 重复触发客户端重拉。
+        reset_from = self._pending_reset_from
+        self._pending_reset_from = None
         return self.projector.build_inbox(
             events=events,
             after=after,
@@ -348,6 +353,7 @@ class GameInstance:
             status=status,
             self_seat=seat_id,
             phase=phase,
+            reset_from=reset_from,
             profile=self.projection_profile(),
         )
 
@@ -634,6 +640,10 @@ class GameInstance:
 
         # 2. 恢复会话过程、游戏状态、patch journal、记忆、披露账本。
         self.rollback.restore(checkpoint, policy=self.runtime.session.rollback_policy)
+
+        # 2.5 回滚对齐信号（§6）：记录恢复后的公开消息游标，下一次 inbox 置 reset_from。
+        #     客户端据此丢弃 seq > reset_from 的本地消息、把 after 回退到该点重拉分支后的时间线。
+        self._pending_reset_from = int(self.runtime.session.message_cursor or 0)
 
         # 3. 执行侧闭环：flow task 已取消。若恢复后的 status 表示「本应在跑」（running/paused），
         #    则降级为 assigned——语义为「已回到该点、待重新 start」，消除「状态说在跑、实际无 task」
