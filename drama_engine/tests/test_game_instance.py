@@ -118,3 +118,26 @@ async def test_progress_is_tracked_during_run() -> None:
     assert progress.current_state == "main"
     assert progress.current_scene, "current_scene 应被 flow/scene 推进更新"
     assert progress.round >= 1
+
+
+@pytest.mark.asyncio
+async def test_send_message_public_and_private_visibility() -> None:
+    """M7.1：send_message 门面 —— public 广播全可见，private 仅指定席位可见。"""
+    registry = GameInstanceRegistry(store=None, load_existing=False)
+    instance = await registry.create_instance(
+        game_id="story",
+        script_path=_SCRIPT,
+        seat_ids=["Player_1", "Player_2"],
+        params={"use_runner": False},
+    )
+    # 公开消息进公开流
+    instance.send_message("Player_1", "大家好", scope="public")
+    public = instance.timeline("public")
+    assert any(e.get("kind") == "interactive_message" and e.get("text") == "大家好" for e in public)
+
+    # 私密消息只进指定席位的私密流，不进公开流
+    instance.send_message("Player_1", "只给你看", scope="private", to_seats=["Player_2"])
+    p2_private = instance.timeline("private", seat_id="Player_2")
+    assert any(e.get("text") == "只给你看" for e in p2_private)
+    public_after = instance.timeline("public")
+    assert not any(e.get("text") == "只给你看" for e in public_after), "私密消息不应出现在公开流"

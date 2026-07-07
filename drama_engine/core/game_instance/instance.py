@@ -220,6 +220,52 @@ class GameInstance:
         """返回当前 pending 动作摘要。"""
         return self.session_control.pending_actions()
 
+    def send_message(
+        self,
+        seat_id: str,
+        text: str,
+        scope: str = "public",
+        to_seats: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """发送一条会话消息（架构文档 §4/§15 的门面入口）。
+
+        这是 service 层发消息的唯一入口，替代直接操作 event_store。消息经
+        SessionControl 收口（cursor 随之同步），并按可见性路由：
+          - scope="public"：公开广播，所有受众可见。
+          - scope="private"：私密投递，仅 to_seats 指定的席位可见（如密谈/私聊）。
+            未指定 to_seats 时默认只投给发送者自己。
+
+        参数：
+          seat_id  — 发送者席位（system 消息可传 "system"）。
+          text     — 消息正文。
+          scope    — "public" 或 "private"。
+          to_seats — private 时的收件席位列表；None 时投给 seat_id 自己。
+        返回：已发送的消息事件 dict。
+        """
+        assert seat_id, "seat_id 不能为空"
+        assert text, "text 不能为空"
+        assert scope in {"public", "private"}, "scope 必须是 public 或 private"
+        event = {
+            "kind": "interactive_message",
+            "runtime_type": "interactive_session",
+            "sender": seat_id,
+            "text": text,
+        }
+        if scope == "public":
+            self.session_control.append_public(dict(event))
+        else:
+            recipients = to_seats if to_seats else [seat_id]
+            private_event = {**event, "visibility": "private"}
+            for recipient in recipients:
+                self.session_control.append_private(str(recipient), dict(private_event))
+            # host 始终可观测私密消息（上帝视角），与 firewall 授权一致。
+            self.session_control.append_host(dict(private_event))
+        logger.info(
+            "[GameInstance] send_message session=%s sender=%s scope=%s",
+            self.session_id, seat_id, scope,
+        )
+        return event
+
     # ---- interaction.v1 三面（/inbox /reply /view）----
 
     def inbox(self, seat: str, after: int = 0) -> dict[str, Any]:
