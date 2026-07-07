@@ -317,6 +317,7 @@ class CoreViewsPlugin:
         """注册内置 projector。"""
         api.register_view_projector("core.views.inline", self._project_inline)
         api.register_view_projector("core.views.state_attr", self._project_state_attr)
+        api.register_view_projector("core.views.media", self._project_media)
 
     def _project_inline(self, spec: dict, context: ViewContext) -> ViewEvent:
         """把 view spec 中的 data 直接解析为 ViewEvent。"""
@@ -360,6 +361,39 @@ class CoreViewsPlugin:
         if isinstance(value, list):
             return [self._resolve_view_data(item, context) for item in value]
         return value
+
+    def _project_media(self, spec: dict, context: ViewContext) -> ViewEvent:
+        """投影媒体资产（image/video/audio）并校验必填字段。
+
+        校验规则：
+          - url 必填（或通过 {ref:} 动态解析）
+          - 可选字段：mime, poster, subtitle_url, alt, caption, autoplay, loop, duration_ms
+        """
+        data_spec = spec.get("data") or {}
+        data = self._resolve_view_data(data_spec, context)
+        if not isinstance(data, dict):
+            data = {"url": str(data) if data else ""}
+        # 校验 url 必填
+        url = data.get("url")
+        if not url:
+            raise ValueError(f"媒体 view (id={spec.get('id')}) 缺少必填字段 'url'")
+        # 标准化可选字段（保留原样，不做额外处理）
+        normalized = {
+            "url": str(url),
+            "mime": str(data.get("mime") or ""),
+            "poster": str(data.get("poster") or ""),
+            "subtitle_url": str(data.get("subtitle_url") or ""),
+            "alt": str(data.get("alt") or data.get("caption") or ""),
+            "autoplay": bool(data.get("autoplay", False)),
+            "loop": bool(data.get("loop", False)),
+        }
+        if "duration_ms" in data:
+            normalized["duration_ms"] = int(data["duration_ms"])
+        # 保留其他自定义字段
+        for key, value in data.items():
+            if key not in normalized:
+                normalized[key] = value
+        return self._build_event(spec, context, normalized)
 
     def _build_event(self, spec: dict, context: ViewContext, data: dict) -> ViewEvent:
         """根据通用字段构造 ViewEvent。"""

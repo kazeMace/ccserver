@@ -1,0 +1,71 @@
+meta:
+  id: test_media
+  name: test_media
+  title: Media View Test
+  version: "1.0.0"
+
+runtime:
+  type: interactive_session
+
+players:
+  count: 1
+  ids: [Player_1]
+
+state:
+  GAME:
+    round: 0
+
+flow:
+  type: sequence
+  scenes: [test_scene]
+
+scenes:
+  test_scene:
+    type: scene
+    scope:
+      id: main
+      visibility: public
+    participants:
+      static: [Player_1]
+    schedule:
+      mode: none
+    participant_action:
+      kind: none
+      response:
+        mode: none
+    controller_action:
+      enabled: true
+      controller:
+        type: system
+      kind: narration
+    publication:
+      messages:
+        - audience: {scope: main}
+          content:
+            text: "测试媒体视图"
+      views:
+        - id: test_video
+          kind: video
+          title: 测试视频
+          audience: public
+          projector: core.views.media
+          data:
+            url: https://cdn.example.com/test.mp4
+            poster: https://cdn.example.com/poster.jpg
+            autoplay: false
+        - id: test_image
+          kind: image
+          title: 测试图片
+          audience: public
+          projector: core.views.media
+          data:
+            url: https://cdn.example.com/test.jpg
+            alt: 测试图片说明
+        - id: test_audio
+          kind: audio
+          title: 背景音乐
+          audience: public
+          projector: core.views.media
+          data:
+            url: https://cdn.example.com/bgm.mp3
+            loop: true

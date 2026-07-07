@@ -205,7 +205,7 @@ def build_default_dsl_registry() -> DslRegistry:
     for name in ["text", "textarea", "player_select", "multi_player_select", "choice", "card_select", "board_move", "confirm"]:
         registry.register_input_widget(name)
 
-    for name in ["key-value", "text", "markdown", "table", "list", "board", "cards", "vote-summary"]:
+    for name in ["key-value", "text", "markdown", "table", "list", "board", "cards", "vote-summary", "image", "video", "audio"]:
         registry.register_view_kind(name)
 
     return registry
