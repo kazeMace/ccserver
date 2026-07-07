@@ -35,6 +35,10 @@ export function Composer({ reply, status, submitting, onSubmit }: ComposerProps)
   return (
     <div className="composer">
       <div className="composer-inner">
+        <div className="composer-title">
+          <span>行动输入</span>
+          <span>{reply.primitive === "choice_or_text" ? "选项 / 自由对话" : reply.primitive}</span>
+        </div>
         <PromptRow reply={reply} />
         {Skin ? <Skin reply={reply} onSubmit={onSubmit} /> : <PrimitiveInput reply={reply} submitting={submitting} onSubmit={onSubmit} />}
       </div>

@@ -138,11 +138,21 @@ export interface PlayerCard {
   tag_text?: string;
 }
 
+export interface RoleDefinition {
+  name: string; // 角色显示名，如 "Nora Hampton"
+  description?: string; // 角色人设（AI prompt 用）
+  portrait_url?: string; // 头像 URL
+  emoji?: string; // emoji 头像
+  voice_id?: string; // TTS 音色 ID
+  faction?: string; // 阵营标签
+}
+
 export interface StateView {
   seat_id: string;
   phase?: string | null;
   progress?: { label: string; current: number; total: number } | null;
   players: PlayerCard[];
+  roles?: Record<string, RoleDefinition>; // 新增：所有角色定义 {role_id: role_data}
   panels: Record<string, unknown>; // 开放字典：affinity/hand/board/stats/circles...
   self: Record<string, unknown>; // 本 seat 完整属性（含 disclosed）
 }

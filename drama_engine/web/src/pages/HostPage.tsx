@@ -2,8 +2,11 @@
 // host seat 拿上帝视角 inbox（含 host-only 元事件）。moderator 操作在 v1 端点就绪后接入。
 
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { getClient, type RollbackPoint } from "../api/client";
+import { GAMES } from "../api/mockData";
+import { inferGameKind, themeGenreForKind } from "../api/gamePresentation";
+import { ImmersiveShell, type RailItem } from "../components/AppShell";
 import { Topbar, Channels, ConnStatus } from "../components/Chrome";
 import { MessageFeed } from "../components/MessageFeed";
 import { RoundTable } from "../components/RoundTable";
@@ -19,14 +22,19 @@ export function HostPage() {
   const [busy, setBusy] = useState(false);
   const [points, setPoints] = useState<RollbackPoint[]>([]);
   const [activeChannel, setActiveChannel] = useState("public");
+  const [sessionGameHint, setSessionGameHint] = useState("");
   // host 是上帝视角，能看到全部 scope（公开/狼人/预言家…），频道条便于分频道查看。
   const scopeLabels = (view?.panels?.scope_labels as Record<string, [string, string]>) ?? {};
   const { channels, filter } = useChannels(inbox.messages, scopeLabels);
+  useEffect(() => {
+    if (!channels.some((c) => c.id === activeChannel)) setActiveChannel("public");
+  }, [channels, activeChannel]);
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
     try {
       await fn();
+      await inbox.refresh();
     } catch (e) {
       alert(String(e));
     } finally {
@@ -36,22 +44,31 @@ export function HostPage() {
 
   const client = getClient();
   const lastSpeech = [...inbox.messages].reverse().find((m) => m.role === "dialogue") ?? null;
+  const genre = inferGameKind(view?.panels?.genre as string) ?? inferGameKind(sessionGameHint) ?? inferGameKind(sessionId);
+  const railItems: RailItem[] = GAMES.map((g) => ({
+    id: g.id,
+    icon: g.icon,
+    tip: g.tip,
+    active: g.id === genre,
+    href: g.id === genre ? `/host/sessions/${sessionId}` : `/create?game=${g.id}`,
+  }));
 
   const loadPoints = async () => setPoints(await client.rollbackPoints(sessionId));
   useEffect(() => {
     loadPoints().catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
+  useEffect(() => {
+    if (!sessionId) return;
+    client
+      .getSession(sessionId)
+      .then((summary) => setSessionGameHint(`${summary.game_id ?? ""} ${String(summary.script_path ?? "")}`))
+      .catch(() => setSessionGameHint(""));
+  }, [client, sessionId]);
 
   return (
-    <div className="host-shell">
-      <Topbar
-        title="主持人控制台"
-        sub={sessionId}
-        phase={inbox.phase}
-        right={<ConnStatus status={inbox.status} />}
-      />
-      <div className="host-body">
+    <ImmersiveShell genre={themeGenreForKind(genre)} railItems={railItems}>
+      <div className="host-workspace">
         {/* 左栏：控制 */}
         <div className="host-left">
           <div>
@@ -93,17 +110,30 @@ export function HostPage() {
         </div>
 
         {/* 中栏：圆桌 + 消息流 */}
-        <div className="host-center">
+        <main className="stage">
+          <Topbar
+            title="主持人控制台"
+            sub={sessionId}
+            phase={inbox.phase}
+            right={
+              <>
+                <div className="view-links">
+                  <Link className="view-link active" to={`/host/sessions/${sessionId}`}>主持</Link>
+                  <Link className="view-link" to={`/viewer/sessions/${sessionId}`}>观众</Link>
+                  <Link className="view-link" to={`/player?token=${sessionId}:Player_1`}>玩家</Link>
+                </div>
+                <ConnStatus status={inbox.status} />
+              </>
+            }
+          />
           {view?.players?.length ? <RoundTable players={view.players} lastSpeech={lastSpeech} /> : null}
           <Channels channels={channels} active={activeChannel} onSelect={setActiveChannel} />
           <MessageFeed messages={filter(inbox.messages, activeChannel)} />
-        </div>
+        </main>
 
         {/* 右栏：状态面板（复用 Sidebar 的内容以只读呈现） */}
-        <div className="host-right">
-          <Sidebar view={view} />
-        </div>
+        <Sidebar view={view} />
       </div>
-    </div>
+    </ImmersiveShell>
   );
 }

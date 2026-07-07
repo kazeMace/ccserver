@@ -7,6 +7,7 @@ import type { StateView } from "../types/interaction";
 export function useStateView(sessionId: string, seat: string, intervalMs = 3000): StateView | null {
   const [view, setView] = useState<StateView | null>(null);
   useEffect(() => {
+    setView(null);
     if (!sessionId) return;
     let alive = true;
     const load = async () => {

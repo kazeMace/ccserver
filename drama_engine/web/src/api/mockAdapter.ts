@@ -54,6 +54,10 @@ function mockMsgToInteraction(msg: MockMsg, seq: number, sessionId: string, phas
       role = "system";
       cards = [{ kind: "affinity_delta", data: { text: msg.text, dir: msg.dir } }];
       break;
+    case "media":
+      role = "system";
+      cards = msg.media ? [{ kind: "media", data: msg.media }] : undefined;
+      break;
   }
 
   return {
@@ -150,14 +154,50 @@ export class MockAdapter implements DramaClient {
   private counter = 0;
 
   async listGames(): Promise<GameDef[]> {
-    return GAMES.map((g) => ({ game_id: g.id, script_path: `mock/${g.id}`, title: g.name }));
+    return GAMES.map((g) => {
+      const script = SCRIPTS[g.id];
+      const roles = script?.roles ?? [];
+      return {
+        game_id: g.id,
+        script_path: `mock/${g.id}`,
+        title: g.name,
+        default_seat_ids: roles.map((r) => r.seat_id),
+        default_human_seat_ids: roles.filter((r) => r.controller === "human").map((r) => r.seat_id),
+        roles,
+      };
+    });
   }
 
   async createSession(input: CreateSessionInput): Promise<SessionSummary> {
     this.counter += 1;
-    const sessionId = `mock-${input.game_id}-${this.counter}`;
-    const gameId = SCRIPTS[input.game_id] ? input.game_id : "werewolf";
-    this.plays.set(sessionId, {
+    const gameId = this.resolveGameId(input);
+    const sessionId = `mock-${gameId}-${this.counter}`;
+    this.plays.set(sessionId, this.newPlay(gameId));
+    const playerLinks: Record<string, string> = {};
+    for (const seat of input.human_seat_ids.length ? input.human_seat_ids : ["Player_1"]) {
+      playerLinks[seat] = `/player?token=${sessionId}:${seat}`;
+    }
+    return { session_id: sessionId, game_id: gameId, status: "lobby", player_links: playerLinks };
+  }
+
+  private resolveGameId(input: CreateSessionInput): string {
+    if (SCRIPTS[input.game_id]) return input.game_id;
+    const value = `${input.game_id} ${input.script_path ?? ""}`.toLowerCase();
+    if (value.includes("the_clause") || value.includes("the-clause") || value.includes("clause")) return "the_clause";
+    if (value.includes("werewolf") || value.includes("undercover") || value.includes("deduction")) return "werewolf";
+    if (value.includes("mystery") || value.includes("script") || value.includes("case")) return "mystery";
+    if (value.includes("variety") || value.includes("dating") || value.includes("show")) return "variety";
+    if (value.includes("board") || value.includes("gomoku") || value.includes("chess")) return "board";
+    throw new Error(`未知游戏，拒绝回落到狼人杀：${input.game_id}`);
+  }
+
+  async getSession(sessionId: string): Promise<SessionSummary> {
+    const play = this.ensurePlay(sessionId);
+    return { session_id: sessionId, game_id: play?.gameId, status: play?.status ?? "running" };
+  }
+
+  private newPlay(gameId: string): MockPlay {
+    return {
       gameId,
       game: SCRIPTS[gameId],
       stepIdx: -1,
@@ -165,17 +205,24 @@ export class MockAdapter implements DramaClient {
       seq: 0,
       pending: null,
       status: "running",
-    });
-    return { session_id: sessionId, game_id: gameId, status: "lobby", player_links: { Player_1: `/player?token=${sessionId}` } };
+    };
   }
 
-  async getSession(sessionId: string): Promise<SessionSummary> {
-    const play = this.plays.get(sessionId);
-    return { session_id: sessionId, game_id: play?.gameId, status: play?.status ?? "running" };
+  // 支持刷新或直接打开 mock 链接。sessionId 形如 mock-the_clause-1 时可恢复对应游戏，
+  // 不再无条件回落到狼人杀。
+  private ensurePlay(sessionId: string): MockPlay | undefined {
+    const current = this.plays.get(sessionId);
+    if (current) return current;
+    const match = /^mock-([a-z_]+)-\d+$/.exec(sessionId);
+    const gameId = match && SCRIPTS[match[1]] ? match[1] : "";
+    if (!gameId) return undefined;
+    const play = this.newPlay(gameId);
+    this.plays.set(sessionId, play);
+    return play;
   }
 
   // 推进一个 step：追加其消息，挂上其 reply（若有）。
-  private advance(play: MockPlay): void {
+  private advance(sessionId: string, play: MockPlay): void {
     const next = play.stepIdx + 1;
     if (next >= play.game.steps.length) {
       play.status = "ended";
@@ -186,7 +233,7 @@ export class MockAdapter implements DramaClient {
     const step = play.game.steps[next];
     for (const m of step.msgs) {
       play.seq += 1;
-      play.messages.push(mockMsgToInteraction(m, play.seq, "mock", play.game.phase, step.channel));
+      play.messages.push(mockMsgToInteraction(m, play.seq, sessionId, play.game.phase, step.channel));
     }
     if (step.reply) {
       const reqId = `req-${play.stepIdx}`;
@@ -198,38 +245,41 @@ export class MockAdapter implements DramaClient {
       play.pending = null;
       play.status = next + 1 >= play.game.steps.length ? "ended" : "running";
       // 无 reply 的 step 自动继续推进到下一个需要交互的 step。
-      if (play.status !== "ended") this.advance(play);
+      if (play.status !== "ended") this.advance(sessionId, play);
     }
   }
 
   async assign(): Promise<void> {}
   async start(sessionId: string): Promise<void> {
-    const play = this.plays.get(sessionId);
-    if (play && play.stepIdx < 0) this.advance(play);
+    const play = this.ensurePlay(sessionId);
+    if (play && play.stepIdx < 0) this.advance(sessionId, play);
   }
   async pause(): Promise<void> {}
   async resume(): Promise<void> {}
   async restart(sessionId: string): Promise<void> {
-    const play = this.plays.get(sessionId);
+    const play = this.ensurePlay(sessionId);
     if (play) {
       play.stepIdx = -1;
       play.messages = [];
       play.seq = 0;
       play.pending = null;
       play.status = "running";
-      this.advance(play);
+      this.advance(sessionId, play);
     }
   }
   async step(): Promise<void> {}
   async setStepMode(): Promise<void> {}
   async terminate(sessionId: string): Promise<void> {
-    const play = this.plays.get(sessionId);
+    const play = this.ensurePlay(sessionId);
     if (play) play.status = "ended";
   }
 
   async getInbox(sessionId: string, _seat: string, after: number): Promise<InboxResponse> {
-    const play = this.plays.get(sessionId);
+    const play = this.ensurePlay(sessionId);
     if (!play) return { messages: [], cursor: after, pending: null, status: "ended" };
+    // mock 页面刷新后只能从 sessionId 恢复游戏类型，无法恢复内存里的 lifecycle。
+    // 为了保证分发出去的玩家链接可直接游玩，首次拉 inbox 时补到第一个交互点。
+    if (play.stepIdx < 0) this.advance(sessionId, play);
     const messages = play.messages.filter((m) => m.seq > after);
     return {
       messages,
@@ -242,24 +292,46 @@ export class MockAdapter implements DramaClient {
   }
 
   async postReply(sessionId: string, reply: PlayerReply): Promise<ReplyAck> {
-    const play = this.plays.get(sessionId);
+    const play = this.ensurePlay(sessionId);
     if (!play || !play.pending) return { accepted: false, error: "无待回复请求" };
     if (reply.request_id !== play.pending.request_id) return { accepted: false, error: "请求已过期" };
     play.pending = null;
-    this.advance(play);
+    this.advance(sessionId, play);
     // 提交后新产出的消息作为 new_messages 返回（供即时回显）。
     return { accepted: true, new_messages: [] };
   }
 
   async getView(sessionId: string, seat: string): Promise<StateView> {
-    const play = this.plays.get(sessionId);
+    const play = this.ensurePlay(sessionId);
     const game = play?.game;
     const panels: Record<string, unknown> = {};
+    if (game?.genre) panels.genre = game.genre;
     if (game?.affinities) panels.affinity = game.affinities;
     if (game?.stats) panels.stats = game.stats;
     if (game?.circles) panels.circles = game.circles;
     if (game?.boardState) panels.board = game.boardState;
     if (game?.progress) panels.progress_detail = game.progress;
+
+    // roles 转换为顶层字段（新格式）
+    const roles: Record<string, any> = {};
+    if (game?.roles && Array.isArray(game.roles)) {
+      // 兼容旧的 array 格式 [{seat_id, name, role, ...}]
+      game.roles.forEach((r: any) => {
+        const roleId = r.role ?? r.seat_id;
+        roles[roleId] = {
+          name: r.name,
+          description: r.description,
+          portrait_url: r.portrait_url,
+          emoji: r.emoji,
+          voice_id: r.voice_id,
+          faction: r.faction,
+        };
+      });
+    } else if (game?.roles && typeof game.roles === 'object') {
+      // 已经是新格式 {role_id: role_data}
+      Object.assign(roles, game.roles);
+    }
+
     return {
       seat_id: seat,
       phase: game?.phase ?? null,
@@ -273,6 +345,7 @@ export class MockAdapter implements DramaClient {
         tag: p.tag,
         tag_text: p.tagText,
       })),
+      roles: Object.keys(roles).length > 0 ? roles : undefined, // 新增：roles 字段
       panels,
       self: {},
     };

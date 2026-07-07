@@ -2,8 +2,12 @@
 // 采用原型聊天范式：多频道（公开/狼人/私聊 = scope）+ 气泡消息流 + 自适应输入。
 // §2.3 铁律：inbox 已是该 seat 的 per-seat 投影，前端不做任何可见性过滤，频道仅按 scope 分组展示。
 
-import { useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import { getClient } from "../api/client";
+import { GAMES } from "../api/mockData";
+import { inferGameKind, themeGenreForKind } from "../api/gamePresentation";
+import { ImmersiveShell, type RailItem } from "../components/AppShell";
 import { Topbar, Channels, ConnStatus } from "../components/Chrome";
 import { MessageFeed } from "../components/MessageFeed";
 import { Composer } from "../components/Composer";
@@ -23,6 +27,7 @@ export function PlayerPage() {
   const [sideOpen, setSideOpen] = useState(false);
   const [activeChannel, setActiveChannel] = useState("public");
   const [submitError, setSubmitError] = useState("");
+  const [sessionGameHint, setSessionGameHint] = useState("");
 
   const inbox = useInbox(sessionId, `player:${seat}`);
   const view = useStateView(sessionId, `player:${seat}`);
@@ -30,8 +35,19 @@ export function PlayerPage() {
   // game_pack 语义化频道名（scopeLabels）从 view.panels.scope_labels 取，未知走通用命名。
   const scopeLabels = (view?.panels?.scope_labels as Record<string, [string, string]>) ?? {};
   const { channels, filter } = useChannels(inbox.messages, scopeLabels);
+  useEffect(() => {
+    if (!channels.some((c) => c.id === activeChannel)) setActiveChannel("public");
+  }, [channels, activeChannel]);
   const shownMessages = filter(inbox.messages, activeChannel);
   const isPublic = activeChannel === "public";
+
+  useEffect(() => {
+    if (!sessionId) return;
+    getClient()
+      .getSession(sessionId)
+      .then((summary) => setSessionGameHint(`${summary.game_id ?? ""} ${String(summary.script_path ?? "")}`))
+      .catch(() => setSessionGameHint(""));
+  }, [sessionId]);
 
   if (!token) {
     return (
@@ -44,16 +60,28 @@ export function PlayerPage() {
     );
   }
 
-  const genre = (view?.panels?.genre as string) ?? undefined;
+  const genre = inferGameKind(view?.panels?.genre as string) ?? inferGameKind(sessionGameHint) ?? inferGameKind(sessionId);
+  const railItems: RailItem[] = GAMES.map((g) => ({
+    id: g.id,
+    icon: g.icon,
+    tip: g.tip,
+    active: g.id === genre,
+    href: g.id === genre ? `/player?token=${sessionId}:${seat}` : `/create?game=${g.id}`,
+  }));
 
   return (
-    <div className="app" data-genre={genre}>
+    <ImmersiveShell genre={themeGenreForKind(genre)} railItems={railItems}>
       <div className="stage">
         <Topbar
           title={`玩家 · ${seat}`}
           phase={inbox.phase}
           right={
             <>
+              <div className="view-links">
+                <Link className="view-link" to={`/host/sessions/${sessionId}`}>主持</Link>
+                <Link className="view-link" to={`/viewer/sessions/${sessionId}`}>观众</Link>
+                <Link className="view-link active" to={`/player?token=${sessionId}:${seat}`}>玩家</Link>
+              </div>
               <ConnStatus status={inbox.status} />
               <button className="icon-btn mobile-only" onClick={() => setSideOpen(true)}>ℹ️</button>
             </>
@@ -88,6 +116,6 @@ export function PlayerPage() {
         )}
       </div>
       <Sidebar view={view} open={sideOpen} onClose={() => setSideOpen(false)} />
-    </div>
+    </ImmersiveShell>
   );
 }

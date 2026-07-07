@@ -11,6 +11,7 @@ export interface InboxState {
   phase: string | null;
   status: SessionStatus | "connecting";
   submitting: boolean;
+  refresh: () => Promise<void>;
   submit: (partial: Omit<PlayerReply, "session_id" | "seat_id">) => Promise<void>;
 }
 
@@ -22,6 +23,17 @@ export function useInbox(sessionId: string, seat: string, intervalMs = 1500): In
   const [submitting, setSubmitting] = useState(false);
   const cursorRef = useRef(0);
   const seenRef = useRef<Set<number>>(new Set());
+
+  // 切换 session 或 seat 时必须清空本地投影。
+  // 否则从狼人杀进入 Galgame/剧本杀时，旧消息和 cursor 会继续污染新对局。
+  useEffect(() => {
+    setMessages([]);
+    setPending(null);
+    setPhase(null);
+    setStatus(sessionId ? "connecting" : "ended");
+    cursorRef.current = 0;
+    seenRef.current = new Set();
+  }, [sessionId, seat]);
 
   const poll = useCallback(async () => {
     if (!sessionId) return;
@@ -72,5 +84,5 @@ export function useInbox(sessionId: string, seat: string, intervalMs = 1500): In
     [sessionId, seat, poll],
   );
 
-  return { messages, pending, phase, status, submitting, submit };
+  return { messages, pending, phase, status, submitting, refresh: poll, submit };
 }

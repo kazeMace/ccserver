@@ -1,7 +1,8 @@
 // 右侧只读状态面板（§7 StateView）。panels 是开放字典，按已知 key 渲染，未知忽略。
 // 与消息流正交：不含待回复，纯展示 affinity/stats/circles/board/players/progress。
 
-import type { PlayerCard, StateView } from "../types/interaction";
+import type { PlayerCard, StateView, RoleDefinition } from "../types/interaction";
+import { RolesList } from "./RoleCard";
 
 export function Sidebar({ view, open, onClose }: { view: StateView | null; open?: boolean; onClose?: () => void }) {
   if (!view) return null;
@@ -14,6 +15,7 @@ export function Sidebar({ view, open, onClose }: { view: StateView | null; open?
         {Array.isArray(panels.affinity) ? <AffinitySection rows={panels.affinity as AffinityRow[]} /> : null}
         {Array.isArray(panels.circles) ? <CirclesSection circles={panels.circles as CircleRow[]} /> : null}
         {Array.isArray(panels.stats) ? <StatsSection stats={panels.stats as StatRow[]} /> : null}
+        {view.roles ? <RolesSection roles={view.roles} /> : null}
         {Array.isArray(panels.board) ? <BoardSection rows={panels.board as string[]} /> : null}
         {view.players?.length ? <PlayersSection players={view.players} /> : null}
       </aside>
@@ -94,6 +96,14 @@ function StatsSection({ stats }: { stats: StatRow[] }) {
           <span className="sv">{s.value}</span>
         </div>
       ))}
+    </Section>
+  );
+}
+
+function RolesSection({ roles }: { roles: Record<string, RoleDefinition> }) {
+  return (
+    <Section title="角色">
+      <RolesList roles={roles} />
     </Section>
   );
 }

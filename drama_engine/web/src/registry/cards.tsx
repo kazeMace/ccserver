@@ -52,6 +52,34 @@ function AffinityCard({ card }: CardRendererProps) {
   return <div className={`m-affinity${d.dir === "down" ? " down" : ""}`}>{d.text}</div>;
 }
 
+function MediaCard({ card }: CardRendererProps) {
+  const d = card.data as {
+    kind?: "video" | "audio" | "image";
+    title?: string;
+    url?: string;
+    poster?: string;
+    subtitleUrl?: string;
+    subtitle_url?: string;
+    autoplay?: boolean;
+  };
+  if (!d.url) return <div className="m-announce">媒体资源缺少 url</div>;
+  const subtitleUrl = d.subtitleUrl ?? d.subtitle_url;
+  return (
+    <div className="m-media">
+      {d.title ? <div className="media-title">{d.title}</div> : null}
+      {d.kind === "image" ? (
+        <img src={d.url} alt={d.title ?? "media"} />
+      ) : d.kind === "audio" ? (
+        <audio src={d.url} controls preload="metadata" />
+      ) : (
+        <video src={d.url} poster={d.poster} controls preload="metadata" playsInline autoPlay={Boolean(d.autoplay)}>
+          {subtitleUrl ? <track kind="subtitles" src={subtitleUrl} srcLang="zh" label="字幕" /> : null}
+        </video>
+      )}
+    </div>
+  );
+}
+
 // 狼人杀皮肤示例：验人结果 / 死亡公告（§9.5）。
 function SeerResultCard({ card }: CardRendererProps) {
   const d = card.data as { target?: string; verdict?: string };
@@ -78,6 +106,7 @@ export const CARD_REGISTRY: Record<string, CardRenderer> = {
   clue: ClueCard,
   secret: SecretCard,
   affinity_delta: AffinityCard,
+  media: MediaCard,
   seer_result: SeerResultCard,
   death_notice: DeathNoticeCard,
 };

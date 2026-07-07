@@ -3,7 +3,7 @@
 // 这些是端点未就绪期的演示数据；v1 就绪后不再使用。
 
 export interface MockMsg {
-  kind: "announce" | "narrate" | "chat" | "vn" | "clue" | "secret" | "affinity";
+  kind: "announce" | "narrate" | "chat" | "vn" | "clue" | "secret" | "affinity" | "media";
   text?: string;
   strong?: boolean;
   self?: boolean;
@@ -17,6 +17,14 @@ export interface MockMsg {
   head?: string;
   body?: string;
   dir?: "up" | "down";
+  media?: {
+    kind: "video" | "audio" | "image";
+    title?: string;
+    url: string;
+    poster?: string;
+    subtitleUrl?: string;
+    autoplay?: boolean;
+  };
 }
 
 export interface MockReply {
@@ -41,6 +49,7 @@ export interface MockStep {
 
 export interface MockGame {
   genre: string;
+  roles: { seat_id: string; name: string; emoji?: string; role?: string; controller?: "human" | "ai" | "system"; description?: string }[];
   channels: { id: string; name: string; icon: string; lock?: boolean; badge?: number }[];
   players: { id: string; name: string; emoji: string; tag?: string; tagText?: string; online?: boolean; dead?: boolean }[];
   phase: string;
@@ -55,7 +64,7 @@ export interface MockGame {
 
 export const GAMES = [
   { id: "werewolf", icon: "🐺", name: "狼人杀", sub: "9 人标准局 · 社交推理", tip: "狼人杀" },
-  { id: "galgame", icon: "🌸", name: "樱之校园", sub: "文字冒险 · 恋爱养成", tip: "Galgame" },
+  { id: "the_clause", icon: "📜", name: "The Clause", sub: "文字冒险 · 合约恋情", tip: "文字冒险" },
   { id: "mystery", icon: "🕯️", name: "午夜庄园", sub: "剧本杀 · 6 人硬核本", tip: "剧本杀" },
   { id: "variety", icon: "🏝️", name: "恋爱岛", sub: "综艺 AI · 7 天节目", tip: "综艺 AI" },
   { id: "board", icon: "⚫", name: "五子棋", sub: "桌游 · 人机对弈", tip: "桌游" },
@@ -70,9 +79,25 @@ const clue = (title: string, desc: string, foot: string): MockMsg => ({ kind: "c
 const secret = (head: string, body: string): MockMsg => ({ kind: "secret", head, body });
 const affin = (text: string, dir: "up" | "down" = "up"): MockMsg => ({ kind: "affinity", text, dir });
 const me = (text: string): MockMsg => ({ kind: "chat", sender: { type: "player", id: "me", name: "你", emoji: "😎" }, text, self: true });
+const media = (kind: NonNullable<MockMsg["media"]>["kind"], title: string, url: string, poster?: string, subtitleUrl?: string): MockMsg => ({
+  kind: "media",
+  text: title,
+  media: { kind, title, url, poster, subtitleUrl, autoplay: false },
+});
 
 const WEREWOLF: MockGame = {
   genre: "werewolf",
+  roles: [
+    { seat_id: "p1", name: "你", emoji: "😎", role: "预言家", controller: "human", description: "真人玩家，负责关键发言和投票。" },
+    { seat_id: "p2", name: "阿哲", emoji: "🧑", role: "村民", controller: "ai" },
+    { seat_id: "p3", name: "小美", emoji: "👧", role: "村民", controller: "ai" },
+    { seat_id: "p4", name: "老王", emoji: "👨", role: "狼人", controller: "ai" },
+    { seat_id: "p5", name: "莉莉", emoji: "👩", role: "村民", controller: "ai" },
+    { seat_id: "p6", name: "大熊", emoji: "🧔", role: "村民", controller: "ai" },
+    { seat_id: "p7", name: "青青", emoji: "👱‍♀️", role: "狼人", controller: "ai" },
+    { seat_id: "p8", name: "阿力", emoji: "👦", role: "女巫", controller: "ai" },
+    { seat_id: "p9", name: "花花", emoji: "👩‍🦰", role: "狼人", controller: "ai" },
+  ],
   channels: [
     { id: "public", name: "全场", icon: "🏛️" },
     { id: "wolf", name: "狼人频道", icon: "🐺", lock: true },
@@ -149,87 +174,151 @@ const WEREWOLF: MockGame = {
   },
 };
 
-const GALGAME: MockGame = {
+const THE_CLAUSE: MockGame = {
   genre: "galgame",
+  roles: {
+    nora: {
+      name: "Nora Hampton",
+      description: "30 岁的精英律师。聪明、独立、坚强，但因母亲的医药费陷入财务困境。表面冷静，内心敏感。",
+      portrait_url: "https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/characters/nora.jpg",
+      emoji: "⚖️",
+      voice_id: "en-US-JennyNeural",
+      faction: "protagonist",
+    },
+    marco: {
+      name: "Marco Diaz",
+      description: "35 岁的亿万富翁、冷酷商人。掌控欲强，习惯用钱解决问题，但内心深处渴望真实的感情。",
+      portrait_url: "https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/characters/marco.jpg",
+      emoji: "🕴️",
+      voice_id: "en-US-GuyNeural",
+      faction: "male_lead",
+    },
+    leila: {
+      name: "Leila",
+      description: "Nora 的闺蜜兼同事，28 岁。外向、乐观，总是支持 Nora 的决定。",
+      portrait_url: "https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/characters/leila.jpg",
+      emoji: "👭",
+      voice_id: "en-US-AriaNeural",
+      faction: "friend",
+    },
+    nick: {
+      name: "Nick",
+      description: "Nora 的前男友，32 岁律师。自负、爱面子，对 Nora 还有感情但不愿承认。",
+      portrait_url: "https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/characters/nick.jpg",
+      emoji: "💼",
+      voice_id: "en-US-AndrewNeural",
+      faction: "ex_boyfriend",
+    },
+    seth: {
+      name: "Seth",
+      description: "Marco 的商业对手，38 岁。阴险、狡猾，想搞垮 Marco 的 IPO。",
+      portrait_url: "https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/characters/seth.jpg",
+      emoji: "😈",
+      voice_id: "en-US-DavisNeural",
+      faction: "antagonist",
+    },
+  },
   channels: [{ id: "story", name: "主线", icon: "📖" }],
-  players: [],
-  phase: "第一章 · 转学初遇",
+  players: [
+    { id: "Player_1", name: "Nora Hampton", emoji: "⚖️", tag: "me", tagText: "玩家", online: true },
+  ],
+  phase: "Chapter 1 · The Offer",
   stats: [
-    { icon: "💪", name: "勇气", value: "3" },
-    { icon: "📚", name: "智慧", value: "5" },
-    { icon: "✨", name: "魅力", value: "4" },
+    { icon: "⚖️", name: "职业判断", value: "7" },
+    { icon: "🖋️", name: "谈判锋芒", value: "5" },
+    { icon: "🔥", name: "情绪克制", value: "4" },
   ],
   affinities: [
-    { id: "sakura", name: "樱", emoji: "🌸", value: 15, max: 100 },
-    { id: "yuki", name: "雪", emoji: "❄️", value: 8, max: 100 },
+    { id: "marco", name: "Marco Diaz", emoji: "🕴️", value: 0, max: 100 },
   ],
   steps: [
     {
       channel: "story",
-      msgs: [narr("樱花飘落的四月，你第一次走进这所学校的大门。"), narr("推开教室门的瞬间，所有目光都聚集到你身上。")],
-      reply: { type: "confirm", prompt: "点击继续", label: "继续 ▸" },
-    },
-    {
-      channel: "story",
-      msgs: [vn("樱", "🌸", "你就是今天转来的同学吧？我叫小樱，是这个班的班长～有什么不懂的都可以问我哦！")],
-      reply: {
-        type: "choice_or_text",
-        prompt: "你想怎么回应她？",
-        who: "你的选择将影响好感度",
-        placeholder: "或者……说点你自己想说的话",
-        options: [
-          { id: "polite", text: "你好，我叫佐藤，请多关照。", desc: "礼貌得体" },
-          { id: "shy", text: "（紧张地低下头）你、你好……", desc: "腼腆" },
-          { id: "cool", text: "嗯。", desc: "高冷" },
-        ],
-      },
-    },
-    {
-      channel: "story",
       msgs: [
-        me("你的名字很好听，就像窗外的樱花一样温柔。"),
-        affin("樱 对你的好感 +8 ❤️"),
-        vn("樱", "🌸", "诶——？！（脸颊微微泛红）你、你这个人……真是的，突然说这种话啦……"),
-        vn("樱", "🌸", "那个……放学后，要我带你逛逛校园吗？"),
+        media(
+          "video",
+          "第一幕 · 初遇",
+          "https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/video/node_01.mp4",
+          "https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/video/node_01_poster.jpg",
+          "https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/subtitles/node_01.srt",
+        ),
+        narr("律所会议室。你是 Nora Hampton，刚刚输掉了一场本不该输的官司。"),
+        narr("Marco Diaz 在夜里收购了你的委托人，让你的胜诉策略瞬间失效。傍晚，他的车停在你公寓楼下等你。"),
       ],
       reply: {
         type: "choice_or_text",
-        prompt: "如何回答小樱的邀请？",
-        placeholder: "自由回答",
+        prompt: "Marco 的车门已经打开。你要怎么做？",
+        who: "Nora Hampton",
+        placeholder: "自由输入：例如质问他、冷处理，或直接上车……",
         options: [
-          { id: "yes", text: "好啊，那就麻烦你了。", desc: "❤️ 好感路线" },
-          { id: "busy", text: "抱歉，我今天还有事。", desc: "错过事件" },
-          { id: "confess", text: "其实我想单独和你在一起。", desc: "需要魅力 ≥ 6", cond: "魅力不足，暂不可选", disabled: true },
+          { id: "get_in_car", text: "上车", desc: "大胆面对 Marco 的提案 · Marco 好感 +5" },
+          { id: "ignore_walk", text: "不理他，继续往前走", desc: "保持距离，但你仍会听见那份合约 · Marco 好感 +1" },
         ],
       },
     },
     {
       channel: "story",
       msgs: [
-        me("好啊，那就麻烦你了。"),
-        affin("樱 对你的好感 +5 ❤️"),
-        narr("放学后，夕阳把校园染成温暖的橘红色。你和小樱并肩走在樱花树下。"),
-        vn("樱", "🌸", "这里是我最喜欢的地方……每到春天，樱花瓣会像雪一样落下来。"),
-        vn("樱", "🌸", "呐，可以答应我一件事吗？明年春天……我们还要一起来看樱花，好不好？"),
+        me("我会上车，但只给你十分钟解释。"),
+        affin("Marco Diaz 对你的兴趣 +5 ❤️"),
+        vn("Marco Diaz", "🕴️", "十分钟足够。Nora，我需要一个聪明、锋利、并且足够让投资人相信的未婚妻。"),
+        narr("车内，Marco 提出合约：假装恋人，一起出席投资人晚宴。你看见合约末尾还留着一条空白条款。"),
       ],
       reply: {
         type: "choice_or_text",
-        prompt: "这是一个重要的选择",
-        placeholder: "认真地回答她",
+        prompt: "你会如何处理那条空白条款？",
+        who: "选择将映射到 The Clause 的分支",
+        placeholder: "自由输入：写下你想加进合约的条款……",
         options: [
-          { id: "promise", text: "我答应你，一言为定。", desc: "🔒 解锁「樱之约定」路线" },
-          { id: "vague", text: "到时候再说吧。", desc: "好感 -3" },
+          { id: "dont_say", text: "什么都不说", desc: "保守接受 · Marco 好感 +1" },
+          { id: "negotiate_clause", text: "再谈判一条新条款", desc: "强硬谈判 · Marco 好感 +5" },
         ],
       },
     },
     {
       channel: "story",
       msgs: [
-        me("我答应你，一言为定。"),
-        affin("樱 对你的好感 +12 ❤️❤️"),
-        sys("🔓 解锁隐藏路线：「樱之约定」", { strong: true }),
-        narr("小樱笑得比樱花还要灿烂。这个春天的约定，成为了你们故事的开始……"),
-        narr("——— 第一章 · 完 ———"),
+        me("我要加一条：任何公开亲密行为，都必须经过我同意。"),
+        affin("Marco Diaz 对你的兴趣 +5 ❤️"),
+        vn("Marco Diaz", "🕴️", "很好。会谈判的人才值得签约。"),
+        narr("次日，顶层公寓。造型师为你试装，Marco 亲手为你戴上一只纯金手镯。"),
+      ],
+      reply: {
+        type: "choice_or_text",
+        prompt: "晚宴上有人追问你和 Marco 的关系。你如何回应？",
+        placeholder: "自由输入你的回应……",
+        options: [
+          { id: "refuse_answer", text: "拒绝回答", desc: "保持距离 · Marco 好感 +1" },
+          { id: "explain_him", text: "向他解释", desc: "共同承担 · Marco 好感 +5" },
+        ],
+      },
+    },
+    {
+      channel: "story",
+      msgs: [
+        me("这是我们之间的协议，也是我自己的选择。"),
+        affin("Marco Diaz 对你的兴趣 +5 ❤️"),
+        narr("律所办公室。一张你和 Marco 的照片泄露了。合约关系第一次变成真正的公众压力。"),
+        vn("Marco Diaz", "🕴️", "你可以把一切都推给我。或者，告诉他们你并不后悔。"),
+      ],
+      reply: {
+        type: "choice_or_text",
+        prompt: "照片泄露后，你要如何回应？",
+        placeholder: "自由输入你的公关回应或真实想法……",
+        options: [
+          { id: "blame_marco", text: "把风波归咎于 Marco", desc: "保守自保 · Marco 好感 +1" },
+          { id: "tell_marco_no_regret", text: "告诉 Marco 律所已经知情，而你并不后悔", desc: "大胆坦白 · Marco 好感 +5" },
+        ],
+      },
+    },
+    {
+      channel: "story",
+      msgs: [
+        me("我不会后悔。协议是假的，但我的判断不是。"),
+        affin("Marco Diaz 对你的兴趣 +5 ❤️"),
+        sys("The Clause 已接入文字冒险入口。真实 v1 模式会创建 drama_engine/scripts/interactive_session/story/the_clause.yaml。", { strong: true }),
+        narr("合约还在继续。每一次选择都会改变 Marco 的好感度，并最终把 Nora 推向理性、心动或双赢的结局。"),
+        narr("—— The Clause · Demo checkpoint ——"),
       ],
     },
   ],
@@ -237,6 +326,14 @@ const GALGAME: MockGame = {
 
 const MYSTERY: MockGame = {
   genre: "mystery",
+  roles: [
+    { seat_id: "me", name: "老赵", emoji: "🎩", role: "管家", controller: "human", description: "真人玩家，持有庄园旧事和遗嘱线索。" },
+    { seat_id: "c2", name: "林婉", emoji: "👰", role: "千金", controller: "ai" },
+    { seat_id: "c3", name: "陈明", emoji: "🩺", role: "医生", controller: "ai" },
+    { seat_id: "c4", name: "秦风", emoji: "🕵️", role: "侦探", controller: "ai" },
+    { seat_id: "c5", name: "苏眉", emoji: "💃", role: "歌女", controller: "ai" },
+    { seat_id: "c6", name: "赵坤", emoji: "🎓", role: "少爷", controller: "ai" },
+  ],
   channels: [
     { id: "table", name: "圆桌", icon: "🍷" },
     { id: "script", name: "我的剧本", icon: "📜", lock: true },
@@ -351,6 +448,13 @@ const MYSTERY: MockGame = {
 
 const VARIETY: MockGame = {
   genre: "variety",
+  roles: [
+    { seat_id: "me", name: "你", emoji: "😎", role: "嘉宾", controller: "human", description: "真人嘉宾，负责约会邀约和短信选择。" },
+    { seat_id: "v2", name: "林夏", emoji: "🌻", role: "女嘉宾", controller: "ai" },
+    { seat_id: "v3", name: "周予", emoji: "🎸", role: "男嘉宾", controller: "ai" },
+    { seat_id: "v4", name: "小鹿", emoji: "🦌", role: "女嘉宾", controller: "ai" },
+    { seat_id: "v5", name: "阿凯", emoji: "🏄", role: "男嘉宾", controller: "ai" },
+  ],
   channels: [
     { id: "villa", name: "别墅大厅", icon: "🏝️" },
     { id: "date", name: "约会·小美", icon: "💕", lock: true },
@@ -465,6 +569,10 @@ const VARIETY: MockGame = {
 
 const BOARD: MockGame = {
   genre: "board",
+  roles: [
+    { seat_id: "black", name: "黑棋", emoji: "●", role: "先手", controller: "human", description: "真人玩家，执黑先行。" },
+    { seat_id: "white", name: "白棋 AI", emoji: "○", role: "后手", controller: "ai", description: "AI 对手，负责白棋落子。" },
+  ],
   channels: [{ id: "board", name: "棋盘", icon: "⚫" }],
   players: [
     { id: "me", name: "你", emoji: "😎", tag: "me", tagText: "黑棋 ●", online: true },
@@ -516,4 +624,4 @@ const BOARD: MockGame = {
   ],
 };
 
-export const SCRIPTS: Record<string, MockGame> = { werewolf: WEREWOLF, galgame: GALGAME, mystery: MYSTERY, variety: VARIETY, board: BOARD };
+export const SCRIPTS: Record<string, MockGame> = { werewolf: WEREWOLF, the_clause: THE_CLAUSE, mystery: MYSTERY, variety: VARIETY, board: BOARD };

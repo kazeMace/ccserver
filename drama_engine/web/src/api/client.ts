@@ -14,6 +14,18 @@ export interface GameDef {
   game_id: string;
   script_path: string;
   title: string;
+  default_seat_ids?: string[];
+  default_human_seat_ids?: string[];
+  roles?: GameRoleDef[];
+}
+
+export interface GameRoleDef {
+  seat_id: string;
+  name: string;
+  emoji?: string;
+  role?: string;
+  controller?: "human" | "ai" | "system";
+  description?: string;
 }
 
 export interface CreateSessionInput {
