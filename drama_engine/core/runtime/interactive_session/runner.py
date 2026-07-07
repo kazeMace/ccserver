@@ -15,8 +15,10 @@ from drama_engine.core.runner.base import BasicGameRunner
 from drama_engine.core.runtime.interactive_session.compiler import InteractiveSessionCompiler
 from drama_engine.core.runtime.interactive_session.context import InteractiveExecutionContext
 from drama_engine.core.runtime.interactive_session.flow.executor import FlowExecutor
+from drama_engine.core.runtime.interactive_session.patch.applier import FlowPatchApplier
 from drama_engine.core.runtime.interactive_session.patch.journal import PatchJournal
 from drama_engine.core.runtime.interactive_session.patch.materializer import FlowMaterializer
+from drama_engine.core.runtime.interactive_session.patch.validators import PatchValidator
 from drama_engine.core.runtime.interactive_session.services.plugin_loader import InteractivePluginLoader
 from drama_engine.core.runtime_spec.registry import RuntimeSpec
 from drama_engine.core.game_instance.progress import ProgressTracker
@@ -152,6 +154,31 @@ class InteractiveSessionRunner(BasicGameRunner):
     def patch_journal(self) -> Any:
         """返回当前 patch journal；未 assign 时为 None。"""
         return self._ctx.patch_journal if self._ctx is not None else None
+
+    def apply_flow_patch(self, patch: dict[str, Any]) -> dict[str, Any]:
+        """应用一个外部（如 ControlPlane 提案）flow patch 到运行时（M4）。
+
+        接通 ControlPlane 与执行层：director/writer 提案通过裁定后，经此入口真正驱动 flow。
+        复用与 grow_flow 相同的安全路径——先校验+dry-run 预览，再以 record type "flow_patch"
+        入账，最后 materialize 生效；失败回滚 journal record，保证不留下污染。
+
+        参数：patch — flow patch dict，含 type: add_scene | add_transition | set_state。
+        返回：{"applied": True, "flow_patch": patch}。
+        """
+        assert self._ctx is not None, "apply_flow_patch 前必须先 assign"
+        ctx = self._ctx
+        errors = PatchValidator().validate_flow_patch(patch, ctx.script)
+        assert not errors, f"flow_patch 校验失败: {errors}"
+        applier = FlowPatchApplier()
+        applier.preview(ctx, patch)  # dry-run 编译，确认可合成
+        record = ctx.patch_journal.append("flow_patch", patch, {"source": "control_plane"})
+        try:
+            applier.apply(ctx, patch)
+        except Exception:
+            removed = ctx.patch_journal.rollback_last()
+            assert removed is not None and removed.patch_id == record.patch_id, "patch journal 回滚顺序错误"
+            raise
+        return {"applied": True, "flow_patch": patch}
 
     @property
     def disclosure_ledger(self) -> Any:

@@ -136,11 +136,23 @@ class GameInstance:
         self.control_plane = build_control_plane(spec, applier=self._apply_control_proposal)
 
     def _apply_control_proposal(self, proposal: ControlProposal) -> None:
-        """把已通过裁定的提案落到权威状态/事件流。"""
-        journal = self._current_patch_journal()
-        if proposal.kind == "patch" and journal is not None:
-            journal.append(str(proposal.payload.get("type") or "control_patch"), proposal.payload,
-                           source={"role": proposal.role})
+        """把已通过裁定的提案落到权威状态 / 执行层 / 事件流（M4）。
+
+        patch 类提案若是 flow patch（add_scene/add_transition/set_state），经
+        runner.apply_flow_patch 真正驱动 flow——此前只写 journal 却用错 record type，
+        materializer 的 by_type("flow_patch") 收不到，提案形同虚设。其余 patch 仍入
+        journal 存档。announcement 走公开事件流。
+        """
+        if proposal.kind == "patch":
+            patch = dict(proposal.payload or {})
+            runner = getattr(self.runtime, "runner", None)
+            is_flow_patch = str(patch.get("type") or "") in {"add_scene", "add_transition", "set_state"}
+            if is_flow_patch and runner is not None and hasattr(runner, "apply_flow_patch"):
+                runner.apply_flow_patch(patch)
+                return
+            journal = self._current_patch_journal()
+            if journal is not None:
+                journal.append(str(patch.get("type") or "control_patch"), patch, source={"role": proposal.role})
         elif proposal.kind == "announcement":
             self.session_control.append_public({
                 "kind": "control_announcement",
