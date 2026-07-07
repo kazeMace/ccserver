@@ -12,6 +12,7 @@ from drama_engine.core.session.events import SessionEventStore
 from drama_engine.core.session.persistence import JsonSessionStore
 from drama_engine.core.session.runtime import GameRuntime
 from drama_engine.core.session.registry import SessionRegistry
+from drama_engine.core.views.projector import ViewProjector
 from drama_engine.core.runner.base import BasicGameRunner, build_runner_context
 from drama_engine.core.ports.actions import RuntimeActionPort, RuntimeActionServiceRouter
 from drama_engine.core.ports.memory import InMemoryRuntimeMemoryBackend
@@ -395,14 +396,14 @@ async def test_party_session_runtime_uses_summary_provider_for_runner_state() ->
     )
 
     summary = runtime.summary()
-    host_summary = runtime.host_summary()
 
     assert runtime.summary_provider is not None
     assert summary["runner"]["runtime_type"] == "interactive_session"
     assert summary["runtime_state"]["phase"] == "idle"
     assert summary["runtime_state"]["metadata"]["runner"] == "InteractiveSessionRunner"
-    assert host_summary["audience"] == "host"
-    assert host_summary["runner_summary"]["runner"] == "InteractiveSessionRunner"
+    # M7.3：host/public/player 视角改由 ViewProjector 提供，runtime 不再有第二套视图出口。
+    host_view = ViewProjector(runtime).host_view()
+    assert isinstance(host_view, dict)
 
 
 @pytest.mark.asyncio

@@ -33,17 +33,3 @@ class SummaryProvider:
             item["claim_status"] = "claimed" if seat.claimed_by else "unclaimed"
             result.append(item)
         return result
-
-    def audience_summary(self, runtime: Any, audience: str, seat_id: str | None = None) -> dict[str, Any]:
-        """Return a common summary with optional runner-specific fields."""
-        assert audience in {"host", "public", "player"}, f"未知 audience: {audience}"
-        result = self.session_summary(runtime)
-        result["audience"] = audience
-        if seat_id:
-            result["seat_id"] = seat_id
-        runner = getattr(runtime, "runner", None)
-        if runner is not None:
-            result["runner_summary"] = runner.summary(audience=audience, seat_id=seat_id)
-        if seat_id and getattr(runtime, "action_view", None) is not None:
-            result["current_action"] = runtime.action_view.current_action(runtime, seat_id)
-        return result

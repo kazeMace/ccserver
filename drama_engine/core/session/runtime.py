@@ -167,21 +167,11 @@ class GameRuntime:
         assert self.summary_provider is not None, "summary_provider 不能为空"
         return self.summary_provider.seat_summary(self)
 
-    def host_summary(self) -> dict[str, Any]:
-        """返回主持人视角摘要。"""
-        assert self.summary_provider is not None, "summary_provider 不能为空"
-        return self.summary_provider.audience_summary(self, audience="host")
-
-    def public_summary(self) -> dict[str, Any]:
-        """返回公开视角摘要。"""
-        assert self.summary_provider is not None, "summary_provider 不能为空"
-        return self.summary_provider.audience_summary(self, audience="public")
-
-    def player_summary(self, seat_id: str) -> dict[str, Any]:
-        """返回玩家视角摘要。"""
-        assert seat_id, "seat_id 不能为空"
-        assert self.summary_provider is not None, "summary_provider 不能为空"
-        return self.summary_provider.audience_summary(self, audience="player", seat_id=seat_id)
+    # M7.3：host/public/player 视角视图统一走 ViewProjector（架构文档 §17）。
+    # 此前 host_summary/public_summary/player_summary 经 SummaryProvider.audience_summary
+    # 提供了第二套对外视图出口，与 ViewProjector 职责重叠且生产未使用，已移除。
+    # 对外视图请用 GameInstance.host_view/public_view/player_view。
+    # summary()/seat_summary() 保留：它们是房间/会话元信息，不是游戏视图。
 
     async def assign(self) -> None:
         """执行本局发牌。"""
