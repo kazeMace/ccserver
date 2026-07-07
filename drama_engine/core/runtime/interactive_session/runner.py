@@ -258,9 +258,30 @@ class InteractiveSessionRunner(BasicGameRunner):
         state.register_entity("GAME", {"round": 1, "players": list(player_names), "ended": False})
         state.register_entity("STORY", {})
         state.register_entity("SCENE", {})
+
+        # 把 DSL roles 信息存入 GAME.roles（供 actor 读取人设）
+        if hasattr(script, 'raw') and isinstance(script.raw, dict):
+            roles_list = script.raw.get('roles', [])
+            if roles_list:
+                roles_data = {}
+                for role_spec in roles_list:
+                    if isinstance(role_spec, dict) and role_spec.get('name'):
+                        role_name = role_spec['name']
+                        roles_data[role_name] = {
+                            "name": role_name,
+                            "display_name": role_spec.get("display_name", ""),
+                            "description": role_spec.get("description", "") or role_spec.get("brief", ""),
+                            "portrait_url": role_spec.get("portrait_url", ""),
+                            "emoji": role_spec.get("emoji", ""),
+                            "voice_id": role_spec.get("voice_id", ""),
+                            "tts_config": role_spec.get("tts_config", {}),
+                            "faction": role_spec.get("faction", ""),
+                        }
+                state.set_attr("GAME", "roles", roles_data)
+
         for entity, attrs in (script.state or {}).items():
             if not state.has_entity(str(entity)):
-                state.register_entity(str(entity), {})
+                state.register_entity(str(entity), )
             for key, value in (attrs or {}).items():
                 StateWriter(state).apply(SetAttr(str(entity), str(key), value))
         player_initial = {}

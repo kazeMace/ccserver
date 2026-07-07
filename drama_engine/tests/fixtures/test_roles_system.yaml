@@ -1,0 +1,63 @@
+meta:
+  id: test_roles
+  title: Test Roles System
+  version: "1.0.0"
+
+runtime:
+  type: interactive_session
+
+players:
+  count: 1
+  ids: [Player_1]
+
+roles:
+  - name: nora
+    display_name: Nora Hampton
+    description: 精英律师，独立坚强，为母亲医药费接下了合约恋情提案。
+    portrait_url: https://assets.castloop.ai/characters/nora.jpg
+    emoji: ⚖️
+    voice_id: en-US-JennyNeural
+    tts_config:
+      provider: azure
+      speed: 1.0
+
+  - name: marco
+    display_name: Marco Diaz
+    description: 亿万富翁，冷酷商人，暗藏温柔。
+    portrait_url: https://assets.castloop.ai/characters/marco.jpg
+    emoji: 🕴️
+    voice_id: en-US-GuyNeural
+
+state:
+  Player_1: { role: nora, faction: protagonist }
+  GAME:
+    round: 0
+
+flow:
+  type: sequence
+  scenes: [test_scene]
+
+scenes:
+  test_scene:
+    type: scene
+    scope:
+      id: main
+      visibility: public
+    participants:
+      static: [Player_1]
+    schedule:
+      mode: none
+    participant_action:
+      kind: none
+      response:
+        mode: none
+    controller_action:
+      enabled: true
+      controller:
+        type: system
+      kind: narration
+    publication:
+      messages:
+        - audience: {scope: main}
+          content:
+            text: "测试 roles 系统"
