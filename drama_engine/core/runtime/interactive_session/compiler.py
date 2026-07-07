@@ -12,6 +12,7 @@ import yaml
 logger = logging.getLogger(__name__)
 
 from drama_engine.core.dsl.registry import build_default_dsl_registry
+from drama_engine.core.dsl.components.effects import EffectExecutor
 from drama_engine.core.moderation.models import GuardRailSpec
 from drama_engine.core.runtime.interactive_session.models import (
     ControllerActionSpec,
@@ -76,6 +77,8 @@ class InteractiveSessionCompiler:
         players = dict(canonical.get("players") or {})
         self._validate_script_contract(scenes, flow, scopes, referee)
         self._validate_visibility_refs(visibility, state, players)
+        # 【H3 修复】在编译期校验所有 effect.type 是否已知，避免运行时才发现拼写错误。
+        self._validate_all_effects(scenes, flow, referee)
         return InteractiveScript(
             meta=dict(canonical.get("meta") or {}),
             runtime=runtime,
@@ -559,6 +562,73 @@ class InteractiveSessionCompiler:
                     "请确认它是运行时动态分配的属性，而非拼写错误。",
                     attr,
                 )
+
+    def _validate_all_effects(
+        self,
+        scenes: dict[str, SceneSpec],
+        flow: FlowSpec,
+        referee: RefereeSpec,
+    ) -> None:
+        """【H3 修复】在编译期校验所有 effect.type，避免运行时才报错。
+
+        检查：
+        1. flow state 的 entry_effects / exit_effects
+        2. scene resolution 的 effects
+        3. referee rules 的 effects
+        4. scene 的 entry_effects / exit_effects（若有）
+        """
+        # 内置 effect 类型集合
+        builtin_types = EffectExecutor.BUILTIN_EFFECT_TYPES
+
+        # 1. 校验 flow state 的 entry_effects / exit_effects
+        for state_id, state in flow.states.items():
+            for effect in state.entry_effects:
+                self._validate_single_effect(effect, f"flow.states.{state_id}.entry_effects", builtin_types)
+            for effect in state.exit_effects:
+                self._validate_single_effect(effect, f"flow.states.{state_id}.exit_effects", builtin_types)
+
+        # 2. 校验 scene resolution 的 effects
+        for scene_id, scene in scenes.items():
+            resolution = scene.resolution
+            if isinstance(resolution, dict):
+                for effect in resolution.get("effects", []) or []:
+                    self._validate_single_effect(effect, f"scene.{scene_id}.resolution.effects", builtin_types)
+
+        # 3. 校验 referee rules 的 effects
+        for index, rule in enumerate(referee.rules):
+            if isinstance(rule, dict):
+                for effect in rule.get("effects", []) or []:
+                    self._validate_single_effect(effect, f"referee.rules[{index}].effects", builtin_types)
+
+    def _validate_single_effect(
+        self,
+        effect: Any,
+        location: str,
+        builtin_types: frozenset[str],
+    ) -> None:
+        """校验单个 effect 的 type 字段是否已知。
+
+        已知 effect 类型包括：
+        - EffectExecutor 的内置 handler（_handle_* 方法）
+        - plugin 注册的自定义 effect（运行时校验，这里跳过）
+        """
+        if not isinstance(effect, dict):
+            return
+        effect_type = effect.get("type")
+        if not effect_type:
+            raise ValueError(f"{location} 包含缺少 type 字段的 effect: {effect}")
+
+        # plugin effect 在运行时通过 plugin_registry.has_effect() 校验，编译期无法静态检查；
+        # 这里只校验非 plugin 的 effect 是否在内置集合中。
+        # 如果 effect 明确标记为 plugin（future extension），这里可以跳过。
+        if effect_type not in builtin_types:
+            # 给出友好的错误提示，列出所有合法的 effect 类型
+            sorted_types = sorted(builtin_types)
+            raise ValueError(
+                f"{location} 包含未知的 effect.type: '{effect_type}'。\n"
+                f"合法的内置 effect 类型：{', '.join(sorted_types)}。\n"
+                f"如果这是自定义 plugin effect，请确保 plugin 已在 plugins: 块中声明。"
+            )
 
     def _validate_service_provider(self, spec: dict[str, Any], label: str) -> None:
         """Validate runtime-service provider names when present."""

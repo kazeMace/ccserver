@@ -32,6 +32,34 @@ class EffectExecutor:
     每个效果都可以带 when 字段，不满足则跳过。
     """
 
+    # 【H3 修复】内置 effect 类型集合，用于编译期静态校验。
+    # 所有 _handle_* 方法对应的 effect.type 都应在此声明。
+    BUILTIN_EFFECT_TYPES = frozenset({
+        "rule_set_apply",
+        "set_state",
+        "add",
+        "remove",
+        "clear",
+        "increment_state",
+        "kill",
+        "record_target",
+        "record_current_deaths",
+        "consume_item",
+        "give_item",
+        "build_speech_order",
+        "set_relation",
+        "clear_relation",
+        "get_relations",
+        "for_each",
+        "pending_add",
+        "pending_resolve",
+        "flow_set_next",
+        "summarize",
+        "broadcast",
+        "add_score",
+        "advance_turn",
+    })
+
     def __init__(self, evaluator: ConditionEvaluator, plugin_registry: Any = None):
         # 条件求值器，用于评估 when 字段
         self._eval = evaluator
