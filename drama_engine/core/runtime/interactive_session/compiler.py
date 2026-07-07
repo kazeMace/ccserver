@@ -391,23 +391,37 @@ class InteractiveSessionCompiler:
         if selection is None:
             return
         assert isinstance(selection, dict), f"scene {scene_id} resolution.selection 必须是 dict"
+        # 【M5 修复】只允许已实现的字段，拒绝 weight/threshold/top_k 等未实现的参数。
+        # scene/executor.py:_selection 只实现了 plurality（简单多数决），未实现加权/阈值/top-k。
         allowed = {
-            "source",
-            "field",
-            "target_field",
-            "type",
-            "tie_policy",
-            "runoff",
-            "runoff_to",
-            "runoff_scene",
-            "values",
-            "weight",
-            "weights",
-            "threshold",
-            "top_k",
+            "source",       # 数据源：responses / controller
+            "field",        # 读取字段（vote/target/action）
+            "target_field", # field 的别名
+            "type",         # 预留字段（当前未使用）
+            "tie_policy",   # 平局策略：alphabetical/no_winner/all_tied/runoff
+            "runoff",       # 是否允许 runoff（与 tie_policy=runoff 配合）
+            "runoff_to",    # runoff 跳转目标（预留）
+            "runoff_scene", # runoff 场景（预留）
+            "values",       # 候选值列表（用于筛选）
         }
-        unknown = sorted(key for key in selection if key not in allowed)
-        assert not unknown, f"scene {scene_id} resolution.selection 包含未知字段 {unknown}"
+        # 未实现的字段（编译期拒绝，避免误导脚本作者）
+        unimplemented = {
+            "weight",    # 加权投票（未实现）
+            "weights",   # 权重映射（未实现）
+            "threshold", # 阈值要求（未实现）
+            "top_k",     # 前 k 名（未实现）
+        }
+        for key in selection:
+            if key in unimplemented:
+                raise ValueError(
+                    f"scene {scene_id} resolution.selection.{key} 尚未实现。\n"
+                    f"当前 selection 只支持 plurality（简单多数决）+ tie_policy。\n"
+                    f"如需 {key} 能力，请在 scene/executor.py:_selection 中实现。"
+                )
+            if key not in allowed:
+                raise ValueError(
+                    f"scene {scene_id} resolution.selection 包含未知字段: {key}"
+                )
         tie_policy = selection.get("tie_policy")
         if tie_policy is not None:
             allowed_ties = {"alphabetical", "no_winner", "all_tied", "runoff"}
