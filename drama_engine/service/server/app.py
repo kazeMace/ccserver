@@ -121,6 +121,8 @@ def create_app(
                 "game_id": game.game_id,
                 "script_path": game.script_path,
                 "title": game.title,
+                "roles": game.roles,  # 新增：角色定义 {role_id: role_data}
+                "recommended_player_role": game.recommended_player_role,  # 新增：推荐角色
             }
             for game in games
         ]

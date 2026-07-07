@@ -225,7 +225,12 @@ class SessionRegistry:
     async def assign_session(self, session_id: str) -> None:
         """对指定 session 执行发牌状态流转（经 GameInstance，触发 firewall 重建）。"""
         runtime = await self.get_session(session_id)
-        await self._instance_for(runtime).assign()
+        # 从 metadata 读取角色分配信息
+        role_assignments = runtime.session.metadata.get("role_assignments")
+        if role_assignments and isinstance(role_assignments, dict):
+            await self._instance_for(runtime).assign(role_assignments=role_assignments)
+        else:
+            await self._instance_for(runtime).assign()
         self._save_to_store()
 
     async def start_session(self, session_id: str) -> None:
