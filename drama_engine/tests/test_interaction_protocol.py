@@ -56,8 +56,26 @@ def test_projector_request_to_reply_request() -> None:
     assert rr["primitive"] == "vote"
     assert rr["request_id"] == "r1"
     assert len(rr["options"]) == 2
+    # ReplyOption 完整字段（§3）
+    opt = rr["options"][0]
+    assert set(opt.keys()) == {"id", "text", "desc", "disabled", "disabled_reason", "meta"}
     assert rr["timeout_ms"] == 30000
     assert proj.project_request(None) is None
+
+
+def test_projector_message_and_option_full_shape() -> None:
+    """InteractionMessage.sender 与 ReplyOption 字段与文档 §2/§3 完全一致。"""
+    proj = InteractionProjector()
+    msg = proj.project_event({"seq": 1, "type": "interactive_message", "actor": "A", "text": "x"})
+    assert set(msg["sender"].keys()) == {"kind", "id", "name", "emoji", "role", "dead"}
+    assert set(msg["body"].keys()) == {"text", "style", "cards"}
+    # game_pack 可通过 metadata.option_meta 注入 vote 的 emoji/票数（§9 开放键）
+    class Req:
+        request_id = "r"; kind = "vote"; cue = "c"; candidates = ["Player_1"]; schema = None
+        metadata = {"option_meta": {"Player_1": {"emoji": "🐺", "count": 3}}}
+        allow_resubmit = False; timeout_seconds = None
+    rr = proj.project_request(Req())
+    assert rr["options"][0]["meta"] == {"emoji": "🐺", "count": 3}
 
 
 def test_projector_build_inbox_attaches_pending_and_status() -> None:

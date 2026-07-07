@@ -95,12 +95,25 @@ class InteractionProjector:
             return None
         kind = str(getattr(request, "kind", "generic") or "generic")
         primitive = _ACTION_KIND_TO_PRIMITIVE.get(kind, "text")
+        metadata = getattr(request, "metadata", None) or {}
         candidates = getattr(request, "candidates", None)
         options = None
         if candidates:
-            options = [{"id": str(c), "text": str(c), "desc": None} for c in candidates]
+            # 完整 ReplyOption（§3）：id/text/desc/disabled/disabled_reason/meta。
+            # game_pack 可通过 metadata["option_meta"][cid] 预置 emoji / 实时票数等语义参数。
+            option_meta = metadata.get("option_meta") or {}
+            options = [
+                {
+                    "id": str(c),
+                    "text": str(c),
+                    "desc": None,
+                    "disabled": False,
+                    "disabled_reason": None,
+                    "meta": option_meta.get(str(c)),
+                }
+                for c in candidates
+            ]
         schema = getattr(request, "schema", None)
-        metadata = getattr(request, "metadata", None) or {}
         free_input = None
         if primitive in {"text", "choice_or_text"}:
             free_input = {"placeholder": str(getattr(request, "cue", "") or ""), "multiline": True, "hint": None}
@@ -181,13 +194,20 @@ class InteractionProjector:
         return "normal"
 
     def _extract_sender(self, event: dict[str, Any], self_seat: str | None) -> dict[str, Any] | None:
-        """提取发送者，标记自己为 human。"""
+        """提取发送者（§2.1 Sender：kind/id/name/emoji/role/dead），标记自己为 human。"""
         actor = event.get("actor") or event.get("sender") or event.get("seat_id")
         if not actor:
             return None
         actor = str(actor)
         kind = "human" if self_seat is not None and actor == self_seat else "agent"
-        return {"kind": kind, "id": actor, "name": actor, "role": event.get("role_tag")}
+        return {
+            "kind": kind,
+            "id": actor,
+            "name": event.get("actor_name") or actor,
+            "emoji": event.get("emoji"),
+            "role": event.get("role_tag"),
+            "dead": event.get("dead"),
+        }
 
     def _extract_scope(self, event: dict[str, Any]) -> str:
         """提取 scope 显示名。"""
