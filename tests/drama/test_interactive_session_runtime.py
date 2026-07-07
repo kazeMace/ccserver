@@ -1383,7 +1383,7 @@ async def test_participants_source_and_order_by_are_resolved():
     StateWriter(ctx.state).apply(SetAttr("B", "seat_index", 2))
     StateWriter(ctx.state).apply(SetAttr("C", "seat_index", 1))
 
-    participants = await SceneExecutor()._resolve_participants(ctx, ctx.script.scenes["select"])
+    participants = await SceneExecutor()._participants.resolve(ctx, ctx.script.scenes["select"])
 
     assert participants == ["C"]
 
@@ -1419,10 +1419,10 @@ async def test_participants_service_uses_fallback_and_options():
     ])
     StateWriter(ctx.state).apply(SetAttr("B", "seat_index", 2))
     StateWriter(ctx.state).apply(SetAttr("C", "seat_index", 1))
-    executor = SceneExecutor()
-    executor._services = _EmptyParticipantService()
+    from drama_engine.core.runtime.interactive_session.scene.participant_resolver import ParticipantResolver
 
-    participants = await executor._resolve_participants(ctx, ctx.script.scenes["select"])
+    resolver = ParticipantResolver(_EmptyParticipantService())
+    participants = await resolver.resolve(ctx, ctx.script.scenes["select"])
 
     assert participants == ["C"]
 
