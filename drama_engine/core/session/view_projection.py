@@ -8,16 +8,6 @@ from drama_engine.core.ports.views import BaseViewProjector
 from drama_engine.core.session.runtime import GameRuntime
 from drama_engine.core.session.view_contract import ViewSnapshot, ViewerPrincipal
 
-ROLE_NAMES = {
-    "werewolf": "狼人",
-    "seer": "预言家",
-    "witch": "女巫",
-    "hunter": "猎人",
-    "guard": "守卫",
-    "villager": "村民",
-}
-
-
 class SocialViewProjector(BaseViewProjector):
     """Project SocialDeduction runtime state into frontend snapshots."""
 
@@ -130,38 +120,48 @@ def build_player_snapshot(runtime: GameRuntime, seat_id: str, user_id: str | Non
     return _SOCIAL_VIEW_PROJECTOR.player_snapshot(runtime, seat_id=seat_id, user_id=user_id)
 
 
+def _game_attr(runtime: GameRuntime, entity: str, key: str) -> Any:
+    """从 runner 的活跃游戏状态读取一个实体属性；不可用时返回 None。
+
+    视图层不认识任何具体游戏的角色/阵营——展示信息（role_title/faction/visible_scopes）
+    由脚本或 game_pack 写进游戏状态，视图只负责读取与通用回退（M1 去狼人杀硬编码）。
+    """
+    runner = getattr(runtime, "runner", None)
+    state = getattr(runner, "game_state", None) if runner is not None else None
+    if state is None or not state.has_entity(entity):
+        return None
+    return state.get_attr(entity, key)
+
+
 def _role_card(runtime: GameRuntime, seat_id: str) -> dict[str, Any] | None:
     seat = runtime.session.seats.get(seat_id)
     if seat is None or not seat.role_snapshot:
         return None
     role = seat.role_snapshot
+    # title/faction 从游戏状态读取（脚本/game_pack 声明），无声明时通用回退：
+    # title 回退为 role 本身，faction 回退 unknown。视图层不写死任何角色名。
+    title = _game_attr(runtime, seat_id, "role_title") or role
+    faction = _game_attr(runtime, seat_id, "faction") or "unknown"
     return {
         "role": role,
-        "title": ROLE_NAMES.get(role, role),
-        "faction": _role_faction(role),
+        "title": title,
+        "faction": faction,
         "alive": seat.alive_snapshot if seat.alive_snapshot is not None else True,
     }
 
 
-def _role_faction(role: str) -> str:
-    if role == "werewolf":
-        return "wolf"
-    if role:
-        return "good"
-    return "unknown"
-
-
 def _visible_scopes(runtime: GameRuntime, seat_id: str) -> list[str]:
-    role = runtime.session.seats.get(seat_id).role_snapshot if seat_id in runtime.session.seats else None
+    """返回该席位可见的 scope 列表。
+
+    额外私密 scope（如狼人频道/预言家私聊）由脚本写进席位状态的 visible_scopes 属性，
+    视图层只做通用合并——不再按 werewolf/seer/witch 等具体角色硬编码。
+    """
     base = ["public", "town"]
-    if role == "werewolf":
-        base.append("wolf-den")
-    elif role == "seer":
-        base.append("whisper:seer")
-    elif role == "witch":
-        base.append("whisper:witch")
-    elif role == "guard":
-        base.append("whisper:guard")
+    declared = _game_attr(runtime, seat_id, "visible_scopes")
+    if isinstance(declared, (list, tuple)):
+        for scope in declared:
+            if str(scope) not in base:
+                base.append(str(scope))
     return base
 
 
