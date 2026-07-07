@@ -4,12 +4,13 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { getClient, type RollbackPoint } from "../api/client";
-import { Topbar, ConnStatus } from "../components/Chrome";
+import { Topbar, Channels, ConnStatus } from "../components/Chrome";
 import { MessageFeed } from "../components/MessageFeed";
 import { RoundTable } from "../components/RoundTable";
 import { Sidebar } from "../components/Sidebar";
 import { useInbox } from "../hooks/useInbox";
 import { useStateView } from "../hooks/useStateView";
+import { useChannels } from "../hooks/useChannels";
 
 export function HostPage() {
   const { sessionId = "" } = useParams();
@@ -17,6 +18,10 @@ export function HostPage() {
   const view = useStateView(sessionId, "host");
   const [busy, setBusy] = useState(false);
   const [points, setPoints] = useState<RollbackPoint[]>([]);
+  const [activeChannel, setActiveChannel] = useState("public");
+  // host 是上帝视角，能看到全部 scope（公开/狼人/预言家…），频道条便于分频道查看。
+  const scopeLabels = (view?.panels?.scope_labels as Record<string, [string, string]>) ?? {};
+  const { channels, filter } = useChannels(inbox.messages, scopeLabels);
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -90,7 +95,8 @@ export function HostPage() {
         {/* 中栏：圆桌 + 消息流 */}
         <div className="host-center">
           {view?.players?.length ? <RoundTable players={view.players} lastSpeech={lastSpeech} /> : null}
-          <MessageFeed messages={inbox.messages} />
+          <Channels channels={channels} active={activeChannel} onSelect={setActiveChannel} />
+          <MessageFeed messages={filter(inbox.messages, activeChannel)} />
         </div>
 
         {/* 右栏：状态面板（复用 Sidebar 的内容以只读呈现） */}
