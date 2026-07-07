@@ -2,6 +2,7 @@ meta:
   id: test_roles
   title: Test Roles System
   version: "1.0.0"
+  recommended_player_role: nora  # 推荐玩家扮演 nora
 
 runtime:
   type: interactive_session
@@ -29,7 +30,6 @@ roles:
     voice_id: en-US-GuyNeural
 
 state:
-  Player_1: { role: nora, faction: protagonist }
   GAME:
     round: 0
 
