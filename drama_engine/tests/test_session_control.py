@@ -89,3 +89,34 @@ async def test_session_control_pending_actions_delegates() -> None:
     """pending_actions 委托给 action_service。"""
     control = _make_control()
     assert control.pending_actions() == []
+
+
+def test_cursors_derived_from_timeline_even_when_bypassing_session_control() -> None:
+    """M6/M5.3：低层直接写 event_store（绕过 SessionControl.append_*）后，
+    sync_cursors 仍能从 timeline 派生出正确的 event/message cursor。"""
+    control = _make_control()
+    store = control.event_store
+
+    # 模拟 GameRuntime 等低层直接写事件（不经 SessionControl）
+    store.append_public({"kind": "session_started"})   # public：进 host + public
+    store.append_host({"kind": "session_assigned"})     # host-only：只进 host
+    store.append_public({"kind": "interactive_message", "text": "hi"})
+
+    # 未同步前，cursor 可能落后（取决于是否走过 append 快捷路径）
+    control.sync_cursors()
+
+    # event_cursor = host timeline 长度（public + host-only）= 3
+    assert control.session_state.event_cursor == 3
+    # message_cursor = public 流长度 = 2（两条 public，不含 host-only）
+    assert control.session_state.message_cursor == 2
+
+
+def test_snapshot_syncs_cursors_before_capture() -> None:
+    """M6：snapshot() 会在采集前 sync_cursors，捕获低层直接写入的事件。"""
+    control = _make_control()
+    control.event_store.append_public({"kind": "interactive_message", "text": "a"})
+    control.event_store.append_public({"kind": "interactive_message", "text": "b"})
+
+    snap = control.snapshot()
+    assert snap["session"]["message_cursor"] == 2
+    assert snap["session"]["event_cursor"] == 2

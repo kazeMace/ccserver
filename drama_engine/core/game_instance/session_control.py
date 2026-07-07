@@ -82,8 +82,23 @@ class SessionControl:
         return self.event_store.private_backlog(seat_id)
 
     def _advance_event_cursor(self) -> None:
-        """把 event cursor 推进到当前 host timeline 长度。"""
+        """走 SessionControl 的 append 路径时即时推进 cursor（快捷路径）。
+
+        注意：cursor 的**权威值**由 sync_cursors() 从 timeline 派生，不依赖所有事件
+        都经过本方法——因为 GameRuntime 等更低层会直接写 event_store。见 sync_cursors。
+        """
+        self.sync_cursors()
+
+    def sync_cursors(self) -> None:
+        """从 event timeline 派生 event/message cursor（M6/M5.3）。
+
+        cursor 是**派生值**而非写路径记账：无论事件从 SessionControl 还是 GameRuntime
+        等更低层写入，这里都按当前 timeline 长度重算，保证快照/视图里的 cursor 真实。
+          - event_cursor：host 可见 timeline 长度（public + host-only）。
+          - message_cursor：公开消息流长度（public timeline），即对外可见的消息位置。
+        """
         self.session_state.event_cursor = len(self.event_store.host_backlog())
+        self.session_state.message_cursor = len(self.event_store.public_backlog())
 
     # ---- 动作 timeline ----
 
@@ -119,6 +134,8 @@ class SessionControl:
         包含：session 状态、事件回放、动作 store、进度与 cursor。游戏事实（GameState）
         不在此处，由 GameInstance 在 checkpoint 时单独收集。
         """
+        # 快照前从 timeline 重算 cursor，确保捕获到低层直接写入的事件（M6/M5.3）。
+        self.sync_cursors()
         return {
             "session": self.session_state.to_dict(),
             "events": self.event_store.dump(),
