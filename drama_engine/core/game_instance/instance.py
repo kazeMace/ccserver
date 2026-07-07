@@ -152,11 +152,80 @@ class GameInstance:
 
     # ---- 生命周期（委托 GameRuntime）----
 
-    async def assign(self) -> None:
-        """执行发牌/初始化，并按脚本声明构建控制面与信息隔离层。"""
+    async def assign(self, role_assignments: dict[str, str] | None = None) -> None:
+        """执行发牌/初始化，并按脚本声明构建控制面与信息隔离层。
+
+        参数:
+            role_assignments: 可选的角色分配字典 {seat_id: role_name}
+                            例如 {"Player_1": "nora", "Player_2": "marco"}
+                            若不提供，则使用脚本 meta.recommended_player_role 的默认分配
+        """
         await self.runtime.assign()
         self._build_control_plane()
         self._build_firewall()
+        self._assign_roles(role_assignments)
+
+    def _assign_roles(self, role_assignments: dict[str, str] | None) -> None:
+        """根据 role_assignments 或脚本推荐，把角色分配写入 State。
+
+        逻辑：
+        1. 若提供了 role_assignments，按其分配
+        2. 否则，读取 meta.recommended_player_role，分配给第一个真人玩家
+        3. 若都没有，不做分配（角色可选的游戏）
+        """
+        runner = getattr(self.runtime, "runner", None)
+        if runner is None:
+            return
+
+        state = getattr(runner, "game_state", None)
+        if state is None:
+            return
+
+        script = getattr(runner, "_script", None)
+        if script is None:
+            return
+
+        # 如果明确提供了 role_assignments，按其分配
+        if role_assignments:
+            from drama_engine.core.engine import StateWriter, SetAttr
+            writer = StateWriter(state)
+            for seat_id, role_name in role_assignments.items():
+                writer.apply(SetAttr(seat_id, "role", role_name))
+                logger.info(
+                    "[GameInstance] 分配角色：%s → %s",
+                    seat_id,
+                    role_name,
+                )
+            return
+
+        # 否则，尝试使用 meta.recommended_player_role 的默认分配
+        meta = getattr(script, "raw", {}).get("meta", {})
+        recommended_role = meta.get("recommended_player_role")
+        if not recommended_role:
+            return
+
+        # 找到第一个真人玩家（human_seat_ids）
+        human_seat_ids = getattr(self.runtime.session, "human_seat_ids", set())
+        if not human_seat_ids:
+            # 如果没有指定真人，默认给第一个 seat
+            players = script.players or {}
+            ids = players.get("ids") if isinstance(players, dict) else None
+            if ids and len(ids) > 0:
+                first_seat = str(ids[0])
+            else:
+                return
+        else:
+            first_seat = next(iter(human_seat_ids))
+
+        # 分配推荐角色
+        from drama_engine.core.engine import StateWriter, SetAttr
+        writer = StateWriter(state)
+        writer.apply(SetAttr(first_seat, "role", recommended_role))
+        logger.info(
+            "[GameInstance] 使用推荐角色分配：%s → %s",
+            first_seat,
+            recommended_role,
+        )
 
     def _build_firewall(self) -> None:
         """按编译后脚本的 visibility 声明重建 KnowledgeFirewall。
@@ -434,7 +503,7 @@ class GameInstance:
             return {"targets": list(choice_ids)}
         if choice_id is not None:
             # 单选归一：vote/choose/target 字段通吃，交由 submit 的候选校验判定。
-            return {"choice": choice_id, "vote": choice_id, "target": choice_id}
+            return {"choice": choice_id, "choose": choice_id, "vote": choice_id, "target": choice_id}
         return None
 
     def _snapshot_to_state_view(self, snap: dict[str, Any], seat: str) -> dict[str, Any]:
