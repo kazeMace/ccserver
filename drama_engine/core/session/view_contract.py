@@ -39,6 +39,7 @@ class ViewSnapshot:
     timeline: list[dict[str, Any]] = field(default_factory=list)
     current_action: dict[str, Any] | None = None
     controls: dict[str, bool] = field(default_factory=dict)
+    roles: dict[str, Any] = field(default_factory=dict)  # 新增：所有角色信息
     meta: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -54,5 +55,6 @@ class ViewSnapshot:
             "timeline": [dict(item) for item in self.timeline],
             "current_action": dict(self.current_action) if self.current_action else None,
             "controls": dict(self.controls),
+            "roles": dict(self.roles),  # 新增
             "meta": dict(self.meta),
         }

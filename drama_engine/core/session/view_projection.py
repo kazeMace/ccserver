@@ -56,6 +56,7 @@ class SocialViewProjector(BaseViewProjector):
                 "can_terminate": runtime.session.status not in {"ended", "failed", "terminated"},
                 "can_step": runtime.step_gate.step_mode and runtime.session.status == "running",
             },
+            roles=_roles_panel(runtime),  # 新增：roles 信息
             meta={"step_gate": runtime.step_gate.status()},
         )
 
@@ -70,6 +71,7 @@ class SocialViewProjector(BaseViewProjector):
             seats=_public_seats(runtime),
             timeline=runtime.event_store.public_backlog(),
             controls={},
+            roles=_roles_panel(runtime),  # 新增
         )
 
     def player_snapshot(
@@ -99,6 +101,7 @@ class SocialViewProjector(BaseViewProjector):
             timeline=runtime.event_store.private_backlog(seat_id),
             current_action=current_action,
             controls={"can_submit": current_action is not None},
+            roles=_roles_panel(runtime),  # 新增
         )
 
 
@@ -190,3 +193,49 @@ def _player_visible_seats(runtime: GameRuntime, viewer_seat_id: str) -> list[dic
             item["role_snapshot"] = seat.role_snapshot
         result.append(item)
     return result
+
+
+def _roles_panel(runtime: GameRuntime) -> dict[str, Any]:
+    """从 State 读取所有 roles 信息并投影为前端所需格式。
+
+    返回格式：
+    {
+      "nora": {
+        "name": "Nora Hampton",
+        "description": "精英律师...",
+        "portrait_url": "https://...",
+        "emoji": "⚖️",
+        "voice_id": "en-US-JennyNeural",
+        "faction": "protagonist"
+      },
+      ...
+    }
+    """
+    # 从 runner 获取 State
+    runner = getattr(runtime, "runner", None)
+    if runner is None:
+        return {}
+
+    state = getattr(runner, "game_state", None)
+    if state is None:
+        return {}
+
+    # 读取 GAME.roles
+    roles = state.get_attr("GAME", "roles")
+    if not roles or not isinstance(roles, dict):
+        return {}
+
+    # 投影为前端格式（只传必要字段）
+    result = {}
+    for role_id, role_data in roles.items():
+        result[role_id] = {
+            "name": role_data.get("display_name", role_id),
+            "description": role_data.get("description", ""),
+            "portrait_url": role_data.get("portrait_url", ""),
+            "emoji": role_data.get("emoji", ""),
+            "voice_id": role_data.get("voice_id", ""),
+            "faction": role_data.get("faction", ""),
+        }
+
+    return result
+
