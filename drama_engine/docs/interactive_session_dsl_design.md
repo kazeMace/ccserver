@@ -1133,6 +1133,46 @@ publication:
 participant message 的路由遵守 `scope.visibility`：public scope 进入 public sink；
 private scope 会发送给 scope members 的 private sink，同时 host 保留可观测事件。
 
+`disclosures` 私发给具体席位时，还会把「谁被告知了哪条事实」记入披露账本
+（DisclosureLedger）。`content.ref` 作为事实键（如 `GAME.last_inspection_result`），
+供 KnowledgeFirewall 后续为该席位合成 actor view——这正是「预言家下一轮 prompt 里
+带着验人结果」的实现方式。披露账本纳入 checkpoint/rollback（截断语义）。
+
+## 17.1 Visibility（实体属性级可见性）
+
+`scope` 只解决「消息发给谁」，无法表达「某实体的某个属性值对谁隐藏」。后者由顶层
+`visibility` 块声明，替代旧的硬编码秘密属性：
+
+```yaml
+visibility:
+  secret_attrs: [role, faction]   # 这些属性对他人隐藏；本人与 host/referee 可见
+```
+
+- 未声明（`secret_attrs` 为空）时默认全部公开，声明成为唯一事实来源。
+- `secret_attrs` 若拼错（未在 `state:`/`players.initial_attrs` 中静态出现），编译期记
+  warning 但不报错——兼容 `role` 等由 casting/game_pack 运行时动态分配的属性。
+- 与 `scope`/`candidate`/`participants` 是四个正交维度，互不冲突。
+
+## 17.2 GuardRail（OOC 内容守卫）
+
+判定 agent/玩家发言是否离题、出圈、泄密，在发言写入前按策略处理。可声明在顶层（全局）
+或 scene 内（覆盖全局）：
+
+```yaml
+guardrail:
+  enabled: true
+  checks: [in_character, on_topic, no_secret_leak]
+  on_violation: rewrite       # block 拦截 | rewrite 改写 | soft_warn 打标放行 | pass_with_flag 记录放行
+  evaluator:
+    kind: llm
+    provider: inside
+    min_confidence: 0.7
+```
+
+- 判定复用条件求值体系（`evaluator: llm / provider: inside`），返回合规/违规。
+- `on_violation` 的四种策略用策略模式实现，`enabled: false` 时零开销旁路。
+- 与 KnowledgeFirewall 正交：firewall 管流入的信息，GuardRail 管产出的内容。
+
 ## 18. Patch Model
 
 动态能力不修改原始 DSL。

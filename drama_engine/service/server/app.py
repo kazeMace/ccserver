@@ -267,6 +267,32 @@ def create_app(
         instance = await _instance(session_id)
         return instance.pending_actions()
 
+    # —— interaction.v1 归一端点（docs/interaction_protocol_design.md §1）——
+
+    @app.get("/api/sessions/{session_id}/inbox")
+    async def get_inbox(session_id: str, seat: str = "public", after: int = 0) -> dict[str, Any]:
+        """拉取该 seat 可见的新消息 + 当前待回复（InboxResponse）。
+
+        seat：host | public | audience | player:<id>。after 为上次见过的最大 seq。
+        """
+        instance = await _instance(session_id)
+        return instance.inbox(seat, after=after)
+
+    @app.post("/api/sessions/{session_id}/reply")
+    async def post_reply(session_id: str, body: dict[str, Any]) -> dict[str, Any]:
+        """提交 PlayerReply，返回 ReplyAck。body 含 seat_id + request_id + 回复内容。"""
+        seat_id = str(body.get("seat_id") or "")
+        if not seat_id:
+            raise HTTPException(status_code=400, detail="reply 缺少 seat_id")
+        instance = await _instance(session_id)
+        return await instance.reply(f"player:{seat_id}", body)
+
+    @app.get("/api/sessions/{session_id}/view")
+    async def get_state_view(session_id: str, seat: str = "public") -> dict[str, Any]:
+        """返回该 seat 的只读状态视图（StateView）。"""
+        instance = await _instance(session_id)
+        return instance.view(seat)
+
     @app.post("/api/sessions/{session_id}/moderator/takeover")
     async def moderator_takeover(session_id: str, seat: str) -> dict[str, bool]:
         """主持人将 seat 切换为 AI。"""

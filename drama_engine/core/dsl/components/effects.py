@@ -144,37 +144,24 @@ class EffectExecutor:
         """
         求值 effect.when。
 
-        普通条件仍交给 ConditionEvaluator；额外支持本幕上下文读取：
+        【H4 修复】复用 ConditionEvaluator 的逻辑，仅处理 effect 特有的上下文路径：
           - data.xxx：读取本幕响应数据，例如 data.action
           - winner 或 winner.xxx：读取投票胜出者或其状态属性
+          - selection_result / item：其他上下文关键字
+
+        对于非上下文路径的普通条件（all/any/not/value/state/count/...），
+        直接委托给 ConditionEvaluator，避免重复实现。
         """
-        if "all" in cond:
-            return all(
-                self._evaluate_when(c, state, actor, responses, extra)
-                for c in cond["all"]
-            )
-        if "any" in cond:
-            return any(
-                self._evaluate_when(c, state, actor, responses, extra)
-                for c in cond["any"]
-            )
-        if "not" in cond:
-            return not self._evaluate_when(cond["not"], state, actor, responses, extra)
-
-        if "value" in cond:
-            return self._eval.evaluate(
-                cond,
-                state,
-                actor,
-                responses=responses,
-                extra=extra,
-            )
-
+        # 检查是否是 effect 特有的上下文路径条件
         path = cond.get("state")
         if isinstance(path, str) and self._is_context_path(path):
+            # 这是 effect 特有的上下文路径（data/winner/selection_result/item），
+            # 需要特殊解析，然后手动比较。
             value = self._resolve_source(path, actor, responses, extra)
             return self._compare_value(value, cond, state, actor, responses, extra)
 
+        # 所有其他条件（all/any/not/value/count/left/ref/plugin/...）
+        # 直接委托给 ConditionEvaluator，复用已有逻辑，避免重复实现 all/any/not。
         return self._eval.evaluate(
             cond,
             state,
@@ -202,7 +189,16 @@ class EffectExecutor:
         responses: list,
         extra: dict,
     ) -> bool:
-        """对已解析出的值执行常见比较操作。"""
+        """
+        对已解析出的值执行常见比较操作。
+
+        【H4 修复】这里的比较逻辑与 primitive.py:evaluate_state_condition 平行，
+        但区别在于需要通过 _resolve_source 解析 effect 特有的上下文（data/winner）。
+        保留这个方法，但内部逻辑与 primitive 保持一致，避免操作符分歧。
+
+        如果后续需要添加新操作符（如 gte/lte/gt/lt），在这里和 primitive.py 同步添加。
+        """
+        # 布尔值特殊处理：None 视为 False
         if "equals" in cond:
             expected = self._resolve_source(cond["equals"], actor, responses, extra)
             if isinstance(expected, bool) and value is None:
@@ -222,6 +218,7 @@ class EffectExecutor:
             expected = self._resolve_source(cond["not_in"], actor, responses, extra)
             return value not in expected
         if "equals_state" in cond:
+            # equals_state 比较另一个状态路径，使用 ValueResolver
             other = self._values.resolve(
                 cond["equals_state"], state, responses, actor, None, extra
             )
@@ -231,6 +228,19 @@ class EffectExecutor:
                 cond["not_equals_state"], state, responses, actor, None, extra
             )
             return value != other
+        # 数值比较操作符（与 primitive.py:evaluate_state_condition L165-172 对齐）
+        if "gte" in cond:
+            expected = self._resolve_source(cond["gte"], actor, responses, extra)
+            return value is not None and value >= expected
+        if "lte" in cond:
+            expected = self._resolve_source(cond["lte"], actor, responses, extra)
+            return value is not None and value <= expected
+        if "gt" in cond:
+            expected = self._resolve_source(cond["gt"], actor, responses, extra)
+            return value is not None and value > expected
+        if "lt" in cond:
+            expected = self._resolve_source(cond["lt"], actor, responses, extra)
+            return value is not None and value < expected
         raise ValueError(f"未知 data 条件比较操作符: {cond}")
 
     def _resolve_source(self, source: Any, actor: str | None,

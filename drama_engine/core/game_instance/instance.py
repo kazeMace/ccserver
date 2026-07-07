@@ -21,6 +21,7 @@ from drama_engine.core.control_plane.roles import ControlProposal
 from drama_engine.core.game_instance.rollback import RollbackManager
 from drama_engine.core.game_instance.session_control import SessionControl
 from drama_engine.core.game_instance.snapshots import SnapshotManager
+from drama_engine.core.interaction.projector import InteractionProjector
 from drama_engine.core.views.projector import ViewProjector
 from drama_engine.core.visibility.knowledge_firewall import (
     build_default_knowledge_firewall,
@@ -69,6 +70,8 @@ class GameInstance:
         self.firewall = build_default_knowledge_firewall()
         # ControlPlane 在 assign 后按脚本 control_plane 声明构建（此时才有编译产物）。
         self.control_plane = None
+        # interaction.v1 投影器：把内部事件/动作归一成对外协议对象。
+        self.projector = InteractionProjector()
         logger.info("[GameInstance] 绑定 session=%s", self.session_id)
 
     def _current_game_state(self) -> Any:
@@ -216,6 +219,112 @@ class GameInstance:
     def pending_actions(self) -> list[dict[str, Any]]:
         """返回当前 pending 动作摘要。"""
         return self.session_control.pending_actions()
+
+    # ---- interaction.v1 三面（/inbox /reply /view）----
+
+    def inbox(self, seat: str, after: int = 0) -> dict[str, Any]:
+        """返回某受众的 InboxResponse（§5）。
+
+        seat 形如 host | public | audience | player:<id>。可见性已由 SessionEventStore
+        三受众分流保证（public/host/private），前端拿到的即是该看的全部、且仅该看的。
+        """
+        assert seat, "seat 不能为空"
+        audience, seat_id = self._parse_seat(seat)
+        events = self._events_for(audience, seat_id)
+        pending = None
+        if seat_id is not None:
+            pending = self.runtime.action_service.get_current_request(seat_id)
+        status = self.runtime.session.status
+        phase = self.runtime.session.progress.current_scene if self.runtime.session.progress else None
+        return self.projector.build_inbox(
+            events=events,
+            after=after,
+            pending_request=pending,
+            status=status,
+            self_seat=seat_id,
+            phase=phase,
+        )
+
+    async def reply(self, seat: str, reply_payload: dict[str, Any]) -> dict[str, Any]:
+        """处理 PlayerReply（§4）→ 落到 ActionRequestService.submit，返回 ReplyAck。
+
+        reply_payload 含 request_id + choice_id/choice_ids/text/data 之一。
+        choice_id/choice_ids 归一进 data，复用 submit 的候选/schema 校验。
+        """
+        _, seat_id = self._parse_seat(seat)
+        assert seat_id, "reply 需要具体 seat（player:<id>）"
+        data = self._reply_to_data(reply_payload)
+        text = str(reply_payload.get("text") or "")
+        submission = await self.session_control.submit_action(
+            seat_id=seat_id, source="human", data=data, text=text,
+        )
+        if submission is None:
+            return {"accepted": False, "error": "无 pending 请求", "new_messages": []}
+        validated = bool(getattr(submission, "validated", True))
+        return {
+            "accepted": validated,
+            "error": getattr(submission, "validation_error", "") or None,
+            "new_messages": [],
+        }
+
+    def view(self, seat: str) -> dict[str, Any]:
+        """返回某受众的 StateView（§7），投影自 ViewProjector 快照。"""
+        audience, seat_id = self._parse_seat(seat)
+        if audience == "host":
+            snap = self.views.host_view()
+        elif seat_id is not None:
+            snap = self.views.player_view(seat_id)
+        else:
+            snap = self.views.public_view()
+        return self._snapshot_to_state_view(snap, seat_id or audience)
+
+    def _parse_seat(self, seat: str) -> tuple[str, str | None]:
+        """把 inbox/view 的 seat 参数解析成 (audience, seat_id)。
+
+        player:<id> → ("private", id)；host → ("host", None)；其余 → ("public", None)。
+        """
+        if seat.startswith("player:"):
+            return "private", seat[len("player:"):]
+        if seat == "host":
+            return "host", None
+        return "public", None
+
+    def _events_for(self, audience: str, seat_id: str | None) -> list[dict[str, Any]]:
+        """按受众取已授权的事件 backlog。"""
+        store = self.runtime.event_store
+        if audience == "host":
+            return store.host_backlog()
+        if audience == "private" and seat_id is not None:
+            # 私密受众：公开流 + 自己的私密流，按 seq 合并。
+            merged = store.public_backlog() + store.private_backlog(seat_id)
+            return sorted(merged, key=lambda e: int(e.get("seq") or 0))
+        return store.public_backlog()
+
+    def _reply_to_data(self, reply_payload: dict[str, Any]) -> dict[str, Any] | None:
+        """把 PlayerReply 的 choice_id/choice_ids/data 归一成 submit 的 data。"""
+        if reply_payload.get("data") is not None:
+            return dict(reply_payload["data"])
+        choice_id = reply_payload.get("choice_id")
+        choice_ids = reply_payload.get("choice_ids")
+        if choice_ids is not None:
+            return {"targets": list(choice_ids)}
+        if choice_id is not None:
+            # 单选归一：vote/choose/target 字段通吃，交由 submit 的候选校验判定。
+            return {"choice": choice_id, "vote": choice_id, "target": choice_id}
+        return None
+
+    def _snapshot_to_state_view(self, snap: dict[str, Any], seat: str) -> dict[str, Any]:
+        """把 ViewSnapshot dict 归一成 StateView（§7）。"""
+        meta = snap.get("meta") or {}
+        panels: dict[str, Any] = dict(meta.get("panels") or {})
+        return {
+            "seat_id": seat,
+            "phase": snap.get("session_status"),
+            "progress": meta.get("progress"),
+            "players": snap.get("seats") or [],
+            "panels": panels,
+            "self": snap.get("role_card") or {},
+        }
 
     def submit_control_action(self, role: str, payload: dict[str, Any]) -> dict[str, Any]:
         """提交控制角色动作（host/director/writer 等）。

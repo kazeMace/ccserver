@@ -573,7 +573,17 @@ class RuntimeServiceCaller:
         purpose: str,
         payload: dict[str, Any],
     ) -> dict[str, Any] | None:
-        """Call a live ccserver actor as the default inside agent."""
+        """Call a **显式指定** 的 ccserver actor 作为 inside agent。
+
+        H1 缺口2 修复：不再在未指定时自动借用 `all_names[0]`（任意玩家 seat）。
+        借用玩家 seat 执行系统级 service（planner/story/condition）本身语义可疑，
+        且过去会把 full_context_payload（含全局 state、他人秘密）喂给该玩家 Agent，
+        绕过 KnowledgeFirewall。现在：
+          - 无显式指定 → 返回 None，交给 builtin fallback（不借用任何玩家）。
+          - 有显式指定 → 只喂该 actor 的 firewall 受限投影，绝不给全局 state。
+        无参数的隐藏系统 agent 由上游 `_call_inside_client_async(allow_create=True)`
+        负责（那是专用非玩家执行体，走独立 Agent，不占用玩家 seat）。
+        """
         actor_name = str(
             spec.get("agent_id")
             or spec.get("seat_id")
@@ -581,12 +591,17 @@ class RuntimeServiceCaller:
             or ""
         )
         all_names = ctx.cast.all_names()
-        if not actor_name and all_names:
-            actor_name = str(all_names[0])
+        # 不再自动借用 all_names[0]：未显式指定就放弃，交给 builtin fallback。
         if not actor_name or actor_name not in all_names:
             return None
+        # 显式借用某个 seat 的 actor 时，context 必须是该 actor 的 firewall 受限投影，
+        # 而非 full_context_payload（否则该 seat 的 Agent 会看到他人秘密）。
+        restricted_context = ctx.project_for_actor(actor_name, purpose="prompt")
         prompt = spec.get("prompt") or json.dumps(
-            self._service_envelope(ctx, spec, purpose, payload, "inside"),
+            self._service_envelope(
+                ctx, spec, purpose, payload, "inside",
+                context_override=restricted_context,
+            ),
             ensure_ascii=False,
         )
         response = await ctx.cast.get(actor_name).act(str(prompt), None)
@@ -642,14 +657,20 @@ class RuntimeServiceCaller:
         purpose: str,
         payload: dict[str, Any],
         provider: str,
+        context_override: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Build the unified runtime-service protocol envelope."""
+        """Build the unified runtime-service protocol envelope.
+
+        context_override — 当调用体是某个具体 seat 的 actor（而非授权的隐藏系统 agent）
+        时传入其 firewall 受限投影，替代默认的 full_context_payload（含全局 state）。
+        这样任何"以某 seat 身份执行"的 service prompt 都不会看到他人秘密（H1 缺口2）。
+        """
         return self._protocol.build(
             runtime_type="interactive_session",
             purpose=purpose,
             provider=provider,
             input_payload=payload,
-            context_payload=ctx.full_context_payload(),
+            context_payload=context_override if context_override is not None else ctx.full_context_payload(),
             name=spec.get("name") or spec.get("plugin") or spec.get("id"),
             call_id=spec.get("id"),
             endpoint=spec.get("endpoint") or spec.get("url"),

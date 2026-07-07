@@ -204,34 +204,52 @@ class SessionRegistry:
         return [runtime.summary() for runtime in runtimes]
 
 
+    def _instance_for(self, runtime: GameRuntime) -> Any:
+        """取得（或惰性创建并缓存）该 runtime 的 GameInstance 门面。
+
+        生命周期必须经门面而非直连 runtime：GameInstance.assign/restart 会按脚本
+        重建 KnowledgeFirewall 与 ControlPlane（H1 缺口1 的修复点）。缓存挂在 runtime
+        上（与 service/server/app.py 同款约定），保证 checkpoint / firewall 跨请求一致。
+
+        延迟 import 避免 registry ← factory ← instance ← registry 的循环导入。
+        """
+        assert runtime is not None, "runtime 不能为空"
+        instance = getattr(runtime, "_game_instance", None)
+        if instance is None:
+            from drama_engine.core.game_instance.factory import GameInstanceFactory
+
+            instance = GameInstanceFactory.wrap(runtime)
+            setattr(runtime, "_game_instance", instance)
+        return instance
+
     async def assign_session(self, session_id: str) -> None:
-        """对指定 session 执行发牌状态流转。"""
+        """对指定 session 执行发牌状态流转（经 GameInstance，触发 firewall 重建）。"""
         runtime = await self.get_session(session_id)
-        await runtime.assign()
+        await self._instance_for(runtime).assign()
         self._save_to_store()
 
     async def start_session(self, session_id: str) -> None:
-        """启动指定 session。"""
+        """启动指定 session（经 GameInstance）。"""
         runtime = await self.get_session(session_id)
-        await runtime.start()
+        await self._instance_for(runtime).start()
         self._save_to_store()
 
     async def restart_session(self, session_id: str) -> None:
-        """在同一个 session 中清局并重新发牌。"""
+        """在同一个 session 中清局并重新发牌（经 GameInstance，触发 firewall 重建）。"""
         runtime = await self.get_session(session_id)
-        await runtime.restart()
+        await self._instance_for(runtime).restart()
         self._save_to_store()
 
     async def pause_session(self, session_id: str) -> None:
-        """暂停指定 session。"""
+        """暂停指定 session（经 GameInstance）。"""
         runtime = await self.get_session(session_id)
-        await runtime.pause()
+        await self._instance_for(runtime).pause()
         self._save_to_store()
 
     async def resume_session(self, session_id: str) -> None:
-        """恢复指定 session。"""
+        """恢复指定 session（经 GameInstance）。"""
         runtime = await self.get_session(session_id)
-        await runtime.resume()
+        await self._instance_for(runtime).resume()
         self._save_to_store()
 
     async def set_step_mode(self, session_id: str, enabled: bool) -> dict[str, Any]:
@@ -242,9 +260,9 @@ class SessionRegistry:
         return result
 
     async def step_session(self, session_id: str, count: int = 1) -> dict[str, Any]:
-        """对指定 session 放行 count 个 step gate。"""
+        """对指定 session 放行 count 个 step gate（经 GameInstance）。"""
         runtime = await self.get_session(session_id)
-        result = await runtime.step(count=count)
+        result = await self._instance_for(runtime).step(count=count)
         self._save_to_store()
         return result
 

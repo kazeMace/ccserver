@@ -3,13 +3,15 @@
 统一接口：
     project_context(audience, purpose) -> dict
 
-audience 形如：host | public | player:<id> | agent:<id> | plugin:<name>
+audience 形如：host | referee | recap | public | player:<id> | agent:<id> | plugin:<name>
 purpose  形如：prompt | action_validation | referee | view | recap | html
 
 原则：
 - 默认不给完整上下文。
 - Agent（player/agent audience）永远拿 actor view，看不到全局 state 与他人秘密。
-- 裁判、规则包、主持人（referee/host purpose 或 host audience）在授权下拿全局上下文。
+- 授权**只看 audience 身份**，不看 purpose：只有受控内部角色 host / referee / recap
+  能拿全局上下文。purpose 仅标注投影用途，不作为授权升级的钥匙——否则任何玩家
+  只要把 purpose 传成 "referee" 就能开天眼（H1 缺口3）。
 - 所有上下文投影都可测试。
 """
 
@@ -20,9 +22,8 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# 授权拿全局上下文的 audience 前缀 / purpose。
-_PRIVILEGED_AUDIENCES = ("host",)
-_PRIVILEGED_PURPOSES = ("referee", "recap")
+# 授权拿全局上下文的 audience（受控内部角色）。授权基于身份，与 purpose 无关。
+_PRIVILEGED_AUDIENCES = ("host", "referee", "recap")
 
 
 class KnowledgeFirewall:
@@ -73,12 +74,16 @@ class KnowledgeFirewall:
         return self._actor_view(state, actor, purpose, disclosed_facts)
 
     def _is_privileged(self, audience: str, purpose: str) -> bool:
-        """判断该 audience / purpose 是否授权拿全局上下文。"""
-        if any(audience == priv or audience.startswith(priv + ":") for priv in _PRIVILEGED_AUDIENCES):
-            return True
-        if purpose in _PRIVILEGED_PURPOSES:
-            return True
-        return False
+        """判断该 audience 是否授权拿全局上下文。
+
+        授权**只看身份**：host / referee / recap 这三类受控内部角色（作为 audience）
+        才拿全量。purpose 不再参与授权——玩家把 purpose 传成 "referee" 也不会升级
+        （H1 缺口3）。参数 purpose 保留仅为接口兼容与用途标注。
+        """
+        return any(
+            audience == priv or audience.startswith(priv + ":")
+            for priv in _PRIVILEGED_AUDIENCES
+        )
 
     def _actor_of(self, audience: str) -> str | None:
         """从 audience 解析 actor id（player:<id> / agent:<id>）。"""

@@ -78,7 +78,8 @@ class InteractiveSessionCompiler:
         self._validate_script_contract(scenes, flow, scopes, referee)
         self._validate_visibility_refs(visibility, state, players)
         # 【H3 修复】在编译期校验所有 effect.type 是否已知，避免运行时才发现拼写错误。
-        self._validate_all_effects(scenes, flow, referee)
+        # 传递 canonical 以便检查是否有 plugins/game_pack 声明。
+        self._validate_all_effects(scenes, flow, referee, canonical)
         return InteractiveScript(
             meta=dict(canonical.get("meta") or {}),
             runtime=runtime,
@@ -568,6 +569,7 @@ class InteractiveSessionCompiler:
         scenes: dict[str, SceneSpec],
         flow: FlowSpec,
         referee: RefereeSpec,
+        canonical: dict[str, Any],
     ) -> None:
         """【H3 修复】在编译期校验所有 effect.type，避免运行时才报错。
 
@@ -575,42 +577,61 @@ class InteractiveSessionCompiler:
         1. flow state 的 entry_effects / exit_effects
         2. scene resolution 的 effects
         3. referee rules 的 effects
-        4. scene 的 entry_effects / exit_effects（若有）
+
+        策略：
+        - 如果脚本声明了 plugins 或 game_pack，采用宽容模式（只记录日志，不抛错误），
+          因为编译期无法加载 plugin registry 来确认哪些 effect 是合法的。
+        - 如果脚本未声明 plugins/game_pack，采用严格模式，拒绝未知 effect 类型。
         """
         # 内置 effect 类型集合
         builtin_types = EffectExecutor.BUILTIN_EFFECT_TYPES
 
+        # 检查脚本是否声明了 plugins 或 game_pack
+        has_plugins = bool(canonical.get("plugins")) or bool(canonical.get("game_pack"))
+        lenient = has_plugins  # 有 plugin 声明时使用宽容模式
+
         # 1. 校验 flow state 的 entry_effects / exit_effects
         for state_id, state in flow.states.items():
             for effect in state.entry_effects:
-                self._validate_single_effect(effect, f"flow.states.{state_id}.entry_effects", builtin_types)
+                self._validate_single_effect(
+                    effect, f"flow.states.{state_id}.entry_effects", builtin_types, lenient=lenient
+                )
             for effect in state.exit_effects:
-                self._validate_single_effect(effect, f"flow.states.{state_id}.exit_effects", builtin_types)
+                self._validate_single_effect(
+                    effect, f"flow.states.{state_id}.exit_effects", builtin_types, lenient=lenient
+                )
 
         # 2. 校验 scene resolution 的 effects
         for scene_id, scene in scenes.items():
             resolution = scene.resolution
             if isinstance(resolution, dict):
                 for effect in resolution.get("effects", []) or []:
-                    self._validate_single_effect(effect, f"scene.{scene_id}.resolution.effects", builtin_types)
+                    self._validate_single_effect(
+                        effect, f"scene.{scene_id}.resolution.effects", builtin_types, lenient=lenient
+                    )
 
         # 3. 校验 referee rules 的 effects
         for index, rule in enumerate(referee.rules):
             if isinstance(rule, dict):
                 for effect in rule.get("effects", []) or []:
-                    self._validate_single_effect(effect, f"referee.rules[{index}].effects", builtin_types)
+                    self._validate_single_effect(
+                        effect, f"referee.rules[{index}].effects", builtin_types, lenient=lenient
+                    )
 
     def _validate_single_effect(
         self,
         effect: Any,
         location: str,
         builtin_types: frozenset[str],
+        lenient: bool = False,
     ) -> None:
         """校验单个 effect 的 type 字段是否已知。
 
         已知 effect 类型包括：
         - EffectExecutor 的内置 handler（_handle_* 方法）
-        - plugin 注册的自定义 effect（运行时校验，这里跳过）
+        - plugin 注册的自定义 effect（运行时校验，编译期无法检查）
+
+        lenient=True 时，对于未知 effect 只记录日志而不抛出错误，因为可能来自 plugin/game_pack。
         """
         if not isinstance(effect, dict):
             return
@@ -618,16 +639,25 @@ class InteractiveSessionCompiler:
         if not effect_type:
             raise ValueError(f"{location} 包含缺少 type 字段的 effect: {effect}")
 
-        # plugin effect 在运行时通过 plugin_registry.has_effect() 校验，编译期无法静态检查；
-        # 这里只校验非 plugin 的 effect 是否在内置集合中。
-        # 如果 effect 明确标记为 plugin（future extension），这里可以跳过。
-        if effect_type not in builtin_types:
-            # 给出友好的错误提示，列出所有合法的 effect 类型
+        # 如果是内置类型，通过校验
+        if effect_type in builtin_types:
+            return
+
+        # 未知类型：可能是拼写错误，也可能是 plugin/game_pack 提供的自定义 effect
+        if lenient:
+            # 宽容模式：只记录日志，不抛出错误（假设可能来自 plugin）
+            logger.debug(
+                "%s 包含非内置 effect.type: '%s'，假设来自 plugin/game_pack，运行时校验",
+                location,
+                effect_type,
+            )
+        else:
+            # 严格模式：抛出错误并给出提示
             sorted_types = sorted(builtin_types)
             raise ValueError(
                 f"{location} 包含未知的 effect.type: '{effect_type}'。\n"
                 f"合法的内置 effect 类型：{', '.join(sorted_types)}。\n"
-                f"如果这是自定义 plugin effect，请确保 plugin 已在 plugins: 块中声明。"
+                f"如果这是自定义 plugin effect，请确保 plugin 已在 plugins: 或 game_pack: 块中声明。"
             )
 
     def _validate_service_provider(self, spec: dict[str, Any], label: str) -> None:

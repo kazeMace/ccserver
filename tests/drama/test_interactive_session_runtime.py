@@ -2795,3 +2795,58 @@ def test_add_scene_requires_existing_state_when_state_is_declared():
             },
             "flow_patch",
         )
+
+
+@pytest.mark.asyncio
+async def test_inside_actor_does_not_borrow_player_seat_without_explicit_id():
+    """H1 缺口2：未显式指定 inside-agent 时，绝不借用玩家 seat 执行系统 service。
+
+    过去 _call_inside_actor 会在未指定时借用 all_names[0]（任意玩家），并把
+    full_context_payload（含全局 state、他人秘密）喂给该玩家 Agent，绕过 firewall。
+    修复后：无显式 agent_id/seat_id → 返回 None（交给 builtin fallback），不借用任何玩家。
+    """
+    ctx = _interactive_ctx(
+        {
+            "runtime": {"type": "interactive_session"},
+            "visibility": {"secret_attrs": ["role"]},
+            "players": {"ids": ["P1", "P2"]},
+            "flow": {"type": "sequence", "scenes": ["s"]},
+            "scenes": {"s": {"participants": {"static": []}, "schedule": {"mode": "none"}}},
+        },
+        actors=[_ScriptedActor("P1", [{"text": "should-not-be-called"}]),
+                _ScriptedActor("P2", [{"text": "should-not-be-called"}])],
+    )
+    caller = RuntimeServiceCaller()
+    # spec 不含 agent_id/seat_id，metadata 无 inside_agent_id → 不应借用任何玩家
+    result = await caller._call_inside_actor(ctx, {}, "openchat_planner", {})
+    assert result is None, "未显式指定时不应借用玩家 seat 执行 inside service"
+
+
+@pytest.mark.asyncio
+async def test_inside_actor_explicit_seat_gets_firewall_projection_not_global_state():
+    """H1 缺口2：显式借用某 seat 时，喂给它的 context 是 firewall 受限投影，不含他人秘密。"""
+    captured = {}
+
+    class _CapturingActor(_ScriptedActor):
+        async def act(self, cue, collect=None):
+            captured["prompt"] = cue
+            return {"text": "{}"}
+
+    ctx = _interactive_ctx(
+        {
+            "runtime": {"type": "interactive_session"},
+            "visibility": {"secret_attrs": ["role"]},
+            "players": {"ids": ["P1", "P2"]},
+            "flow": {"type": "sequence", "scenes": ["s"]},
+            "scenes": {"s": {"participants": {"static": []}, "schedule": {"mode": "none"}}},
+        },
+        actors=[_CapturingActor("P1", []), _ScriptedActor("P2", [])],
+    )
+    # 给 P2 设一个秘密 role，断言 P1 收到的 prompt 里看不到它
+    ctx.writer.apply(SetAttr(entity="P2", key="role", value="undercover"))
+    caller = RuntimeServiceCaller()
+    await caller._call_inside_actor(ctx, {"seat_id": "P1"}, "openchat_planner", {})
+    assert "prompt" in captured, "显式指定的 actor 应被调用"
+    assert "undercover" not in captured["prompt"], (
+        "借用 P1 执行 inside service 时，prompt 泄漏了 P2 的秘密 role（firewall 未生效）"
+    )
