@@ -153,3 +153,38 @@ def test_rest_inbox_reply_view_endpoints() -> None:
         # reply 缺 seat_id → 400
         bad = client.post(f"/api/sessions/{sid}/reply", json={"request_id": "x"})
         assert bad.status_code == 400
+
+
+def test_projection_profile_enriches_widget_and_props():
+    """M-profile：ProjectionProfile 按 scene 富化 ReplyRequest 的 widget/props（开放键）。"""
+    from types import SimpleNamespace
+    from drama_engine.core.interaction.profile import ProjectionProfile
+
+    profile = ProjectionProfile(
+        widget_by_scene={"wolf_kill": "vote:night_kill"},
+        props_by_scene={"wolf_kill": {"show_teammate_votes": True}},
+    )
+    projector = InteractionProjector()
+    request = SimpleNamespace(
+        request_id="r1", kind="vote", cue="选择击杀目标", scene_name="wolf_kill",
+        candidates=["Player_6", "Player_7"], schema=None, timeout_seconds=30,
+        metadata={}, allow_resubmit=False,
+    )
+    reply = projector.project_request(request, profile=profile)
+    assert reply["primitive"] == "vote"
+    assert reply["widget"] == "vote:night_kill"
+    assert reply["props"] == {"show_teammate_votes": True}
+
+
+def test_projection_profile_absent_keeps_open_keys_none():
+    """无 profile 时开放键为 None（走 primitive 保底），封闭键仍在。"""
+    from types import SimpleNamespace
+    projector = InteractionProjector()
+    request = SimpleNamespace(
+        request_id="r2", kind="vote", cue="投票", scene_name="day_vote",
+        candidates=["A"], schema=None, timeout_seconds=None, metadata={}, allow_resubmit=False,
+    )
+    reply = projector.project_request(request)
+    assert reply["primitive"] == "vote"
+    assert reply["widget"] is None
+    assert reply["props"] is None

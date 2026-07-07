@@ -89,13 +89,24 @@ class InteractionProjector:
             "reply_request": None,
         }
 
-    def project_request(self, request: Any) -> dict[str, Any] | None:
-        """把 ActionRequest 投影成 ReplyRequest（dict）。request 为 None 返回 None。"""
+    def project_request(self, request: Any, profile: Any = None) -> dict[str, Any] | None:
+        """把 ActionRequest 投影成 ReplyRequest（dict）。request 为 None 返回 None。
+
+        profile（ProjectionProfile，可选）：game_pack 提供的投影档案，按 scene 富化开放键
+        widget/props；缺省时只填封闭键，前端走 primitive 保底。
+        """
         if request is None:
             return None
         kind = str(getattr(request, "kind", "generic") or "generic")
         primitive = _ACTION_KIND_TO_PRIMITIVE.get(kind, "text")
         metadata = getattr(request, "metadata", None) or {}
+        # 开放键优先取 metadata（请求创建期已写入），否则由 profile 按 scene 富化。
+        scene_id = str(getattr(request, "scene_name", "") or "")
+        widget = metadata.get("widget")
+        props = metadata.get("props")
+        if profile is not None:
+            widget = widget or profile.widget_for(scene_id)
+            props = props or profile.props_for(scene_id)
         candidates = getattr(request, "candidates", None)
         options = None
         if candidates:
@@ -121,9 +132,9 @@ class InteractionProjector:
         return {
             "request_id": str(getattr(request, "request_id", "")),
             "primitive": primitive,
-            # 开放键：game_pack 的 projection_profile 可在 metadata 里预置 widget/props。
-            "widget": metadata.get("widget"),
-            "props": metadata.get("props"),
+            # 开放键：优先 metadata，其次 game_pack 的 projection_profile 按 scene 富化。
+            "widget": widget,
+            "props": props,
             "prompt": str(getattr(request, "cue", "") or ""),
             "presentation": "default",
             "options": options,
@@ -144,15 +155,17 @@ class InteractionProjector:
         self_seat: str | None = None,
         phase: str | None = None,
         reset_from: int | None = None,
+        profile: Any = None,
     ) -> dict[str, Any]:
         """组装 InboxResponse（§5）。
 
         events 是该受众已授权的全部 backlog（可见性已由上游过滤）；这里按 after 增量筛选、
         投影成 InteractionMessage、把 pending 挂到最后一条消息上。
+        profile：game_pack 投影档案，富化 pending 的 widget/props（可选）。
         """
         fresh = [e for e in events if int(e.get("seq") or 0) > after]
         messages = [self.project_event(e, self_seat) for e in fresh]
-        pending = self.project_request(pending_request)
+        pending = self.project_request(pending_request, profile=profile)
         if pending is not None and messages:
             messages[-1]["reply_request"] = pending
         cursor = max([after, *[m["seq"] for m in messages]]) if messages else after

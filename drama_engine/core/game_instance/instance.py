@@ -31,6 +31,23 @@ from drama_engine.core.visibility.knowledge_firewall import (
 logger = logging.getLogger(__name__)
 
 
+def _normalize_pack_specs(source: Any) -> list[dict[str, Any]]:
+    """把 game_pack / rule_set 声明归一为 spec 列表（单个 dict / 列表 / 字符串）。
+
+    与 runner._normalize_pack_specs 同规则，供投影档案解析复用。
+    """
+    if source is None:
+        return []
+    items = source if isinstance(source, list) else [source]
+    specs: list[dict[str, Any]] = []
+    for item in items:
+        if isinstance(item, str) and item:
+            specs.append({"plugin": item})
+        elif isinstance(item, dict) and item.get("plugin"):
+            specs.append(item)
+    return specs
+
+
 class GameInstance:
     """一局游戏的应用门面。
 
@@ -88,6 +105,36 @@ class GameInstance:
         """返回当前披露账本；runner 未就绪时为 None。"""
         runner = getattr(self.runtime, "runner", None)
         return getattr(runner, "disclosure_ledger", None) if runner is not None else None
+
+    def projection_profile(self) -> Any:
+        """解析当前脚本声明的 game_pack/rule_set 的对外投影档案并合并（interaction.v1 开放键）。
+
+        无声明或声明的包无 profile 时返回空档案（projector 只填封闭键）。结果按 runner 缓存，
+        避免每次 inbox 重复解析。projector 据此富化 widget/props；前端不再读死配置。
+        """
+        runner = getattr(self.runtime, "runner", None)
+        if runner is None:
+            from drama_engine.core.interaction.profile import EMPTY_PROFILE
+            return EMPTY_PROFILE
+        cached = getattr(runner, "_interaction_profile", None)
+        if cached is not None:
+            return cached
+        from drama_engine.core.game_packs import build_default_game_pack_runtime_registry
+        from drama_engine.core.interaction.profile import EMPTY_PROFILE, ProjectionProfile
+
+        script = getattr(runner, "_script", None)
+        registry = build_default_game_pack_runtime_registry()
+        merged = ProjectionProfile()
+        for source in (getattr(script, "game_pack", None), getattr(script, "rule_set", None)):
+            for spec in _normalize_pack_specs(source):
+                plugin_id = spec.get("plugin")
+                if plugin_id and registry.has(plugin_id):
+                    profile = getattr(registry.get(plugin_id), "projection_profile", None)
+                    if profile is not None:
+                        merged = merged.merge(profile)
+        result = merged if merged.to_dict() != EMPTY_PROFILE.to_dict() else EMPTY_PROFILE
+        setattr(runner, "_interaction_profile", result)
+        return result
 
     # ---- 基本标识 ----
 
@@ -301,6 +348,7 @@ class GameInstance:
             status=status,
             self_seat=seat_id,
             phase=phase,
+            profile=self.projection_profile(),
         )
 
     async def reply(self, seat: str, reply_payload: dict[str, Any]) -> dict[str, Any]:

@@ -63,6 +63,7 @@ def register_builtin_game_packs(registry: GamePackRuntimeRegistry) -> None:
         ),
         default_config={},
         required_extensions=(),
+        projection_profile=social.build_social_projection_profile(),
     ))
     registry.register(GamePackManifest(
         plugin_id="builtin.inventory",

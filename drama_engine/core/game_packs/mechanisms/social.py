@@ -341,3 +341,42 @@ def register(api: Any) -> None:
 
 
 __all__ = ["register"]
+
+
+def build_social_projection_profile() -> Any:
+    """构建社交推理（狼人杀等）的对外投影档案（interaction.v1 开放键富化）。
+
+    把此前写死在 service/server/app.py 的 roleBadges/scopeStyles，以及 scene→widget
+    皮肤映射，收敛为 game_pack 提供的数据。projector/StateView 消费它，前端不再读死配置。
+    """
+    from drama_engine.core.interaction.profile import ProjectionProfile
+
+    return ProjectionProfile(
+        # scene → 输入组件皮肤（vote/choice 之上的狼人杀专属渲染变体）。
+        widget_by_scene={
+            "wolf_kill": "vote:night_kill",
+            "seer_check": "choice:seer_inspect",
+            "witch_action": "choice:witch_potion",
+            "day_vote": "vote:day_exile",
+        },
+        # scene → 语义级 props（A 收敛：只放影响信息可见性的参数）。
+        props_by_scene={
+            "wolf_kill": {"show_teammate_votes": True},
+            "day_vote": {"show_vote_count": True},
+        },
+        # 角色内部值 → 展示名（原 app.py roleBadges）。
+        role_badges={
+            "werewolf": "狼人", "wolf": "狼人", "seer": "预言家", "witch": "女巫",
+            "hunter": "猎人", "guard": "守卫", "villager": "村民",
+        },
+        # scope → [底色, 边色, 标签]（原 app.py scopeStyles）。
+        scope_styles={
+            "public": ["#f3f4f6", "#9ca3af", "公开"],
+            "town": ["#ecfdf5", "#10b981", "城镇"],
+            "wolf-den": ["#fef2f2", "#ef4444", "狼队"],
+            "wolf_den": ["#fef2f2", "#ef4444", "狼队"],
+            "whisper:seer": ["#eef2ff", "#6366f1", "预言家"],
+            "whisper:witch": ["#f5f3ff", "#8b5cf6", "女巫"],
+            "whisper:guard": ["#eff6ff", "#3b82f6", "守卫"],
+        },
+    )

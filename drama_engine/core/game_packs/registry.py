@@ -35,6 +35,10 @@ class GamePackManifest:
     mechanisms: tuple[str, ...] = ()
     default_config: dict[str, Any] = field(default_factory=dict)
     required_extensions: tuple[str, ...] = ()
+    # 可选的对外投影档案（ProjectionProfile）：富化 interaction.v1 开放键
+    # （widget/props/role_badges/scope_styles/panels）。用 Any 避免 game_packs 层强依赖
+    # core/interaction 造成循环导入；缺省 None 时 projector 只填封闭键。
+    projection_profile: Any = None
 
     def __post_init__(self) -> None:
         assert isinstance(self.plugin_id, str) and self.plugin_id.strip(), "plugin_id 不能为空"
