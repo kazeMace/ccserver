@@ -34,11 +34,9 @@ class DslRegistry:
         """初始化空注册表。"""
         self._scene_types: dict[str, SceneTypeSpec] = {}
         self._dialogue_policies: set[str] = set()
-        self._dialogue_factories: dict[str, object] = {}
         self._action_policies: dict[str, ActionPolicySpec] = {}
         self._response_modes: set[str] = set()
         self._response_schemas: set[str] = set()
-        self._response_factories: dict[str, object] = {}
         self._input_widgets: set[str] = set()
         self._view_kinds: set[str] = set()
 
@@ -48,29 +46,13 @@ class DslRegistry:
         assert spec.name, "scene_type 名称不能为空"
         self._scene_types[spec.name] = spec
 
-    def register_dialogue_policy(self, name: str, factory: object | None = None) -> None:
+    def register_dialogue_policy(self, name: str) -> None:
         """注册 dialogue_policy.mode。
 
-        factory 可选；编译器可以后续补充，用于把 DSL spec 编译成运行时 policy。
+        【L3 修复】移除 factory 参数，该功能全项目零调用。
         """
         assert isinstance(name, str) and name.strip(), "dialogue policy 名称不能为空"
-        key = name.strip()
-        self._dialogue_policies.add(key)
-        if factory is not None:
-            self._dialogue_factories[key] = factory
-
-    def set_dialogue_policy_factory(self, name: str, factory: object) -> None:
-        """为已注册 dialogue_policy.mode 设置运行时 factory。"""
-        assert self.has_dialogue_policy(name), f"dialogue policy 未注册: {name}"
-        assert callable(factory), f"dialogue policy factory 不可调用: {name}"
-        self._dialogue_factories[name] = factory
-
-    def create_dialogue_policy(self, name: str, spec: dict) -> object:
-        """创建 dialogue policy 运行时对象。"""
-        factory = self._dialogue_factories.get(name)
-        if factory is None:
-            raise ValueError(f"dialogue policy 尚未设置 factory: {name}")
-        return factory(spec)
+        self._dialogue_policies.add(name.strip())
 
     def register_action_policy(self, spec: ActionPolicySpec) -> None:
         """注册 action_policy.kind。"""
@@ -83,29 +65,13 @@ class DslRegistry:
         assert isinstance(name, str) and name.strip(), "response mode 名称不能为空"
         self._response_modes.add(name.strip())
 
-    def register_response_schema(self, name: str, factory: object | None = None) -> None:
+    def register_response_schema(self, name: str) -> None:
         """注册 response.schema。
 
-        factory 可选；编译器可后续补充，用于创建 Pydantic 响应模型。
+        【L3 修复】移除 factory 参数，该功能全项目零调用。
         """
         assert isinstance(name, str) and name.strip(), "response schema 名称不能为空"
-        key = name.strip()
-        self._response_schemas.add(key)
-        if factory is not None:
-            self._response_factories[key] = factory
-
-    def set_response_schema_factory(self, name: str, factory: object) -> None:
-        """为已注册 response.schema 设置模型 factory。"""
-        assert self.has_response_schema(name), f"response schema 未注册: {name}"
-        assert callable(factory), f"response schema factory 不可调用: {name}"
-        self._response_factories[name] = factory
-
-    def create_response_model(self, name: str, response_spec: dict, action_policy: dict) -> object:
-        """创建 response schema 对应的 Pydantic 模型。"""
-        factory = self._response_factories.get(name)
-        if factory is None:
-            raise ValueError(f"response schema 尚未设置 factory: {name}")
-        return factory(response_spec, action_policy)
+        self._response_schemas.add(name.strip())
 
     def register_input_widget(self, name: str) -> None:
         """注册 action_policy.input.widget 名称。"""
