@@ -49,10 +49,11 @@ _ACTION_KIND_TO_PRIMITIVE: dict[str, str] = {
     "action": "structured",
     "form": "form",
     "rating": "form",
-    "narration": "observe",
     "free_text": "text",
     "choice": "choice",
     "generic": "text",
+    # 注：narration/none 不创建 ActionRequest（不产生 reply_request），故不在此表；
+    # observe 是"无 reply"状态，不是 reply.primitive 值（文档封闭 8 原语不含 observe）。
 }
 
 
@@ -100,6 +101,13 @@ class InteractionProjector:
         kind = str(getattr(request, "kind", "generic") or "generic")
         primitive = _ACTION_KIND_TO_PRIMITIVE.get(kind, "text")
         metadata = getattr(request, "metadata", None) or {}
+        # 请求创建期的语义提示（DSL free_input/多选/确认）经 metadata 传入，projector 据此
+        # 产出 choice_or_text / multi_choice / confirm，避免只靠 kind 拿不到这些原语。
+        if metadata.get("free_input") and primitive in {"choice", "text"}:
+            primitive = "choice_or_text"
+        if metadata.get("multi"):
+            primitive = "multi_choice"
+        presentation = "confirm" if metadata.get("confirm") else "default"
         # 开放键优先取 metadata（请求创建期已写入），否则由 profile 按 scene 富化。
         scene_id = str(getattr(request, "scene_name", "") or "")
         widget = metadata.get("widget")
@@ -136,14 +144,16 @@ class InteractionProjector:
             "widget": widget,
             "props": props,
             "prompt": str(getattr(request, "cue", "") or ""),
-            "presentation": "default",
+            "presentation": presentation,
             "options": options,
             "free_input": free_input,
             "schema": schema,
             "timeout_ms": int(timeout_seconds * 1000) if timeout_seconds else None,
-            "min_select": 1,
-            "max_select": 1,
-            "skippable": bool(getattr(request, "allow_resubmit", False)),
+            # multi_choice 的选择上下限来自 metadata（min/max_select），非多选恒为 1。
+            "min_select": int(metadata.get("min_select", 1)) if primitive == "multi_choice" else 1,
+            "max_select": int(metadata.get("max_select", len(options or []) or 1)) if primitive == "multi_choice" else 1,
+            # skippable 是"可跳过本次交互"，与 allow_resubmit（可重复提交）语义不同，独立取。
+            "skippable": bool(metadata.get("skippable", False)),
         }
 
     def build_inbox(
@@ -232,13 +242,19 @@ class InteractionProjector:
         return "public"
 
     def _extract_cards(self, event: dict[str, Any]) -> list[dict[str, Any]] | None:
-        """提取富卡片。__view__ 或带 view_kind 的事件转为 RichCard。"""
+        """提取富卡片为 RichCard（kind/variant/data）。variant 是同 kind 下的皮肤变体，
+        用于 §9.2 降级链 card.variant→card.kind；缺省 None 时前端降级到 kind。"""
         view_kind = event.get("view_kind")
         if view_kind:
-            return [{"kind": str(view_kind), "data": dict(event.get("data") or {})}]
+            return [{
+                "kind": str(view_kind),
+                "variant": event.get("view_variant") or event.get("variant"),
+                "data": dict(event.get("data") or {}),
+            }]
         cards = event.get("cards")
         if isinstance(cards, list):
-            return cards
+            # 补齐每张卡的 variant 键（缺省 None），保证对外 RichCard schema 一致。
+            return [{**c, "variant": c.get("variant")} if isinstance(c, dict) else c for c in cards]
         return None
 
     def _map_status(self, status: str, pending: dict[str, Any] | None) -> str:

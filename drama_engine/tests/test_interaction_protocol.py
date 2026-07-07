@@ -188,3 +188,46 @@ def test_projection_profile_absent_keeps_open_keys_none():
     assert reply["primitive"] == "vote"
     assert reply["widget"] is None
     assert reply["props"] is None
+
+
+def test_projector_metadata_hints_produce_choice_or_text_confirm_multi():
+    """metadata 提示驱动 choice_or_text / confirm / multi_choice（偏差修正）。"""
+    from types import SimpleNamespace
+    projector = InteractionProjector()
+
+    # free_input 提示 → choice_or_text，并带 free_input 块
+    r1 = projector.project_request(SimpleNamespace(
+        request_id="a", kind="choose", cue="回应她", scene_name="talk",
+        candidates=["greet", "shy"], schema=None, timeout_seconds=None,
+        metadata={"free_input": True}, allow_resubmit=False,
+    ))
+    assert r1["primitive"] == "choice_or_text"
+    assert r1["free_input"] is not None
+
+    # confirm 提示 → presentation=confirm
+    r2 = projector.project_request(SimpleNamespace(
+        request_id="b", kind="choose", cue="继续", scene_name="s",
+        candidates=["ok"], schema=None, timeout_seconds=None,
+        metadata={"confirm": True}, allow_resubmit=False,
+    ))
+    assert r2["presentation"] == "confirm"
+
+    # multi 提示 → multi_choice + min/max_select 生效
+    r3 = projector.project_request(SimpleNamespace(
+        request_id="c", kind="choose", cue="选圈子", scene_name="s",
+        candidates=["red", "blue", "green"], schema=None, timeout_seconds=None,
+        metadata={"multi": True, "min_select": 1, "max_select": 2}, allow_resubmit=False,
+    ))
+    assert r3["primitive"] == "multi_choice"
+    assert r3["min_select"] == 1 and r3["max_select"] == 2
+
+
+def test_projector_card_has_variant_key():
+    """RichCard 始终带 variant 键（降级链 card.variant→kind）。"""
+    projector = InteractionProjector()
+    msg = projector.project_event({
+        "seq": 1, "type": "interactive_publication", "view_kind": "clue",
+        "view_variant": "clue:public", "data": {"title": "线索"},
+    })
+    cards = msg["body"]["cards"]
+    assert cards and cards[0]["kind"] == "clue" and cards[0]["variant"] == "clue:public"
