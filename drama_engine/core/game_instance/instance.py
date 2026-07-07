@@ -167,8 +167,14 @@ class GameInstance:
         await self.runtime.terminate(reason=reason)
 
     async def restart(self) -> None:
-        """清局并在同一 session 中重新发牌。"""
+        """清局并在同一 session 中重新发牌，并按脚本重建控制面与信息隔离层。
+
+        重新发牌会重置游戏事实与角色分配，因此 firewall / control_plane 必须随之
+        重建——否则重开局后可见性策略会停留在上一局或默认空实例（H1 缺口1）。
+        """
         await self.runtime.restart()
+        self._build_control_plane()
+        self._build_firewall()
 
     # ---- 玩家加入 / 离开 ----
 
@@ -332,15 +338,34 @@ class GameInstance:
         """回滚到指定 checkpoint。
 
         先暂停正在运行的 runner task（若有），再由 RollbackManager 恢复会话过程、
-        游戏状态、patch journal 与记忆。
+        游戏状态、patch journal 与记忆。最后根据恢复后的 status 决定是否重新绑定 runner，
+        确保执行侧与状态侧的一致性（架构文档 §15）。
         """
         assert checkpoint_id, "checkpoint_id 不能为空"
         checkpoint = self.snapshots.get(checkpoint_id)
-        # 暂停后台 flow task，避免回滚与执行竞争；保留 ctx 以便在同一状态上恢复。
+
+        # 1. 暂停后台 flow task，避免回滚与执行竞争；保留 ctx 以便在同一状态上恢复。
         runner = getattr(self.runtime, "runner", None)
         if runner is not None and hasattr(runner, "cancel_task"):
             await runner.cancel_task()
+
+        # 2. 恢复会话过程、游戏状态、patch journal、记忆、披露账本。
         self.rollback.restore(checkpoint, policy=self.runtime.session.rollback_policy)
+
+        # 3. 【H2 修复】回滚执行侧闭环：根据恢复后的 status 决定是否重新启动 runner。
+        #    若 checkpoint 建于 running 态，restore 会把 status 恢复成 running，
+        #    此时需要重新绑定 runner task，否则会出现"状态说在跑、实际 task 已取消"的不一致。
+        restored_status = self.runtime.session.status
+        if restored_status == "running" and runner is not None and hasattr(runner, "start"):
+            logger.info(
+                "[GameInstance] 回滚到 running 态 checkpoint，重新启动 runner session=%s checkpoint=%s",
+                self.session_id,
+                checkpoint_id,
+            )
+            # 重新创建 flow task，让执行侧与状态侧保持一致。
+            # 注意：这里不是调用 self.start()（会校验 status==assigned），
+            # 而是直接调用 runner.start()，因为 status 已经是 running。
+            await runner.start()
 
 
 __all__ = ["GameInstance"]
