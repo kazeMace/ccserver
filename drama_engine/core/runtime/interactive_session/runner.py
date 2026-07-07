@@ -19,6 +19,7 @@ from drama_engine.core.runtime.interactive_session.patch.journal import PatchJou
 from drama_engine.core.runtime.interactive_session.patch.materializer import FlowMaterializer
 from drama_engine.core.runtime.interactive_session.services.plugin_loader import InteractivePluginLoader
 from drama_engine.core.runtime_spec.registry import RuntimeSpec
+from drama_engine.core.game_instance.progress import ProgressTracker
 from drama_engine.core.game_instance.state import SESSION_ASSIGNED, SESSION_ENDED, SESSION_RUNNING
 from drama_engine.core.visibility.disclosure_ledger import DisclosureLedger
 
@@ -89,6 +90,8 @@ class InteractiveSessionRunner(BasicGameRunner):
             emit_private=self._emit_private,
             disclosure_ledger=DisclosureLedger(),
             base_raw=deepcopy(script.raw),
+            # M5.2：把 flow/scene 推进接到 SessionState.progress，使进度不再是死字段。
+            on_progress=ProgressTracker(session_state).record_progress,
         )
         self._ctx = ctx
         session_state.metadata["human_seat_ids"] = list(getattr(session_state, "human_seat_ids", set()))

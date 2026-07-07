@@ -33,6 +33,7 @@ class SceneExecutor:
     async def execute(self, ctx: InteractiveExecutionContext, scene: SceneSpec) -> str | None:
         """Run a scene and return referee result when ended."""
         ctx.current_scene_id = scene.id
+        ctx.notify_progress()
         if not await self._when_passes(ctx, scene):
             ctx.emit_host({"kind": "interactive_scene_skipped", "scene": scene.id})
             return None

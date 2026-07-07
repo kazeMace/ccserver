@@ -92,3 +92,29 @@ async def test_project_context_restricts_non_privileged_audience() -> None:
     # host 授权视角拿到完整 state 快照
     privileged = instance.project_context("host", "referee")
     assert "state" in privileged or "audience_kind" not in privileged
+
+
+@pytest.mark.asyncio
+async def test_progress_is_tracked_during_run() -> None:
+    """M5.2：flow/scene 推进时 SessionState.progress 被真实更新（不再是死字段）。"""
+    registry = GameInstanceRegistry(store=None, load_existing=False)
+    instance = await registry.create_instance(
+        game_id="story",
+        script_path=_SCRIPT,
+        seat_ids=["Player_1"],
+        params={"dry_run": True, "use_runner": True},
+    )
+    await instance.assign()
+    # assign 后进度仍是初始（flow 尚未跑）
+    assert instance.runtime.session.progress.current_scene is None
+
+    await instance.start()
+    task = instance.runtime.director_task
+    if task is not None:
+        await asyncio.wait_for(task, timeout=30)
+
+    progress = instance.runtime.session.progress
+    # 跑完后进度反映了真实的 flow 位置
+    assert progress.current_state == "main"
+    assert progress.current_scene, "current_scene 应被 flow/scene 推进更新"
+    assert progress.round >= 1

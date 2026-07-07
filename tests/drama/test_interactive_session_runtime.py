@@ -62,6 +62,8 @@ class _FakeSession:
     """Minimal session object."""
 
     def __init__(self, script_path: str) -> None:
+        from drama_engine.core.game_instance.state import ProgressState
+
         self.script_path = script_path
         self.params = {}
         self.metadata = {}
@@ -69,6 +71,8 @@ class _FakeSession:
         self.seat_ids = ["A", "B", "C", "D"]
         self.human_seat_ids = set()
         self.session_id = "interactive-test"
+        # 忠实于 SessionState 契约：runner 的进度接线（M5.2）会写 session.progress。
+        self.progress = ProgressState()
 
     def set_status(self, status: str) -> None:
         """Set status."""

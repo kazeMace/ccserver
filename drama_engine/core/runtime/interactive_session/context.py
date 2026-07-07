@@ -43,6 +43,20 @@ class InteractiveExecutionContext:
     result: str | None = None
     # 惰性缓存的信息隔离层（按 script.visibility 构建），供 project_for_actor 复用。
     _firewall: Any = None
+    # 进度回调：flow/scene 推进时调用 on_progress(current_state, current_scene, round)，
+    # 由 runner 接到 SessionState.progress（M5.2）。None 时不追踪（最小 runtime 兼容）。
+    on_progress: Any = None
+
+    def notify_progress(self) -> None:
+        """把当前 flow/scene 位置与轮次上报给进度回调（若已接线）。"""
+        if self.on_progress is None:
+            return
+        game_round = self.state.get_attr("GAME", "round") if self.state is not None else None
+        self.on_progress(
+            current_state=self.current_state_id or None,
+            current_scene=self.current_scene_id or None,
+            round=int(game_round) if isinstance(game_round, int) else None,
+        )
 
     def runtime_extra(self) -> dict[str, Any]:
         """Build common extra context for evaluators."""

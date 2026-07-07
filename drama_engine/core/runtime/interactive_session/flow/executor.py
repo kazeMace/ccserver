@@ -25,6 +25,7 @@ class FlowExecutor:
         while steps < self._max_steps:
             steps += 1
             ctx.current_state_id = current_state_id
+            ctx.notify_progress()
             state_spec = ctx.script.flow.states[current_state_id]
             self._apply_state_effects(ctx, state_spec.entry_effects)
             index = 0
