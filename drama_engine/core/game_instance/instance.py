@@ -359,6 +359,18 @@ class GameInstance:
         """
         _, seat_id = self._parse_seat(seat)
         assert seat_id, "reply 需要具体 seat（player:<id>）"
+        # 防串号/防过期（§4）：若 reply 带 request_id，须与当前 pending 的 request_id 一致，
+        # 否则拒绝——避免玩家用过期/错误的 request_id 覆盖新的待回复。
+        req_id = str(reply_payload.get("request_id") or "")
+        if req_id:
+            current = self.runtime.action_service.get_current_request(seat_id)
+            current_id = str(getattr(current, "request_id", "") or "") if current is not None else ""
+            if current_id != req_id:
+                return {
+                    "accepted": False,
+                    "error": f"request_id 不匹配当前待回复（可能已过期）：{req_id}",
+                    "new_messages": [],
+                }
         data = self._reply_to_data(reply_payload)
         text = str(reply_payload.get("text") or "")
         submission = await self.session_control.submit_action(
@@ -420,17 +432,68 @@ class GameInstance:
         return None
 
     def _snapshot_to_state_view(self, snap: dict[str, Any], seat: str) -> dict[str, Any]:
-        """把 ViewSnapshot dict 归一成 StateView（§7）。"""
-        meta = snap.get("meta") or {}
-        panels: dict[str, Any] = dict(meta.get("panels") or {})
+        """把 ViewSnapshot dict 归一成 StateView（§7）。
+
+        phase：用真实阶段（progress.phase，回退 current_scene），不是会话状态 running/ended。
+        progress：从 SessionState.progress 组 {label,current,total}。
+        panels：按 game_pack 投影档案 profile.panels 声明，从游戏状态提取（affinity/hand/stats）。
+        """
+        progress_state = self.runtime.session.progress
+        phase = None
+        prog = None
+        if progress_state is not None:
+            phase = progress_state.phase or progress_state.current_scene
+            # total 从游戏状态读（多天/多轮游戏在 GAME.total_days/total_rounds 声明），无则 0。
+            state = self._current_game_state()
+            total = 0
+            if state is not None:
+                total = int(state.get_attr("GAME", "total_days") or state.get_attr("GAME", "total_rounds") or 0)
+            prog = {"label": phase or "", "current": int(progress_state.round or 0), "total": total}
+        seat_id = None if seat in {"host", "public", "audience"} else seat
         return {
             "seat_id": seat,
-            "phase": snap.get("session_status"),
-            "progress": meta.get("progress"),
+            "phase": phase,
+            "progress": prog,
             "players": snap.get("seats") or [],
-            "panels": panels,
+            "panels": self._extract_panels(seat_id),
             "self": snap.get("role_card") or {},
         }
+
+    def _extract_panels(self, seat_id: str | None) -> dict[str, Any]:
+        """按当前 game_pack 投影档案的 panels 声明，从游戏状态提取侧边栏面板数据。
+
+        profile.panels 形如 {"affinity": {"source": "affinity_matrix"}, ...}。这里做通用提取：
+        - affinity：读各实体的 affinity_<other> 属性，组 {seat: {other: value}}。
+        - hand：读 seat_id 的 hand 属性（列表）。
+        - stats：读 seat_id 的数值面板属性（hp/gold/level 等，由声明 attrs 指定）。
+        未声明 panels 或状态缺失时返回空 dict（前端忽略）。视图层不认识具体游戏，只按声明取数。
+        """
+        profile = self.projection_profile()
+        panels_spec = getattr(profile, "panels", None) or {}
+        if not panels_spec:
+            return {}
+        state = self._current_game_state()
+        if state is None:
+            return {}
+        result: dict[str, Any] = {}
+        players = list(state.get_attr("GAME", "players") or [])
+        for name, spec in panels_spec.items():
+            source = spec.get("source") if isinstance(spec, dict) else str(spec)
+            if source == "affinity_matrix":
+                matrix: dict[str, dict[str, Any]] = {}
+                for p in players:
+                    row = {q: state.get_attr(p, f"affinity_{q}") for q in players
+                           if state.get_attr(p, f"affinity_{q}") is not None}
+                    if row:
+                        matrix[p] = row
+                result[name] = matrix
+            elif source == "hand" and seat_id is not None:
+                result[name] = list(state.get_attr(seat_id, "hand") or [])
+            elif source == "stats" and seat_id is not None:
+                attrs = spec.get("attrs", []) if isinstance(spec, dict) else []
+                result[name] = {a: state.get_attr(seat_id, a) for a in attrs
+                                if state.get_attr(seat_id, a) is not None}
+        return result
 
     def submit_control_action(self, role: str, payload: dict[str, Any]) -> dict[str, Any]:
         """提交控制角色动作（host/director/writer 等）。
