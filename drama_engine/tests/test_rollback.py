@@ -162,3 +162,45 @@ async def test_who_is_undercover_playable_rollback_sample() -> None:
     assert restored.get_attr("GAME", "last_vote_target") is None
     # 事件流留有 rollback 记录
     assert any(e.get("kind") == "rollback_applied" for e in instance.timeline("host"))
+
+
+@pytest.mark.asyncio
+async def test_rollback_from_running_state_lands_assigned_and_can_restart() -> None:
+    """H2 修复：running 态回滚不再崩溃，落在 assigned，且可重新 start。
+
+    修复前：rollback_to 在 status==running 时调 runner.start()，撞其
+    `assert status==assigned` 断言直接抛 AssertionError。
+    修复后：回滚取消 task 后把 running/paused 降级为 assigned（待重启），
+    不自动续跑（FlowExecutor 只能从 initial 从头跑、scene 内部进度未快照），
+    并可干净地再次 start。
+    """
+    registry = GameInstanceRegistry(store=None, load_existing=False)
+    instance = await registry.create_instance(
+        game_id="story",
+        script_path=_SCRIPT,
+        seat_ids=["Player_1"],
+        params={"dry_run": True, "use_runner": True},
+    )
+    await instance.assign()
+    # 置为 running 后建点：快照里 status=running，模拟「运行中建立 checkpoint」。
+    # 这正是原崩溃场景——回滚 restore 会把 status 恢复成 running。
+    instance.runtime.session.set_status("running")
+    summary = instance.checkpoint("during_run")
+
+    # 关键断言：不再抛 AssertionError
+    await instance.rollback_to(summary["checkpoint_id"])
+
+    # 落在 assigned，执行侧一致（无悬挂 task）
+    assert instance.status == "assigned"
+    runner = instance.runtime.runner
+    task = runner.runtime_state.task if runner is not None else None
+    assert task is None or task.done(), "回滚后不应残留运行中的 flow task"
+    # 事件流留有「待重启」提示
+    assert any(e.get("kind") == "rollback_ready_to_restart" for e in instance.timeline("host"))
+
+    # 可以干净地重新 start（assigned 断言成立），并跑到终态
+    await instance.start()
+    task = instance.runtime.director_task
+    if task is not None:
+        await asyncio.wait_for(task, timeout=30)
+    assert instance.status in {"ended", "failed"}

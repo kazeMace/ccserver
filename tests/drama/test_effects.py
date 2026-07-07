@@ -681,3 +681,49 @@ def test_context_path_can_read_entity_attrs_after_indexing():
 
     assert state.get_attr("P1", "marked") is True
     assert state.get_attr("P2", "marked") is True
+
+
+# ── H4：_compare_value 委托 canonical compare_operator 的回归 ──
+# 这些用例覆盖 effect.when 的各类 key-based 操作符，确认比较统一走 operators.compare_operator，
+# 新增操作符只需改 operators.py 一处（effects.py 不再自带操作符实现）。
+
+def test_effect_when_numeric_operators_via_compare_operator():
+    """effect.when 的 gte/lte/gt/lt 数值比较（走委托后的统一实现）。"""
+    cases = [
+        ({"state": "GAME.hp", "gte": 3}, 3, True),
+        ({"state": "GAME.hp", "gte": 4}, 3, False),
+        ({"state": "GAME.hp", "lte": 3}, 3, True),
+        ({"state": "GAME.hp", "gt": 2}, 3, True),
+        ({"state": "GAME.hp", "gt": 3}, 3, False),
+        ({"state": "GAME.hp", "lt": 5}, 3, True),
+    ]
+    for when, hp, expected in cases:
+        state = _make_state(hp=hp)
+        writer = StateWriter(state)
+        effect = {"type": "set_state", "entity": "GAME", "attr": "flag", "value": True, "when": when}
+        executor.execute(effect, state, writer, responses=[], actor=None)
+        assert (state.get_attr("GAME", "flag") is True) is expected, f"when={when} hp={hp}"
+
+
+def test_effect_when_in_and_not_in_via_compare_operator():
+    """effect.when 的 in / not_in（走统一实现）。"""
+    state = _make_state(phase="night")
+    writer = StateWriter(state)
+    effect = {
+        "type": "set_state", "entity": "GAME", "attr": "flag", "value": True,
+        "when": {"state": "GAME.phase", "in": ["night", "dusk"]},
+    }
+    executor.execute(effect, state, writer, responses=[], actor=None)
+    assert state.get_attr("GAME", "flag") is True
+
+
+def test_effect_when_null_checks_via_compare_operator():
+    """effect.when 的 is_null / not_null（走统一实现）。"""
+    state = _make_state(target=None)
+    writer = StateWriter(state)
+    effect = {
+        "type": "set_state", "entity": "GAME", "attr": "flag", "value": True,
+        "when": {"state": "GAME.target", "is_null": True},
+    }
+    executor.execute(effect, state, writer, responses=[], actor=None)
+    assert state.get_attr("GAME", "flag") is True

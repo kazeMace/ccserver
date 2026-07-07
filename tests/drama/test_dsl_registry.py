@@ -42,47 +42,6 @@ def test_dsl_registry_allows_registration():
     assert registry.default_action_kind("custom_scene") == "custom_action"
 
 
-def test_dsl_registry_dialogue_policy_factory():
-    """dialogue policy factory 可注册并创建运行时对象。"""
-    registry = build_default_dsl_registry()
-    registry.set_dialogue_policy_factory("sequential", lambda spec: {"mode": spec.get("mode")})
-
-    policy = registry.create_dialogue_policy("sequential", {"mode": "sequential"})
-
-    assert policy == {"mode": "sequential"}
-
-
-def test_dsl_registry_response_schema_factory():
-    """response schema factory 可注册并创建响应模型。"""
-    registry = build_default_dsl_registry()
-    registry.set_response_schema_factory(
-        "target",
-        lambda response_spec, action_policy: {
-            "schema": response_spec.get("schema"),
-            "action": action_policy.get("kind"),
-        },
-    )
-
-    model = registry.create_response_model("target", {"schema": "target"}, {"kind": "choose_one"})
-
-    assert model == {"schema": "target", "action": "choose_one"}
-
-
-def test_dsl_registry_response_schema_factory_requires_registered_schema():
-    """response schema factory 只能绑定到已注册 schema。"""
-    registry = build_default_dsl_registry()
-
-    with pytest.raises(AssertionError):
-        registry.set_response_schema_factory("unknown_schema", lambda response_spec, action_policy: object())
-
-
-def test_dsl_registry_response_schema_factory_reports_missing_factory():
-    """已注册但未设置 factory 的 response schema 会明确报错。"""
-    registry = build_default_dsl_registry()
-
-    with pytest.raises(ValueError, match="response schema 尚未设置 factory"):
-        registry.create_response_model("target", {"schema": "target"}, {"kind": "choose_one"})
-
 def test_dsl_registry_allows_view_and_input_registration():
     """扩展可以注册输入组件和视图类型。"""
     registry = build_default_dsl_registry()

@@ -444,16 +444,21 @@ class GameInstance:
         return self.snapshots.list_points()
 
     async def rollback_to(self, checkpoint_id: str) -> None:
-        """回滚到指定 checkpoint。
+        """回滚到指定 checkpoint，并停在「已就绪待重启」（assigned）状态。
 
-        先暂停正在运行的 runner task（若有），再由 RollbackManager 恢复会话过程、
-        游戏状态、patch journal 与记忆。最后根据恢复后的 status 决定是否重新绑定 runner，
-        确保执行侧与状态侧的一致性（架构文档 §15）。
+        执行侧闭环（架构文档 §7/§15）：回滚会取消正在运行的 flow task，把会话恢复到
+        checkpoint 时刻，然后**统一落在 assigned 状态**，由调用方显式 `start()` 重新推进。
+
+        为什么不自动续跑：interactive_session 的 FlowExecutor 只能从 flow.initial 顺序执行，
+        且 checkpoint 不快照「当前 flow 位置」与「scene 内部进度（如 openchat 轮次）」。因此在
+        running 态回滚后重建 task 只会从头重跑，重复发消息与重复结算——比崩溃更隐蔽有害。
+        回滚的正确语义是「回到过去某点、暂停、由操作者重新推进」，契合开发/试玩/剧情分支场景。
+        （此前实现在 running 态直接调 runner.start() 会撞其 `assert status==assigned` 断言而崩溃。）
         """
         assert checkpoint_id, "checkpoint_id 不能为空"
         checkpoint = self.snapshots.get(checkpoint_id)
 
-        # 1. 暂停后台 flow task，避免回滚与执行竞争；保留 ctx 以便在同一状态上恢复。
+        # 1. 取消后台 flow task，避免回滚与执行竞争；保留 ctx 以便在恢复后的状态上重启。
         runner = getattr(self.runtime, "runner", None)
         if runner is not None and hasattr(runner, "cancel_task"):
             await runner.cancel_task()
@@ -461,20 +466,22 @@ class GameInstance:
         # 2. 恢复会话过程、游戏状态、patch journal、记忆、披露账本。
         self.rollback.restore(checkpoint, policy=self.runtime.session.rollback_policy)
 
-        # 3. 【H2 修复】回滚执行侧闭环：根据恢复后的 status 决定是否重新启动 runner。
-        #    若 checkpoint 建于 running 态，restore 会把 status 恢复成 running，
-        #    此时需要重新绑定 runner task，否则会出现"状态说在跑、实际 task 已取消"的不一致。
-        restored_status = self.runtime.session.status
-        if restored_status == "running" and runner is not None and hasattr(runner, "start"):
+        # 3. 执行侧闭环：flow task 已取消。若恢复后的 status 表示「本应在跑」（running/paused），
+        #    则降级为 assigned——语义为「已回到该点、待重新 start」，消除「状态说在跑、实际无 task」
+        #    的不一致，也让后续 start() 的 assigned 断言成立。ended/failed/lobby 等终态不动。
+        session = self.runtime.session
+        if session.status in {"running", "paused"}:
+            session.set_status("assigned")
+            self.session_control.append_host({
+                "kind": "rollback_ready_to_restart",
+                "checkpoint_id": checkpoint_id,
+                "message": "已回滚并停在 assigned 状态，请重新 start 以从该点推进流程。",
+            })
             logger.info(
-                "[GameInstance] 回滚到 running 态 checkpoint，重新启动 runner session=%s checkpoint=%s",
+                "[GameInstance] 回滚后降级为 assigned，待重启 session=%s checkpoint=%s",
                 self.session_id,
                 checkpoint_id,
             )
-            # 重新创建 flow task，让执行侧与状态侧保持一致。
-            # 注意：这里不是调用 self.start()（会校验 status==assigned），
-            # 而是直接调用 runner.start()，因为 status 已经是 running。
-            await runner.start()
 
 
 __all__ = ["GameInstance"]

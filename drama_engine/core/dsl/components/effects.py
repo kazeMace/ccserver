@@ -22,6 +22,7 @@ from typing import Any
 
 from drama_engine.core.engine import State, StateWriter, SetAttr, Link, Unlink
 from drama_engine.core.dsl.components.conditions import ConditionEvaluator
+from drama_engine.core.dsl.components.conditions.operators import compare_operator
 from drama_engine.core.dsl.components.value_resolver import ValueResolver, parse_state_path
 from drama_engine.core.dsl.plugins import EffectContext, RuleSetContext
 
@@ -180,6 +181,16 @@ class EffectExecutor:
         )
         return path in prefixes or any(path.startswith(prefix + ".") for prefix in prefixes)
 
+    # effect.when 的 key-based 比较写法 → canonical 操作符名的映射。
+    # effect 特有的职责只有「右值来源解析」；比较本身统一委托 compare_operator，
+    # 因此新增操作符只需改 operators.py 一处（H4：消除第三套操作符表）。
+    _COMPARE_KEYS = {
+        "equals": "equal", "not_equals": "not_equal",
+        "in": "in", "not_in": "not_in",
+        "gte": "greater_than_equal", "lte": "less_than_equal",
+        "gt": "greater_than", "lt": "less_than",
+    }
+
     def _compare_value(
         self,
         value: Any,
@@ -189,58 +200,30 @@ class EffectExecutor:
         responses: list,
         extra: dict,
     ) -> bool:
-        """
-        对已解析出的值执行常见比较操作。
+        """对已解析出的值执行比较。
 
-        【H4 修复】这里的比较逻辑与 primitive.py:evaluate_state_condition 平行，
-        但区别在于需要通过 _resolve_source 解析 effect 特有的上下文（data/winner）。
-        保留这个方法，但内部逻辑与 primitive 保持一致，避免操作符分歧。
-
-        如果后续需要添加新操作符（如 gte/lte/gt/lt），在这里和 primitive.py 同步添加。
+        effect.when 用 key-based 写法（`{equals: ...}` / `{gte: ...}`），其中操作符是 key、
+        右值可能是 effect 特有来源（winner/data.x，经 _resolve_source）或状态路径
+        （equals_state/not_equals_state，经 ValueResolver）。本方法只负责「解析右值」，
+        比较统一委托 canonical `compare_operator`——不再自带操作符实现（H4）。
         """
-        # 布尔值特殊处理：None 视为 False
-        if "equals" in cond:
-            expected = self._resolve_source(cond["equals"], actor, responses, extra)
-            if isinstance(expected, bool) and value is None:
-                value = False
-            return value == expected
-        if "not_equals" in cond:
-            expected = self._resolve_source(cond["not_equals"], actor, responses, extra)
-            return value != expected
+        # is_null / not_null：右值是布尔字面量，语义与 compare_operator 一致。
         if "is_null" in cond:
-            return (value is None) == cond["is_null"]
+            return compare_operator(value, "is_null", cond["is_null"])
         if "not_null" in cond:
-            return (value is not None) == cond["not_null"]
-        if "in" in cond:
-            expected = self._resolve_source(cond["in"], actor, responses, extra)
-            return value in expected
-        if "not_in" in cond:
-            expected = self._resolve_source(cond["not_in"], actor, responses, extra)
-            return value not in expected
+            return compare_operator(value, "not_null", cond["not_null"])
+        # equals_state / not_equals_state：右值是另一个状态路径，经 ValueResolver 解析。
         if "equals_state" in cond:
-            # equals_state 比较另一个状态路径，使用 ValueResolver
-            other = self._values.resolve(
-                cond["equals_state"], state, responses, actor, None, extra
-            )
-            return value == other
+            other = self._values.resolve(cond["equals_state"], state, responses, actor, None, extra)
+            return compare_operator(value, "equal", other)
         if "not_equals_state" in cond:
-            other = self._values.resolve(
-                cond["not_equals_state"], state, responses, actor, None, extra
-            )
-            return value != other
-        # 数值比较操作符（与 primitive.py:evaluate_state_condition L165-172 对齐）
-        if "gte" in cond:
-            expected = self._resolve_source(cond["gte"], actor, responses, extra)
-            return value is not None and value >= expected
-        if "lte" in cond:
-            expected = self._resolve_source(cond["lte"], actor, responses, extra)
-            return value is not None and value <= expected
-        if "gt" in cond:
-            expected = self._resolve_source(cond["gt"], actor, responses, extra)
-            return value is not None and value > expected
-        if "lt" in cond:
-            expected = self._resolve_source(cond["lt"], actor, responses, extra)
-            return value is not None and value < expected
+            other = self._values.resolve(cond["not_equals_state"], state, responses, actor, None, extra)
+            return compare_operator(value, "not_equal", other)
+        # 其余操作符：右值经 _resolve_source（winner/data.x/字面量），比较委托 compare_operator。
+        for key, op in self._COMPARE_KEYS.items():
+            if key in cond:
+                right = self._resolve_source(cond[key], actor, responses, extra)
+                return compare_operator(value, op, right)
         raise ValueError(f"未知 data 条件比较操作符: {cond}")
 
     def _resolve_source(self, source: Any, actor: str | None,

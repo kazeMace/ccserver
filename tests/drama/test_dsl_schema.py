@@ -22,20 +22,12 @@ def test_core_dsl_capabilities_export_registry_values():
     extension_names = {item["name"] for item in capabilities["domain_extensions"]}
     game_pack_plugins = {item["plugin"] for item in capabilities["game_packs"]}
     rule_set_plugins = {item["plugin"] for item in capabilities["rule_sets"]}
-    authoring_types = {item["game_type"] for item in capabilities["authoring_templates"]}
     assert {"board", "cards", "story"}.issubset(extension_names)
     assert "builtin.party.free_discussion" in game_pack_plugins
     assert "builtin.board.generic" in rule_set_plugins
-    # 迁移后 authoring 模板全部指向 interactive_session 代表脚本。
-    assert {
-        "social_deduction",
-        "word_guess",
-        "card_game",
-        "board_game",
-        "map_economy",
-        "story",
-        "group_chat",
-    }.issubset(authoring_types)
+    # authoring_templates 已从 core capabilities 移除（M7.2 消除 core→application 反向依赖）：
+    # 它属于 application 层能力，由 application 层调用方自行补充，core 不再导出。
+    assert "authoring_templates" not in capabilities
 
 
 def test_core_dsl_schema_exports_scene_fields():

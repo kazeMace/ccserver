@@ -585,94 +585,129 @@ class InteractiveSessionCompiler:
         referee: RefereeSpec,
         canonical: dict[str, Any],
     ) -> None:
-        """【H3 修复】在编译期校验所有 effect.type，避免运行时才报错。
+        """在编译期校验所有 effect.type，避免拼写错误在运行时才炸。
 
-        检查：
-        1. flow state 的 entry_effects / exit_effects
-        2. scene resolution 的 effects
-        3. referee rules 的 effects
+        校验范围（含嵌套）：
+          1. flow state 的 entry_effects / exit_effects
+          2. scene resolution 的 effects
+          3. referee rules（含 top-level 与 scene 级 referee）的 effects
+          4. 上述 effect 内部的嵌套 effect（for_each.effects / pending_resolve.effects）
 
-        策略：
-        - 如果脚本声明了 plugins 或 game_pack，采用宽容模式（只记录日志，不抛错误），
-          因为编译期无法加载 plugin registry 来确认哪些 effect 是合法的。
-        - 如果脚本未声明 plugins/game_pack，采用严格模式，拒绝未知 effect 类型。
+        白名单 = 内置 effect ∪ 脚本声明的 game_pack/rule_set 提供的机制名。因此声明了
+        builtin.social 的脚本里 tally_votes/eliminate 合法，但拼错的 tally_vote 仍会被抓。
+
+        lenient 仅在脚本声明了 `plugins:`（自定义 Python 插件，编译期无法静态解析其 effect 名）
+        时开启——此时未知类型只告警不报错。只声明 game_pack/rule_set 时不进入 lenient，
+        因为机制名可以从注册表静态解析、typo 应当被拒绝。
         """
-        # 内置 effect 类型集合
-        builtin_types = EffectExecutor.BUILTIN_EFFECT_TYPES
+        allowed_types = self._resolve_allowed_effect_types(canonical)
+        # 只有声明了无法静态解析的自定义 plugins 时才宽容；game_pack/rule_set 可解析，不宽容。
+        lenient = bool(canonical.get("plugins"))
 
-        # 检查脚本是否声明了 plugins 或 game_pack
-        has_plugins = bool(canonical.get("plugins")) or bool(canonical.get("game_pack"))
-        lenient = has_plugins  # 有 plugin 声明时使用宽容模式
-
-        # 1. 校验 flow state 的 entry_effects / exit_effects
         for state_id, state in flow.states.items():
             for effect in state.entry_effects:
                 self._validate_single_effect(
-                    effect, f"flow.states.{state_id}.entry_effects", builtin_types, lenient=lenient
+                    effect, f"flow.states.{state_id}.entry_effects", allowed_types, lenient
                 )
             for effect in state.exit_effects:
                 self._validate_single_effect(
-                    effect, f"flow.states.{state_id}.exit_effects", builtin_types, lenient=lenient
+                    effect, f"flow.states.{state_id}.exit_effects", allowed_types, lenient
                 )
 
-        # 2. 校验 scene resolution 的 effects
         for scene_id, scene in scenes.items():
             resolution = scene.resolution
             if isinstance(resolution, dict):
                 for effect in resolution.get("effects", []) or []:
                     self._validate_single_effect(
-                        effect, f"scene.{scene_id}.resolution.effects", builtin_types, lenient=lenient
+                        effect, f"scene.{scene_id}.resolution.effects", allowed_types, lenient
                     )
+            # scene 级 referee 的 effects 同样校验（scene.referee.rules[].effects）。
+            for r_index, rule in enumerate(scene.referee.rules):
+                if isinstance(rule, dict):
+                    for effect in (rule.get("result") or {}).get("effects", []) or []:
+                        self._validate_single_effect(
+                            effect, f"scene.{scene_id}.referee.rules[{r_index}].result.effects",
+                            allowed_types, lenient,
+                        )
 
-        # 3. 校验 referee rules 的 effects
+        self._validate_referee_effects(referee, "referee", allowed_types, lenient)
+
+    def _validate_referee_effects(
+        self,
+        referee: RefereeSpec,
+        label: str,
+        allowed_types: frozenset[str],
+        lenient: bool,
+    ) -> None:
+        """校验一个 referee 的 rules[].result.effects。"""
         for index, rule in enumerate(referee.rules):
             if isinstance(rule, dict):
-                for effect in rule.get("effects", []) or []:
+                for effect in (rule.get("result") or {}).get("effects", []) or []:
                     self._validate_single_effect(
-                        effect, f"referee.rules[{index}].effects", builtin_types, lenient=lenient
+                        effect, f"{label}.rules[{index}].result.effects", allowed_types, lenient
                     )
+
+    def _resolve_allowed_effect_types(self, canonical: dict[str, Any]) -> frozenset[str]:
+        """合并「内置 effect」与「脚本声明的 game_pack/rule_set 机制名」为白名单。
+
+        机制名来自 GamePackRuntimeRegistry 的 manifest.mechanisms（effect + condition 混合，
+        对 effect 校验宁可放宽也不误伤）。未知/未注册的 pack id 忽略（其存在性由 runner
+        的 assert 负责，这里只负责 effect 名白名单）。
+        """
+        allowed = set(EffectExecutor.BUILTIN_EFFECT_TYPES)
+        from drama_engine.core.game_packs import build_default_game_pack_runtime_registry
+
+        registry = build_default_game_pack_runtime_registry()
+        for source in (canonical.get("game_pack"), canonical.get("rule_set")):
+            for spec in self._normalize_pack_specs(source):
+                plugin_id = spec.get("plugin")
+                if plugin_id and registry.has(plugin_id):
+                    allowed.update(registry.get(plugin_id).mechanisms)
+        return frozenset(allowed)
+
+    def _normalize_pack_specs(self, source: Any) -> list[dict[str, Any]]:
+        """把 game_pack / rule_set 声明归一为 spec 列表（单个 dict / 列表 / 字符串）。"""
+        if source is None:
+            return []
+        items = source if isinstance(source, list) else [source]
+        specs: list[dict[str, Any]] = []
+        for item in items:
+            if isinstance(item, str) and item:
+                specs.append({"plugin": item})
+            elif isinstance(item, dict) and item.get("plugin"):
+                specs.append(item)
+        return specs
 
     def _validate_single_effect(
         self,
         effect: Any,
         location: str,
-        builtin_types: frozenset[str],
-        lenient: bool = False,
+        allowed_types: frozenset[str],
+        lenient: bool,
     ) -> None:
-        """校验单个 effect 的 type 字段是否已知。
-
-        已知 effect 类型包括：
-        - EffectExecutor 的内置 handler（_handle_* 方法）
-        - plugin 注册的自定义 effect（运行时校验，编译期无法检查）
-
-        lenient=True 时，对于未知 effect 只记录日志而不抛出错误，因为可能来自 plugin/game_pack。
-        """
+        """校验单个 effect 的 type，并递归校验其嵌套 effect（for_each/pending_resolve）。"""
         if not isinstance(effect, dict):
             return
         effect_type = effect.get("type")
         if not effect_type:
             raise ValueError(f"{location} 包含缺少 type 字段的 effect: {effect}")
 
-        # 如果是内置类型，通过校验
-        if effect_type in builtin_types:
-            return
+        if effect_type not in allowed_types:
+            if lenient:
+                logger.debug(
+                    "%s 含非内置 effect.type '%s'，脚本声明了 plugins，留待运行时校验",
+                    location, effect_type,
+                )
+            else:
+                raise ValueError(
+                    f"{location} 包含未知的 effect.type: '{effect_type}'。\n"
+                    f"合法类型：{', '.join(sorted(allowed_types))}。\n"
+                    f"若为自定义 effect，请在 plugins: 块声明；若为机制 effect，请在 game_pack/rule_set 声明对应包。"
+                )
 
-        # 未知类型：可能是拼写错误，也可能是 plugin/game_pack 提供的自定义 effect
-        if lenient:
-            # 宽容模式：只记录日志，不抛出错误（假设可能来自 plugin）
-            logger.debug(
-                "%s 包含非内置 effect.type: '%s'，假设来自 plugin/game_pack，运行时校验",
-                location,
-                effect_type,
-            )
-        else:
-            # 严格模式：抛出错误并给出提示
-            sorted_types = sorted(builtin_types)
-            raise ValueError(
-                f"{location} 包含未知的 effect.type: '{effect_type}'。\n"
-                f"合法的内置 effect 类型：{', '.join(sorted_types)}。\n"
-                f"如果这是自定义 plugin effect，请确保 plugin 已在 plugins: 或 game_pack: 块中声明。"
-            )
+        # 递归校验嵌套子 effect（for_each.effects / pending_resolve.effects）。
+        for child in effect.get("effects", []) or []:
+            self._validate_single_effect(child, f"{location}[{effect_type}].effects", allowed_types, lenient)
 
     def _validate_service_provider(self, spec: dict[str, Any], label: str) -> None:
         """Validate runtime-service provider names when present."""
