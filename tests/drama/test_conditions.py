@@ -448,29 +448,6 @@ def test_not_equals_state():
     state = _make_state(accused="Player_1", real_killer="Player_3")
     assert evaluator.evaluate({"state": "GAME.accused", "not_equals_state": "GAME.real_killer"}, state, actor=None) is True
 
-def test_just_died():
-    players = {"P1": {"alive": False, "death_round": 2}}
-    state = _make_state_with_players(players)
-    w = StateWriter(state)
-    w.apply(SetAttr("GAME", "round", 2))
-    assert evaluator.evaluate({"just_died": "P1"}, state, actor=None) is True
-
-def test_just_died_wrong_round():
-    players = {"P1": {"alive": False, "death_round": 1}}
-    state = _make_state_with_players(players)
-    w = StateWriter(state)
-    w.apply(SetAttr("GAME", "round", 2))
-    assert evaluator.evaluate({"just_died": "P1"}, state, actor=None) is False
-
-def test_is_first_round_true():
-    state = _make_state(round=1)
-    assert evaluator.evaluate({"is_first_round": True}, state, actor=None) is True
-
-def test_is_first_round_false():
-    state = _make_state(round=3)
-    assert evaluator.evaluate({"is_first_round": True}, state, actor=None) is False
-
-
 def test_python_expr_condition():
     state = _make_state(round=1)
     assert evaluator.evaluate(

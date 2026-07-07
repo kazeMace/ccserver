@@ -42,12 +42,8 @@ class EffectExecutor:
         "remove",
         "clear",
         "increment_state",
-        "kill",
-        "record_target",
-        "record_current_deaths",
         "consume_item",
         "give_item",
-        "build_speech_order",
         "set_relation",
         "clear_relation",
         "get_relations",
@@ -400,72 +396,6 @@ class EffectExecutor:
         current = state.get_attr(entity, attr) or 0
         writer.apply(SetAttr(entity, attr, current + delta))
 
-    def _handle_kill(self, effect: dict, state: State, writer: StateWriter,
-                     responses: list, actor: str | None, extra: dict):
-        """
-        杀死目标实体：设置 alive=False、death_cause、death_round。
-
-        effect 字段：
-          target — 目标来源关键字（winner / actor / data.xxx 等）
-          cause  — 死亡原因字符串（默认 "unknown"）
-        """
-        target = self._resolve_source(effect["target"], actor, responses, extra)
-        if target is None:
-            # 目标不存在时静默跳过，防止配置错误导致崩溃
-            return
-        cause = effect.get("cause", "unknown")
-        current_round = state.get_attr("GAME", "round") or 0
-        writer.apply(SetAttr(target, "alive", False))
-        writer.apply(SetAttr(target, "death_cause", cause))
-        writer.apply(SetAttr(target, "death_round", current_round))
-
-    def _handle_record_target(self, effect: dict, state: State, writer: StateWriter,
-                              responses: list, actor: str | None, extra: dict):
-        """
-        把来源实体名记录到 GAME 的指定属性（用于记录刀人目标、查验目标等）。
-
-        effect 字段：
-          attr   — GAME 上的目标属性名
-          source — 来源关键字（winner / actor / data.xxx 等）
-        """
-        attr = effect["attr"]
-        source = self._resolve_source(effect["source"], actor, responses, extra)
-        writer.apply(SetAttr("GAME", attr, source))
-
-    def _handle_record_current_deaths(self, effect: dict, state: State, writer: StateWriter,
-                                      responses: list, actor: str | None, extra: dict):
-        """
-        记录当前回合已经出局的玩家列表。
-
-        effect 字段：
-          path / entity+attr — 写入位置
-
-        可选字段：
-          causes — 死亡原因白名单。配置后只记录 death_cause 在该列表中的玩家。
-
-        用途：
-          白天发言方向需要知道“昨晚是否有人死亡”。该 effect 通常放在
-          夜晚死亡结算之后、猎人夜枪之前，避免把后续连锁死亡混入死讯参考点。
-        """
-        current_round = state.get_attr("GAME", "round") or 0
-        causes = effect.get("causes")
-        if causes is not None:
-            assert isinstance(causes, list), "record_current_deaths.causes 必须是列表"
-        deaths = [
-            name for name in state.all_entities()
-            if (
-                name != "GAME"
-                and state.get_attr(name, "death_round") == current_round
-                and (
-                    causes is None
-                    or state.get_attr(name, "death_cause") in causes
-                )
-            )
-        ]
-        deaths.sort(key=lambda name: self._seat_sort_key(name, state))
-        entity, attr = self._resolve_path_target(effect, state, responses, actor, extra)
-        writer.apply(SetAttr(entity, attr, deaths))
-
     def _handle_consume_item(self, effect: dict, state: State, writer: StateWriter,
                              responses: list, actor: str | None, extra: dict):
         """
@@ -504,92 +434,6 @@ class EffectExecutor:
             # 无限道具无需增加
             return
         writer.apply(SetAttr(entity, attr, int(current) + count))
-
-    def _handle_build_speech_order(self, effect: dict, state: State, writer: StateWriter,
-                                   responses: list, actor: str | None, extra: dict):
-        """
-        根据座位顺序、参考点和方向生成发言顺序。
-
-        effect 字段：
-          path / entity+attr — 写入位置
-          reference          — 参考点；可为玩家名、玩家列表或 state/data 路径
-          fallback_reference — reference 为空时的备用参考点
-          direction          — left/right/clockwise/counterclockwise，支持 data.target
-          filter             — 进入发言名单的玩家过滤条件，默认 {"alive": true}
-
-        规则：
-          - reference 为列表时取第一个座位顺序最靠前的玩家。
-          - direction=left/clockwise 使用正向座位顺序。
-          - direction=right/counterclockwise 使用反向座位顺序。
-          - 发言从参考点相邻的下一名符合 filter 的玩家开始，循环一圈。
-        """
-        direction = self._resolve_source(effect.get("direction", "left"), actor, responses, extra)
-        reference = self._resolve_reference(effect.get("reference"), state, responses, actor, extra)
-        if reference is None:
-            reference = self._resolve_reference(
-                effect.get("fallback_reference"), state, responses, actor, extra
-            )
-
-        all_players = [name for name in state.all_entities() if name != "GAME"]
-        all_players.sort(key=lambda name: self._seat_sort_key(name, state))
-        if not all_players:
-            return
-
-        if direction in ("right", "counterclockwise", "anticlockwise"):
-            ordered_players = list(reversed(all_players))
-        else:
-            ordered_players = all_players
-
-        filter_spec = effect.get("filter", {"alive": True})
-        allowed_speakers = self._eval.filter_entities(filter_spec, state)
-        speakers = [name for name in ordered_players if name in allowed_speakers]
-        if not speakers:
-            return
-
-        reference_index = None
-        if reference in ordered_players:
-            reference_index = ordered_players.index(reference)
-        if reference_index is None:
-            ordered_speakers = speakers
-        else:
-            ordered_speakers = [
-                name for offset in range(1, len(ordered_players) + 1)
-                for name in [ordered_players[(reference_index + offset) % len(ordered_players)]]
-                if name in speakers
-            ]
-
-        entity, attr = self._resolve_path_target(effect, state, responses, actor, extra)
-        writer.apply(SetAttr(entity, attr, ordered_speakers))
-
-    def _resolve_reference(
-        self,
-        source: Any,
-        state: State,
-        responses: list,
-        actor: str | None,
-        extra: dict,
-    ) -> str | None:
-        """解析发言参考点；列表取座位顺序最靠前的玩家。"""
-        value = self._resolve_source(source, actor, responses, extra)
-        if isinstance(value, (list, tuple, set)):
-            values = [item for item in value if isinstance(item, str)]
-            if not values:
-                return None
-            values.sort(key=lambda name: self._seat_sort_key(name, state))
-            return values[0]
-        if isinstance(value, str) and value:
-            return value
-        return None
-
-    def _seat_sort_key(self, name: str, state: State) -> tuple:
-        """按 seat_index 排序；缺失时使用 Player_N 的自然顺序兜底。"""
-        seat_index = state.get_attr(name, "seat_index")
-        if seat_index is not None:
-            return (0, int(seat_index), name)
-        match = re.search(r"(\d+)$", name)
-        if match:
-            return (1, int(match.group(1)), name)
-        return (2, name)
 
     def _handle_set_relation(self, effect: dict, state: State, writer: StateWriter,
                              responses: list, actor: str | None, extra: dict):

@@ -61,34 +61,6 @@ def test_increment_state():
     executor.execute(effect, state, writer, responses=[], actor=None)
     assert state.get_attr("GAME", "round") == 3
 
-def test_kill():
-    players = {"Player_1": {"alive": True, "role": "villager"}}
-    state = _make_state(players=players, round=1)
-    writer = StateWriter(state)
-    effect = {"type": "kill", "target": "winner", "cause": "vote"}
-    executor.execute(effect, state, writer, responses=[], actor=None, extra={"winner": "Player_1"})
-    assert state.get_attr("Player_1", "alive") is False
-    assert state.get_attr("Player_1", "death_cause") == "vote"
-    assert state.get_attr("Player_1", "death_round") == 1
-
-def test_kill_with_when_false():
-    players = {"Player_1": {"alive": True, "role": "villager"}}
-    state = _make_state(players=players, round=1, saved=True)
-    writer = StateWriter(state)
-    effect = {
-        "type": "kill", "target": "winner", "cause": "wolf",
-        "when": {"state": "GAME.saved", "equals": False},
-    }
-    executor.execute(effect, state, writer, responses=[], actor=None, extra={"winner": "Player_1"})
-    assert state.get_attr("Player_1", "alive") is True
-
-def test_record_target():
-    state = _make_state()
-    writer = StateWriter(state)
-    effect = {"type": "record_target", "attr": "wolf_target", "source": "winner"}
-    executor.execute(effect, state, writer, responses=[], actor=None, extra={"winner": "Player_3"})
-    assert state.get_attr("GAME", "wolf_target") == "Player_3"
-
 def test_set_state_can_target_winner_entity():
     """entity=winner 时，效果应写入投票胜出者实体。"""
     players = {"Player_3": {"alive": True, "role": "idiot"}}
@@ -197,89 +169,6 @@ def test_advance_turn():
     assert state.get_attr("P1", "is_turn") is False
     assert state.get_attr("P2", "is_turn") is True
 
-
-def test_record_current_deaths_uses_current_round_and_seat_order():
-    """record_current_deaths 应只记录当前回合死亡玩家，并按座位排序。"""
-    players = {
-        "P2": {"alive": False, "death_round": 2, "seat_index": 2},
-        "P1": {"alive": False, "death_round": 2, "seat_index": 1},
-        "P3": {"alive": False, "death_round": 1, "seat_index": 3},
-    }
-    state = _make_state(players=players, round=2)
-    writer = StateWriter(state)
-    effect = {"type": "record_current_deaths", "path": "GAME.night_deaths"}
-
-    executor.execute(effect, state, writer, responses=[], actor=None, extra={})
-
-    assert state.get_attr("GAME", "night_deaths") == ["P1", "P2"]
-
-
-def test_record_current_deaths_can_filter_by_death_cause():
-    """record_current_deaths.causes 应只记录指定死亡原因。"""
-    players = {
-        "P1": {"alive": False, "death_round": 2, "death_cause": "wolf", "seat_index": 1},
-        "P2": {"alive": False, "death_round": 2, "death_cause": "shot", "seat_index": 2},
-        "P3": {"alive": False, "death_round": 2, "death_cause": "poison", "seat_index": 3},
-    }
-    state = _make_state(players=players, round=2)
-    writer = StateWriter(state)
-    effect = {
-        "type": "record_current_deaths",
-        "path": "GAME.night_deaths",
-        "causes": ["wolf", "poison"],
-    }
-
-    executor.execute(effect, state, writer, responses=[], actor=None, extra={})
-
-    assert state.get_attr("GAME", "night_deaths") == ["P1", "P3"]
-
-
-def test_build_speech_order_from_death_left_direction():
-    """有人死亡时，应从死者指定方向的相邻存活玩家开始发言。"""
-    players = {
-        "P1": {"alive": True, "seat_index": 1},
-        "P2": {"alive": False, "seat_index": 2},
-        "P3": {"alive": True, "seat_index": 3},
-        "P4": {"alive": True, "seat_index": 4},
-    }
-    state = _make_state(players=players, night_deaths=["P2"], sheriff="P4")
-    writer = StateWriter(state)
-    effect = {
-        "type": "build_speech_order",
-        "path": "GAME.day_speech_order",
-        "reference": {"state": "GAME.night_deaths"},
-        "fallback_reference": {"state": "GAME.sheriff"},
-        "direction": "@left",
-        "filter": {"alive": True},
-    }
-
-    executor.execute(effect, state, writer, responses=[], actor=None, extra={})
-
-    assert state.get_attr("GAME", "day_speech_order") == ["P3", "P4", "P1"]
-
-
-def test_build_speech_order_safe_night_uses_sheriff_reference():
-    """平安夜时，应从警长指定方向的相邻存活玩家开始发言。"""
-    players = {
-        "P1": {"alive": True, "seat_index": 1},
-        "P2": {"alive": True, "seat_index": 2},
-        "P3": {"alive": True, "seat_index": 3},
-        "P4": {"alive": True, "seat_index": 4},
-    }
-    state = _make_state(players=players, night_deaths=[], sheriff="P2")
-    writer = StateWriter(state)
-    effect = {
-        "type": "build_speech_order",
-        "path": "GAME.day_speech_order",
-        "reference": {"state": "GAME.night_deaths"},
-        "fallback_reference": {"state": "GAME.sheriff"},
-        "direction": "@right",
-        "filter": {"alive": True},
-    }
-
-    executor.execute(effect, state, writer, responses=[], actor=None, extra={})
-
-    assert state.get_attr("GAME", "day_speech_order") == ["P1", "P4", "P3", "P2"]
 
 def test_give_item():
     players = {"P1": {"alive": True, "inventory_bomb": 0}}
@@ -395,18 +284,6 @@ def test_broadcast_template_can_read_item_context():
     )
     pending = state.get_attr("GAME", "__pending_broadcasts")
     assert pending[0]["template"] == "P1 状态变化为 dead"
-
-def test_kill_with_dict_state_target():
-    """kill target 为 {state: GAME.wolf_target} 时，从 state 解析目标。"""
-    players = {"Player_5": {"alive": True, "role": "villager"}}
-    state = _make_state(players=players, round=1, wolf_target="Player_5")
-    writer = StateWriter(state)
-    effect = {"type": "kill", "target": {"state": "GAME.wolf_target"}, "cause": "wolf"}
-    executor.execute(effect, state, writer, responses=[], actor=None, extra={"__state": state})
-    assert state.get_attr("Player_5", "alive") is False
-    assert state.get_attr("Player_5", "death_cause") == "wolf"
-    assert state.get_attr("Player_5", "death_round") == 1
-
 
 def test_add_remove_clear_effects():
     """集合 effect 应能追加、移除和清空状态列表。"""
@@ -613,7 +490,8 @@ def test_data_index_for_each_and_pending_resolve():
             "queue": "deaths",
             "as": "item",
             "effects": [
-                {"type": "kill", "target": "item.target", "cause": "item.cause"}
+                # 用通用 set_state 验证 for_each/pending 嵌套（kill 已迁到 builtin.social）。
+                {"type": "set_state", "entity": "item.target", "attr": "alive", "value": False}
             ],
         },
         state,

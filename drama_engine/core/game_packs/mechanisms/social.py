@@ -11,12 +11,54 @@
 from __future__ import annotations
 
 import logging
+import re
 from collections import Counter
 from typing import Any
 
+from drama_engine.core.dsl.components.conditions import ConditionEvaluator
+from drama_engine.core.dsl.components.value_resolver import ValueResolver, parse_state_path
 from drama_engine.core.engine import SetAttr
 
 logger = logging.getLogger(__name__)
+
+# 机制内共享的来源解析与条件求值器（无状态、可复用）。
+# social.kill/record_target/build_speech_order 等需要解析 winner/data.x/@literal 来源，
+# 并按 filter 过滤发言名单——与通用 EffectExecutor 用同一套 ValueResolver/ConditionEvaluator，
+# 保证语义一致，且不再把这些逻辑硬编码在通用 DSL 层（M1-B）。
+_VALUES = ValueResolver()
+_EVAL = ConditionEvaluator()
+
+
+def _resolve_source(source: Any, context: Any) -> Any:
+    """解析 effect 的来源关键字（winner/actor/data.x/@literal/{ref}），复用 ValueResolver。"""
+    return _VALUES.resolve(
+        source,
+        state=context.state,
+        responses=context.responses,
+        actor=context.actor,
+        extra=context.extra,
+    )
+
+
+def _seat_sort_key(name: str, state: Any) -> tuple:
+    """按 seat_index 排序；缺失时用 Player_N 的数字后缀兜底。"""
+    seat_index = state.get_attr(name, "seat_index")
+    if seat_index is not None:
+        return (0, int(seat_index), name)
+    match = re.search(r"(\d+)$", name)
+    if match:
+        return (1, int(match.group(1)), name)
+    return (2, name)
+
+
+def _resolve_path_target(effect: dict, context: Any) -> tuple[str, str]:
+    """解析 path 或 entity+attr 形式的写入位置，返回 (entity, attr)。"""
+    if "path" in effect:
+        entity, attr = parse_state_path(effect["path"])
+        resolved = _VALUES.resolve_entity(entity, context.state, context.responses, context.actor, None, context.extra)
+        return resolved, attr
+    entity = _VALUES.resolve_entity(effect["entity"], context.state, context.responses, context.actor, None, context.extra)
+    return entity, effect["attr"]
 
 
 def _handle_tally_votes(effect: dict, context: Any) -> None:
@@ -146,11 +188,155 @@ def _handle_resolve_night(effect: dict, context: Any) -> None:
     logger.debug("[resolve_night] deaths=%s", deaths)
 
 
+def _handle_kill(effect: dict, context: Any) -> None:
+    """杀死目标实体：设 alive=False、death_cause、death_round（social 领域机制，M1-B）。
+
+    effect 字段：target（来源关键字 winner/actor/data.x）、cause（默认 unknown）。
+    """
+    target = _resolve_source(effect["target"], context)
+    if target is None:
+        return
+    cause = effect.get("cause", "unknown")
+    current_round = context.state.get_attr("GAME", "round") or 0
+    context.writer.apply(SetAttr(target, "alive", False))
+    context.writer.apply(SetAttr(target, "death_cause", cause))
+    context.writer.apply(SetAttr(target, "death_round", current_round))
+
+
+def _handle_record_target(effect: dict, context: Any) -> None:
+    """把来源实体名记录到 GAME 的指定属性（刀口/查验目标等）。
+
+    effect 字段：attr（GAME 上属性名）、source（来源关键字）。
+    """
+    source = _resolve_source(effect["source"], context)
+    context.writer.apply(SetAttr("GAME", effect["attr"], source))
+
+
+def _handle_record_current_deaths(effect: dict, context: Any) -> None:
+    """记录本轮已出局玩家列表（按座位排序），供白天发言方向参考。
+
+    effect 字段：path 或 entity+attr（写入位置）；可选 causes（死因白名单）。
+    """
+    state = context.state
+    current_round = state.get_attr("GAME", "round") or 0
+    causes = effect.get("causes")
+    if causes is not None:
+        assert isinstance(causes, list), "record_current_deaths.causes 必须是列表"
+    deaths = [
+        name for name in state.all_entities()
+        if (
+            name != "GAME"
+            and state.get_attr(name, "death_round") == current_round
+            and (causes is None or state.get_attr(name, "death_cause") in causes)
+        )
+    ]
+    deaths.sort(key=lambda name: _seat_sort_key(name, state))
+    entity, attr = _resolve_path_target(effect, context)
+    context.writer.apply(SetAttr(entity, attr, deaths))
+
+
+def _resolve_reference(source: Any, context: Any) -> str | None:
+    """解析发言参考点；列表取座位顺序最靠前的玩家。"""
+    value = _resolve_source(source, context)
+    if isinstance(value, (list, tuple, set)):
+        values = [item for item in value if isinstance(item, str)]
+        if not values:
+            return None
+        values.sort(key=lambda name: _seat_sort_key(name, context.state))
+        return values[0]
+    if isinstance(value, str) and value:
+        return value
+    return None
+
+
+def _handle_build_speech_order(effect: dict, context: Any) -> None:
+    """按座位顺序、参考点、方向生成发言顺序（狼人杀白天发言，M1-B）。
+
+    effect 字段：path/entity+attr（写入）、reference/fallback_reference（参考点）、
+    direction（left/right/clockwise/counterclockwise，支持 data.x）、filter（默认 alive=true）。
+    """
+    state = context.state
+    direction = _resolve_source(effect.get("direction", "left"), context)
+    reference = _resolve_reference(effect.get("reference"), context)
+    if reference is None:
+        reference = _resolve_reference(effect.get("fallback_reference"), context)
+
+    all_players = [name for name in state.all_entities() if name != "GAME"]
+    all_players.sort(key=lambda name: _seat_sort_key(name, state))
+    if not all_players:
+        return
+    if direction in ("right", "counterclockwise", "anticlockwise"):
+        ordered_players = list(reversed(all_players))
+    else:
+        ordered_players = all_players
+
+    filter_spec = effect.get("filter", {"alive": True})
+    allowed_speakers = _EVAL.filter_entities(filter_spec, state)
+    speakers = [name for name in ordered_players if name in allowed_speakers]
+    if not speakers:
+        return
+
+    reference_index = ordered_players.index(reference) if reference in ordered_players else None
+    if reference_index is None:
+        ordered_speakers = speakers
+    else:
+        ordered_speakers = [
+            name for offset in range(1, len(ordered_players) + 1)
+            for name in [ordered_players[(reference_index + offset) % len(ordered_players)]]
+            if name in speakers
+        ]
+    entity, attr = _resolve_path_target(effect, context)
+    context.writer.apply(SetAttr(entity, attr, ordered_speakers))
+
+
+def _cond_just_died(spec: dict, context: dict) -> bool:
+    """判断某实体是否本轮死亡（social 领域条件，M1-B）。
+
+    spec.entity / spec.input.entity 指定实体，支持 "actor"/"candidate" 关键字。
+    """
+    state = context.get("state")
+    if state is None:
+        return False
+    source = spec.get("input") if isinstance(spec.get("input"), dict) else spec
+    entity = str(source.get("entity") or "")
+    if entity == "actor":
+        entity = str(context.get("actor") or "")
+    elif entity == "candidate":
+        entity = str(context.get("candidate") or "")
+    if not entity:
+        return False
+    death_round = state.get_attr(entity, "death_round")
+    current_round = state.get_attr("GAME", "round")
+    return death_round is not None and death_round == current_round
+
+
+def _cond_is_first_round(spec: dict, context: dict) -> bool:
+    """判断当前是否首轮（social 领域条件，M1-B）。
+
+    spec.expected / spec.input.expected 指定期望值（默认 true）。
+    """
+    state = context.get("state")
+    if state is None:
+        return False
+    source = spec.get("input") if isinstance(spec.get("input"), dict) else spec
+    expected = bool(source.get("expected", True))
+    round_num = state.get_attr("GAME", "round") or 0
+    result = round_num <= 1
+    return result if expected else not result
+
+
 def register(api: Any) -> None:
     """把 social 机制注册进 PluginRegistry。"""
     api.register_effect("tally_votes", _handle_tally_votes)
     api.register_effect("eliminate", _handle_eliminate)
     api.register_effect("resolve_night", _handle_resolve_night)
+    # M1-B：从通用 DSL 层迁入的狼人杀专属领域机制。
+    api.register_effect("social.kill", _handle_kill)
+    api.register_effect("social.record_target", _handle_record_target)
+    api.register_effect("social.record_current_deaths", _handle_record_current_deaths)
+    api.register_effect("social.build_speech_order", _handle_build_speech_order)
+    api.register_condition("social.just_died", _cond_just_died)
+    api.register_condition("social.is_first_round", _cond_is_first_round)
     api.register_condition("social.faction_cleared", _cond_faction_cleared)
 
 

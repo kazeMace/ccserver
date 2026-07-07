@@ -148,18 +148,6 @@ class ConditionEvaluator:
                 actor,
                 candidate,
             )
-        if "just_died" in cond:
-            return self._primitive.evaluate_just_died(
-                str(cond["just_died"]),
-                state,
-                actor,
-                candidate,
-            )
-        if "is_first_round" in cond:
-            return self._primitive.evaluate_is_first_round(
-                bool(cond["is_first_round"]),
-                state,
-            )
         if "python" in cond:
             return self._code.evaluate_python(cond["python"], state, actor, candidate)
         if "expr" in cond:

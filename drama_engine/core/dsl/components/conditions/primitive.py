@@ -225,31 +225,6 @@ class PrimitiveConditionEvaluator:
             return True
         return int(count) > 0
 
-    def evaluate_just_died(
-        self,
-        entity_name: str,
-        state: State,
-        actor: str | None,
-        candidate: str | None,
-    ) -> bool:
-        """Check whether an entity died in the current round."""
-        entity = entity_name
-        if entity == "actor":
-            assert actor is not None, "just_died 含 'actor' 但未传入 actor"
-            entity = actor
-        elif entity == "candidate":
-            assert candidate is not None, "just_died 含 'candidate' 但未传入 candidate"
-            entity = candidate
-        death_round = state.get_attr(entity, "death_round")
-        current_round = state.get_attr("GAME", "round")
-        return death_round is not None and death_round == current_round
-
-    def evaluate_is_first_round(self, expected: bool, state: State) -> bool:
-        """Check whether the current game round is the first round."""
-        round_num = state.get_attr("GAME", "round") or 0
-        result = round_num <= 1
-        return result if expected else not result
-
     def resolve_value_expr(
         self,
         expr: Any,

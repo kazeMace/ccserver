@@ -54,9 +54,13 @@ def register_builtin_game_packs(registry: GamePackRuntimeRegistry) -> None:
     ))
     registry.register(GamePackManifest(
         plugin_id="builtin.social",
-        description="社交推理机制集合：计票、出局、夜晚结算、阵营清空判定。适用狼人杀/阿瓦隆/谁是卧底。",
+        description="社交推理机制集合：计票、出局、夜晚结算、阵营清空判定、击杀/记录/发言顺序等。适用狼人杀/阿瓦隆/谁是卧底。",
         register=social.register,
-        mechanisms=("tally_votes", "eliminate", "resolve_night", "social.faction_cleared"),
+        mechanisms=(
+            "tally_votes", "eliminate", "resolve_night", "social.faction_cleared",
+            "social.kill", "social.record_target", "social.record_current_deaths",
+            "social.build_speech_order", "social.just_died", "social.is_first_round",
+        ),
         default_config={},
         required_extensions=(),
     ))

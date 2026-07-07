@@ -305,3 +305,85 @@ def test_game_pack_registry_registers_all_builtins() -> None:
     registry.install("builtin.stats", PluginApi(plugins))
     assert plugins.has_effect("grant_item")
     assert plugins.has_effect("adjust_attr")
+
+
+# ── M1-B：从通用 DSL 层迁入 builtin.social 的狼人杀专属机制 ──
+
+def test_social_kill_sets_alive_cause_round() -> None:
+    """social.kill 应设 alive=False + death_cause + death_round。"""
+    state = _new_state(players=2)
+    StateWriter(state).apply(SetAttr("GAME", "round", 3))
+    registry = _registry_with(social)
+    registry.execute_effect(
+        {"type": "social.kill", "target": "@Player_1", "cause": "wolf"},
+        _ctx(state),
+    )
+    assert state.get_attr("Player_1", "alive") is False
+    assert state.get_attr("Player_1", "death_cause") == "wolf"
+    assert state.get_attr("Player_1", "death_round") == 3
+
+
+def test_social_record_target_writes_game_attr() -> None:
+    """social.record_target 应把来源实体写入 GAME 指定属性。"""
+    state = _new_state(players=2)
+    registry = _registry_with(social)
+    registry.execute_effect(
+        {"type": "social.record_target", "attr": "night_target", "source": "@Player_2"},
+        _ctx(state),
+    )
+    assert state.get_attr("GAME", "night_target") == "Player_2"
+
+
+def test_social_record_current_deaths_by_round_and_seat_order() -> None:
+    """social.record_current_deaths 记录本轮死亡（按座位排序）。"""
+    state = _new_state(players=3)
+    writer = StateWriter(state)
+    writer.apply(SetAttr("GAME", "round", 2))
+    writer.apply(SetAttr("Player_2", "death_round", 2))
+    writer.apply(SetAttr("Player_3", "death_round", 2))
+    writer.apply(SetAttr("Player_1", "death_round", 1))  # 上一轮死的不计入
+    registry = _registry_with(social)
+    registry.execute_effect(
+        {"type": "social.record_current_deaths", "path": "GAME.today_deaths"},
+        _ctx(state),
+    )
+    assert state.get_attr("GAME", "today_deaths") == ["Player_2", "Player_3"]
+
+
+def test_social_build_speech_order_left_from_death() -> None:
+    """social.build_speech_order 从参考点按方向生成发言顺序。"""
+    state = _new_state(players=3)
+    StateWriter(state).apply(SetAttr("GAME", "round", 2))
+    registry = _registry_with(social)
+    registry.execute_effect(
+        {
+            "type": "social.build_speech_order",
+            "path": "GAME.speech_order",
+            "reference": "@Player_1",
+            "direction": "left",
+            "filter": {"alive": True},
+        },
+        _ctx(state),
+    )
+    order = state.get_attr("GAME", "speech_order")
+    assert order == ["Player_2", "Player_3", "Player_1"]
+
+
+def test_social_just_died_condition() -> None:
+    """social.just_died 判断实体是否本轮死亡。"""
+    state = _new_state(players=2)
+    StateWriter(state).apply(SetAttr("GAME", "round", 2))
+    StateWriter(state).apply(SetAttr("Player_1", "death_round", 2))
+    registry = _registry_with(social)
+    assert registry.evaluate_condition("social.just_died", {"entity": "Player_1"}, {"state": state}) is True
+    assert registry.evaluate_condition("social.just_died", {"entity": "Player_2"}, {"state": state}) is False
+
+
+def test_social_is_first_round_condition() -> None:
+    """social.is_first_round 判断是否首轮。"""
+    registry = _registry_with(social)
+    state = _new_state(players=2)
+    StateWriter(state).apply(SetAttr("GAME", "round", 1))
+    assert registry.evaluate_condition("social.is_first_round", {}, {"state": state}) is True
+    StateWriter(state).apply(SetAttr("GAME", "round", 2))
+    assert registry.evaluate_condition("social.is_first_round", {}, {"state": state}) is False
