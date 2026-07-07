@@ -117,7 +117,14 @@ class ControllerActionExecutor:
             if not actor_name:
                 actor_name = self._default_controller_actor(ctx, controller_type)
             if actor_name in ctx.cast.all_names():
-                return await ctx.cast.get(actor_name).act(cue, None)
+                actor = ctx.cast.get(actor_name)
+
+                # 从 State 读取 role 信息并注入到 actor profile（改动 3）
+                self._ensure_actor_profile(ctx, actor, actor_name)
+
+                if controller_type == "human":
+                    self._prepare_human_controller_request(actor, action)
+                return await actor.act(cue, None)
         if controller_type == "plugin":
             service_result = await self._services.call_async(
                 ctx,
@@ -131,6 +138,35 @@ class ControllerActionExecutor:
                 "data": service_result.get("data"),
             }
         return {"actor": controller_type, "text": "(system controller)", "data": None}
+
+    def _prepare_human_controller_request(self, actor: Any, action: ControllerActionSpec) -> None:
+        """把 controller_action 的选择语义注入真人 pending request。
+
+        前端只认识 ActionRequest → ReplyRequest；如果这里不写 metadata，
+        controller_action.choice 会退化成普通文本输入，玩家看不到选项。
+        """
+        choices = list(action.choices or [])
+        if hasattr(actor, "set_candidates"):
+            actor.set_candidates([str(choice.get("id")) for choice in choices if choice.get("id") is not None])
+        if not hasattr(actor, "set_action_request_hints"):
+            return
+        metadata: dict[str, Any] = {
+            "options": [
+                {
+                    "id": str(choice.get("id") or ""),
+                    "text": str(choice.get("text") or choice.get("id") or ""),
+                    "desc": choice.get("desc"),
+                    "disabled": bool(choice.get("disabled", False)),
+                    "disabled_reason": choice.get("disabled_reason") or choice.get("cond"),
+                }
+                for choice in choices
+                if choice.get("id") is not None
+            ],
+        }
+        free_input = dict(action.free_input or {})
+        if free_input.get("enabled"):
+            metadata["free_input"] = True
+        actor.set_action_request_hints(kind="choose" if choices else "free_text", metadata=metadata)
 
     async def continue_generated_beat(
         self,
@@ -191,3 +227,50 @@ class ControllerActionExecutor:
             if text and (choice_id in text or choice_text in text):
                 return choice
         return choices[0]
+
+    def _ensure_actor_profile(
+        self,
+        ctx: InteractiveExecutionContext,
+        actor: Any,
+        actor_name: str,
+    ) -> None:
+        """确保 actor 已设置 profile（从 State 读取 role 信息）。
+
+        只对 AI actor 生效，且只在第一次调用时设置（避免重复）。
+        """
+        # 只处理 AI actor
+        if not hasattr(actor, "controller_type") or actor.controller_type != "ai":
+            return
+
+        # 如果已经设置过 profile，跳过
+        if hasattr(actor, "_profile") and actor._profile is not None:
+            return
+
+        # 从 State 读取该 seat 的 role
+        role_name = ctx.state.get_attr(actor_name, "role")
+        if not role_name:
+            return
+
+        # 从 GAME.roles 读取 role 详细信息
+        roles = ctx.state.get_attr("GAME", "roles")
+        if not roles or not isinstance(roles, dict):
+            return
+
+        role_data = roles.get(role_name)
+        if not role_data:
+            return
+
+        # 构建 ActorProfile 并设置
+        from drama_engine.core.engine.actors import ActorProfile
+        profile = ActorProfile(
+            role_name=role_name,
+            role_display_name=role_data.get("display_name", role_name),
+            persona=role_data.get("description", ""),
+        )
+        actor.set_actor_profile(profile)
+        logger.info(
+            "[ControllerActionExecutor] 为 actor=%s 设置 profile，role=%s",
+            actor_name,
+            role_name,
+        )
+

@@ -40,6 +40,10 @@ class ParticipantActionExecutor:
     ) -> dict[str, Any]:
         """Collect one actor response and deliver visible message."""
         actor = ctx.cast.get(actor_name)
+
+        # 从 State 读取 role 信息并注入到 actor profile（改动 3）
+        self._ensure_actor_profile(ctx, actor, actor_name)
+
         candidates = await self._resolve_candidates(ctx, action, actor_name)
         if hasattr(actor, "set_candidates"):
             actor.set_candidates(candidates)
@@ -370,4 +374,50 @@ class ParticipantActionExecutor:
             if ctx.emit_private is not None:
                 for name in members:
                     ctx.emit_private(str(name), private_event)
-            ctx.emit_host(private_event)
+
+    def _ensure_actor_profile(
+        self,
+        ctx: InteractiveExecutionContext,
+        actor: Any,
+        actor_name: str,
+    ) -> None:
+        """确保 actor 已设置 profile（从 State 读取 role 信息）。
+
+        只对 AI actor 生效，且只在第一次调用时设置（避免重复）。
+        """
+        # 只处理 AI actor
+        if not hasattr(actor, "controller_type") or actor.controller_type != "ai":
+            return
+
+        # 如果已经设置过 profile，跳过
+        if hasattr(actor, "_profile") and actor._profile is not None:
+            return
+
+        # 从 State 读取该 seat 的 role
+        role_name = ctx.state.get_attr(actor_name, "role")
+        if not role_name:
+            return
+
+        # 从 GAME.roles 读取 role 详细信息
+        roles = ctx.state.get_attr("GAME", "roles")
+        if not roles or not isinstance(roles, dict):
+            return
+
+        role_data = roles.get(role_name)
+        if not role_data:
+            return
+
+        # 构建 ActorProfile 并设置
+        from drama_engine.core.engine.actors import ActorProfile
+        profile = ActorProfile(
+            role_name=role_name,
+            role_display_name=role_data.get("display_name", role_name),
+            persona=role_data.get("description", ""),
+        )
+        actor.set_actor_profile(profile)
+        logger.info(
+            "[ParticipantActionExecutor] 为 actor=%s 设置 profile，role=%s",
+            actor_name,
+            role_name,
+        )
+
