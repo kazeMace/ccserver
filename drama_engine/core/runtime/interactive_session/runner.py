@@ -81,10 +81,21 @@ class InteractiveSessionRunner(BasicGameRunner):
         state = self._build_state(script, player_names)
         plugins = build_default_plugin_registry()
         InteractivePluginLoader().load(plugins, script.plugins)
+        # 加载 plugins/ 目录扫描到的插件
+        if bundle.plugin_specs:
+            InteractivePluginLoader().load_from_specs(plugins, bundle.plugin_specs)
         # 安装 DSL 声明的 GamePack（机制集合）：把其机制注册进 plugin registry，
         # 并把默认 config 与 DSL config 合并后写入 GAME 状态。
         self._install_game_pack(script, plugins, state)
         evaluator = ConditionEvaluator(plugins)
+
+        # 加载 hooks/ 目录扫描到的钩子
+        hook_runner = None
+        if bundle.hook_specs:
+            from drama_engine.core.runtime.interactive_session.services.hook_runner import HookRunner
+            hook_runner = HookRunner()
+            hook_runner.load_from_specs(bundle.hook_specs)
+
         ctx = InteractiveExecutionContext(
             script=script,
             state=state,
@@ -103,8 +114,8 @@ class InteractiveSessionRunner(BasicGameRunner):
             emit_private=self._emit_private,
             disclosure_ledger=DisclosureLedger(),
             base_raw=deepcopy(script.raw),
-            # M5.2：把 flow/scene 推进接到 SessionState.progress，使进度不再是死字段。
             on_progress=ProgressTracker(session_state).record_progress,
+            hook_runner=hook_runner,
         )
         self._ctx = ctx
         session_state.metadata["human_seat_ids"] = list(getattr(session_state, "human_seat_ids", set()))
@@ -130,6 +141,8 @@ class InteractiveSessionRunner(BasicGameRunner):
         assert self._ctx is not None, "start 前必须先 assign"
         session_state.set_status(SESSION_RUNNING)
         self._emit_public({"kind": "session_started", "runtime_type": "interactive_session"})
+        # 触发 on_session_start hook
+        await self._trigger_hook("on_session_start")
         self.runtime_state.task = asyncio.create_task(self._run_flow())
 
     async def cancel_task(self) -> None:
@@ -223,6 +236,8 @@ class InteractiveSessionRunner(BasicGameRunner):
         assert self._ctx is not None, "interactive context 不能为空"
         try:
             result = await self._flow_executor.execute(self._ctx)
+            # 触发 on_session_end hook
+            await self._trigger_hook("on_session_end", {"result": result})
             self.session_state.metadata["interactive_session"]["result"] = result
             self.session_state.metadata["interactive_session"]["patches"] = self._ctx.patch_journal.snapshot()
             self.session_state.set_status(SESSION_ENDED)
@@ -378,6 +393,22 @@ class InteractiveSessionRunner(BasicGameRunner):
     def _emit_private(self, seat_id: str, event: dict[str, Any]) -> None:
         """Publish one private seat event."""
         self.event_publisher.private(seat_id, dict(event))
+
+    async def _trigger_hook(self, event: str, payload: dict[str, Any] | None = None) -> None:
+        """触发指定事件的 hook（若 hook_runner 已挂载）。"""
+        if self._ctx is None or self._ctx.hook_runner is None:
+            return
+        from drama_engine.core.runtime.interactive_session.services.hook_runner import HookContext
+        ctx = HookContext(
+            event=event,
+            payload=payload or {},
+            state=self._ctx.state,
+            writer=self._ctx.writer,
+            cast=self._ctx.cast,
+            session_metadata=self._ctx.session_metadata,
+            scene_id=self._ctx.current_scene_id,
+        )
+        await self._ctx.hook_runner.trigger(event, ctx)
 
 
 InteractiveSessionExecutionModel = InteractiveSessionRunner

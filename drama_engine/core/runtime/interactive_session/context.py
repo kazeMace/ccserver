@@ -48,6 +48,9 @@ class InteractiveExecutionContext:
     # 进度回调：flow/scene 推进时调用 on_progress(current_state, current_scene, round)，
     # 由 runner 接到 SessionState.progress（M5.2）。None 时不追踪（最小 runtime 兼容）。
     on_progress: Any = None
+    # Hook 运行器：管理和执行 hooks/ 目录中的生命周期钩子。
+    # None 时不触发任何 hook（兼容无 hook 的最小 runtime）。
+    hook_runner: Any = None
 
     def notify_progress(self) -> None:
         """把当前 flow/scene 位置与轮次上报给进度回调（若已接线）。"""
