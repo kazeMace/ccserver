@@ -38,10 +38,7 @@ class LLMExecutor(BaseExecutor):
         """
         assert isinstance(session_metadata, dict), "session_metadata 必须是 dict"
         self._metadata = session_metadata
-        # 延迟导入避免循环依赖
-        from drama_engine.core.runtime.interactive_session.services.inside_agent import (
-            InsideAgentFactory,
-        )
+        from drama_engine.core.executor.agent_factory import InsideAgentFactory
         self._factory = InsideAgentFactory()
 
     async def execute(self, request: ExecutorRequest) -> ExecutorResponse:
