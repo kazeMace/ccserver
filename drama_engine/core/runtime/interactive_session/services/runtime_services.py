@@ -1,73 +1,121 @@
 """Runtime service calls for interactive_session.
 
-这个模块集中处理“可替换能力”：插件、HTTP、LLM、内置策略。
-Executors 只依赖这个小接口，不直接知道具体 provider。
+这个模块集中处理可替换能力：通过 ExecutorRegistry 分派到 llm/plugin/http/code，
+或走内置策略(builtin)。Executors 只依赖这个小接口，不直接知道具体 provider。
 """
 
 from __future__ import annotations
 
 import json
-import os
-import urllib.error
-import urllib.request
-import inspect
-import asyncio
-import threading
+import logging
 from difflib import SequenceMatcher
 from typing import Any
 
 from drama_engine.core.dsl.components.interaction_protocol import InteractionProtocolBuilder
 from drama_engine.core.dsl.components.service_input import ServiceInputBuilder
+from drama_engine.core.executor import ExecutorRequest
+from drama_engine.core.executor.registry import EXECUTOR_BUILTIN, TRANSPORT_EXECUTORS
 from drama_engine.core.runtime.interactive_session.context import InteractiveExecutionContext
-from drama_engine.core.runtime.interactive_session.services.inside_agent import InsideAgentFactory
+
+logger = logging.getLogger(__name__)
 
 
 class RuntimeServiceCaller:
-    """Call built-in, plugin, HTTP, or LLM-like runtime services."""
+    """通过 ExecutorRegistry 分派 runtime service 调用。
+
+    分派逻辑:
+      - executor = builtin / 省略 → 走内置策略（_call_builtin）
+      - executor = llm / plugin / http / code → 走 ExecutorRegistry
+    """
 
     def __init__(self) -> None:
-        """Initialize shared service helpers."""
+        """初始化 service helpers。"""
         self._input_builder = ServiceInputBuilder()
         self._protocol = InteractionProtocolBuilder()
-        self._inside_agents = InsideAgentFactory()
 
-    def call_sync(
+    def _resolve_executor(self, spec: dict[str, Any]) -> str:
+        """解析 executor 类型。
+
+        兼容旧的 evaluator/provider/type 字段。
+        "inside" 映射到 "llm"（inside 是旧写法，实际就是 ccserver Agent 调 LLM）。
+        """
+        executor = (
+            spec.get("executor")
+            or spec.get("provider")
+            or spec.get("evaluator")
+            or spec.get("type")
+        )
+        if executor:
+            name = str(executor)
+            # inside 是 llm 的旧名称
+            if name == "inside":
+                return "llm"
+            if name in TRANSPORT_EXECUTORS:
+                return name
+        if spec.get("plugin"):
+            return "plugin"
+        return EXECUTOR_BUILTIN
+
+    async def _call_inside_actor(
         self,
         ctx: InteractiveExecutionContext,
-        spec: dict[str, Any] | None,
+        spec: dict[str, Any],
         purpose: str,
         payload: dict[str, Any],
-    ) -> dict[str, Any]:
-        """Call one service and return a dict result.
+    ) -> dict[str, Any] | None:
+        """借用玩家 seat 的 actor 执行 inside service（显式指定时）。
 
-        Args:
-            ctx: Runtime execution context.
-            spec: Provider/service declaration from DSL.
-            purpose: Semantic purpose, for built-in dispatch.
-            payload: Fully materialized runtime payload.
+        安全策略：
+          - 无显式 agent_id/seat_id → 返回 None，交给后续 executor/builtin 处理。
+          - 有显式指定 → 通过 KnowledgeFirewall 生成受限上下文投影，
+            绝不把全局 state 喂给玩家 actor。
 
-        Returns:
-            A dictionary result. Empty dict means no service result.
+        参数:
+            ctx: 运行时上下文
+            spec: service 声明（需要 agent_id 或 seat_id）
+            purpose: 调用目的
+            payload: 运行时 payload
 
-        Raises:
-            ValueError: When the provider type is unknown or response shape is invalid.
+        返回:
+            dict 结果，或 None（未指定 actor 时）
         """
-        service_spec = dict(spec or {})
-        service_payload = self._build_service_payload(ctx, service_spec, payload)
-        provider = self._service_provider(service_spec)
-        if provider in {"builtin", "inside"}:
-            if provider == "inside":
-                inside_result = self._call_inside_client(ctx, service_spec, purpose, service_payload)
-                if inside_result is not None:
-                    return inside_result
-            return self._call_builtin(ctx, service_spec, purpose, service_payload)
-        if provider == "plugin":
-            return self._call_plugin(ctx, service_spec, purpose, service_payload)
-        if provider == "http":
-            return self._call_http(ctx, service_spec, purpose, service_payload)
-        if provider == "llm":
-            return self._call_llm(ctx, service_spec, purpose, service_payload)
-        raise ValueError(f"未知 runtime service provider: {provider}")
+        actor_name = str(
+            spec.get("agent_id")
+            or spec.get("seat_id")
+            or ctx.session_metadata.get("inside_agent_id")
+            or ""
+        )
+        all_names = ctx.cast.all_names()
+
+        # 未显式指定 → 不借用任何玩家，交给后续路径
+        if not actor_name or actor_name not in all_names:
+            return None
+
+        # 生成该 actor 的 firewall 受限投影（不含他人秘密）
+        restricted_context = ctx.project_for_actor(actor_name, purpose="prompt")
+
+        # 构造 prompt：优先用 spec 显式提供的，否则把 restricted_context + payload 序列化
+        prompt = spec.get("prompt") or json.dumps(
+            {"purpose": purpose, "context": restricted_context, "payload": payload},
+            ensure_ascii=False,
+        )
+
+        # 调用该 seat 的 actor
+        response = await ctx.cast.get(actor_name).act(str(prompt), None)
+
+        # 解析响应
+        text = str(response.get("text") or "")
+        data = response.get("data")
+        if isinstance(data, dict):
+            return data
+        if text:
+            try:
+                decoded = json.loads(text)
+            except json.JSONDecodeError:
+                return {"text": text, "actor": actor_name, "purpose": purpose}
+            if isinstance(decoded, dict):
+                return decoded
+        return {"text": text, "actor": actor_name, "purpose": purpose}
 
     async def call_async(
         self,
@@ -76,46 +124,124 @@ class RuntimeServiceCaller:
         purpose: str,
         payload: dict[str, Any],
     ) -> dict[str, Any]:
-        """Call one service from an async runtime path.
+        """调用一个 runtime service（async）。
 
-        Args:
-            ctx: Runtime execution context.
-            spec: Provider/service declaration from DSL.
-            purpose: Semantic purpose, for built-in dispatch.
-            payload: Fully materialized runtime payload.
+        参数:
+            ctx: 运行时上下文
+            spec: DSL service 声明
+            purpose: 调用目的（用于 builtin 分派）
+            payload: 运行时 payload
 
-        Returns:
-            A dictionary service result.
+        返回:
+            dict 结果
         """
         service_spec = dict(spec or {})
         service_payload = self._build_service_payload(ctx, service_spec, payload)
-        provider = self._service_provider(service_spec)
-        if provider == "inside" or (
-            provider == "llm" and str(service_spec.get("provider") or "inside") == "inside"
-        ):
-            client_result = await self._call_inside_client_async(
-                ctx,
-                service_spec,
-                purpose,
-                service_payload,
-                allow_create=True,
+
+        # 优先检查：spec 指定了借用某个玩家 seat 的 actor 执行
+        actor_result = await self._call_inside_actor(ctx, service_spec, purpose, service_payload)
+        if actor_result is not None:
+            return actor_result
+
+        executor_type = self._resolve_executor(service_spec)
+
+        # builtin: 走内置确定性策略
+        if executor_type == EXECUTOR_BUILTIN:
+            return self._call_builtin(ctx, service_spec, purpose, service_payload)
+
+        # 通过 ExecutorRegistry 分派到 llm/plugin/http/code
+        registry = ctx.executor_registry
+        if registry is None or not registry.has(executor_type):
+            logger.warning(
+                "[RuntimeServiceCaller] executor '%s' 不可用，fallback to builtin (purpose=%s)",
+                executor_type, purpose,
             )
-            if client_result is not None:
-                return client_result
-            actor_result = await self._call_inside_actor(ctx, service_spec, purpose, service_payload)
-            if actor_result is not None:
-                return actor_result
-            self._emit_inside_agent_warning(ctx, purpose)
             return self._call_builtin(ctx, service_spec, purpose, service_payload)
-        if provider == "plugin":
-            return await self._call_plugin_async(ctx, service_spec, purpose, service_payload)
-        if provider == "http":
-            return await self._call_http_async(ctx, service_spec, purpose, service_payload)
-        if provider == "llm":
-            return await asyncio.to_thread(self._call_llm, ctx, service_spec, purpose, service_payload)
-        if provider == "builtin":
+
+        # 构造 ExecutorRequest
+        request = self._build_executor_request(ctx, service_spec, purpose, service_payload, executor_type)
+        response = await registry.execute(executor_type, request)
+
+        if not response.success:
+            logger.warning(
+                "[RuntimeServiceCaller] executor '%s' 调用失败: %s，fallback to builtin",
+                executor_type, response.error,
+            )
             return self._call_builtin(ctx, service_spec, purpose, service_payload)
-        return self.call_sync(ctx, service_spec, purpose, service_payload)
+
+        return response.data
+
+    def call_sync(
+        self,
+        ctx: InteractiveExecutionContext,
+        spec: dict[str, Any] | None,
+        purpose: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        """同步调用（仅支持 builtin）。
+
+        非 builtin 的 executor 需要 async，同步路径直接走 builtin fallback。
+        """
+        service_spec = dict(spec or {})
+        service_payload = self._build_service_payload(ctx, service_spec, payload)
+        return self._call_builtin(ctx, service_spec, purpose, service_payload)
+
+    def _build_executor_request(
+        self,
+        ctx: InteractiveExecutionContext,
+        spec: dict[str, Any],
+        purpose: str,
+        payload: dict[str, Any],
+        executor_type: str,
+    ) -> ExecutorRequest:
+        """构造 ExecutorRequest。"""
+        config: dict[str, Any] = {}
+
+        if executor_type == "llm":
+            # prompt: 优先用 spec 中显式指定的，否则用 payload 序列化
+            prompt = spec.get("prompt") or json.dumps(payload, ensure_ascii=False)
+            config["model_name"] = spec.get("model") or spec.get("model_name")
+            config["api_key"] = spec.get("api_key")
+            config["base_url"] = spec.get("base_url")
+            config["system_prompt"] = spec.get("system") or spec.get("system_prompt")
+            # 清除 None 值
+            config = {k: v for k, v in config.items() if v is not None}
+            return ExecutorRequest(
+                purpose=purpose,
+                payload={"prompt": prompt},
+                config=config,
+            )
+
+        elif executor_type == "plugin":
+            config["name"] = spec.get("name") or spec.get("plugin") or spec.get("id") or purpose
+            return ExecutorRequest(
+                purpose=purpose,
+                payload=payload,
+                config=config,
+            )
+
+        elif executor_type == "http":
+            config["url"] = spec.get("url") or spec.get("endpoint") or ""
+            config["method"] = spec.get("method") or "POST"
+            config["headers"] = spec.get("headers") or {}
+            config["timeout_ms"] = spec.get("timeout_ms") or 10000
+            return ExecutorRequest(
+                purpose=purpose,
+                payload=payload,
+                config=config,
+            )
+
+        elif executor_type == "code":
+            config["language"] = spec.get("language") or "python"
+            config["code"] = spec.get("code") or ""
+            config["env"] = spec.get("env") or {}
+            return ExecutorRequest(
+                purpose=purpose,
+                payload={"state": ctx.state.snapshot() if ctx.state else {}},
+                config=config,
+            )
+
+        return ExecutorRequest(purpose=purpose, payload=payload, config=config)
 
     def _build_service_payload(
         self,
@@ -140,159 +266,6 @@ class RuntimeServiceCaller:
             return built
         return {"value": built}
 
-    def _has_inside_client(
-        self,
-        ctx: InteractiveExecutionContext,
-        spec: dict[str, Any],
-    ) -> bool:
-        """Return whether an explicit inside client/Agent is available."""
-        return self._explicit_inside_client(ctx, spec) is not None
-
-    def _explicit_inside_client(
-        self,
-        ctx: InteractiveExecutionContext,
-        spec: dict[str, Any],
-    ) -> Any | None:
-        """Return only explicitly injected Agent/client handles."""
-        return (
-            spec.get("client")
-            or ctx.session_metadata.get("inside_agent")
-            or ctx.session_metadata.get("llm_client")
-            or ctx.session_metadata.get("llm_provider")
-        )
-
-    def _service_provider(self, spec: dict[str, Any]) -> str:
-        """Resolve the provider family for a runtime service declaration."""
-        evaluator = spec.get("provider") or spec.get("evaluator") or spec.get("type")
-        if evaluator:
-            return str(evaluator)
-        if spec.get("provider"):
-            return str(spec["provider"])
-        if spec.get("plugin"):
-            return "plugin"
-        return "builtin"
-
-    async def _call_plugin_async(
-        self,
-        ctx: InteractiveExecutionContext,
-        spec: dict[str, Any],
-        purpose: str,
-        payload: dict[str, Any],
-    ) -> dict[str, Any]:
-        """Call a plugin runtime service from an async path."""
-        name = str(spec.get("name") or spec.get("plugin") or spec.get("id") or purpose)
-        registry = ctx.plugin_registry
-        if (
-            registry is not None
-            and hasattr(registry, "has_runtime_service")
-            and registry.has_runtime_service(name)
-        ):
-            result = registry.call_runtime_service(
-                name,
-                self._plugin_payload(ctx, spec, purpose, payload),
-            )
-            if inspect.isawaitable(result):
-                result = await result
-            return self._ensure_dict(result, f"plugin service {name}")
-        return self._call_plugin(ctx, spec, purpose, payload)
-
-    def _call_plugin(
-        self,
-        ctx: InteractiveExecutionContext,
-        spec: dict[str, Any],
-        purpose: str,
-        payload: dict[str, Any],
-    ) -> dict[str, Any]:
-        """Call a plugin-like service.
-
-        当前 PluginRegistry 的正式接口主要是 condition/effect/view。
-        为了让 interactive_session 可以先统一 DSL，这里支持两类插件：
-        1. registry 上未来扩展的 call_runtime_service(name, payload)。
-        2. 当前内置语义插件名，作为可测试、可替换的默认实现。
-        """
-        name = str(spec.get("name") or spec.get("plugin") or spec.get("id") or purpose)
-        registry = ctx.plugin_registry
-        if (
-            registry is not None
-            and hasattr(registry, "has_runtime_service")
-            and registry.has_runtime_service(name)
-        ):
-            result = registry.call_runtime_service(
-                name,
-                self._plugin_payload(ctx, spec, purpose, payload),
-            )
-            return self._ensure_dict(result, f"plugin service {name}")
-        if registry is not None and hasattr(registry, "has_condition") and registry.has_condition(name):
-            passed = ctx.condition_evaluator.evaluate(
-                {"evaluator": "plugin", "name": name, **spec},
-                ctx.state,
-                actor=None,
-                responses=ctx.last_responses,
-                extra={**ctx.runtime_extra(), "service_payload": payload},
-            )
-            return {"result": passed}
-        return self._call_builtin(ctx, {**spec, "name": name}, purpose, payload)
-
-    def _call_http(
-        self,
-        ctx: InteractiveExecutionContext,
-        spec: dict[str, Any],
-        purpose: str,
-        payload: dict[str, Any],
-    ) -> dict[str, Any]:
-        """Call an HTTP runtime service."""
-        url = self._resolve_url(spec)
-        if not url:
-            return self._fallback(spec, purpose, payload)
-        timeout = int(spec.get("timeout_ms") or 10000) / 1000
-        body = self._protocol.with_legacy_aliases(
-            self._service_envelope(ctx, spec, purpose, payload, "http")
-        )
-        request = urllib.request.Request(
-            url,
-            data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
-            headers={**dict(spec.get("headers") or {}), "Content-Type": "application/json"},
-            method=str(spec.get("method") or "POST").upper(),
-        )
-        try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:
-                return self._ensure_dict(json.loads(response.read().decode("utf-8")), "http service")
-        except (OSError, urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
-            if "fallback" in spec:
-                return self._ensure_dict(spec.get("fallback") or {}, "http fallback")
-            ctx.emit_host({
-                "kind": "interactive_session_warning",
-                "message": f"HTTP runtime service 调用失败: {exc}",
-                "purpose": purpose,
-            })
-            return {}
-
-    async def _call_http_async(
-        self,
-        ctx: InteractiveExecutionContext,
-        spec: dict[str, Any],
-        purpose: str,
-        payload: dict[str, Any],
-    ) -> dict[str, Any]:
-        """Call an HTTP runtime service without blocking the event loop."""
-        return await asyncio.to_thread(self._call_http, ctx, spec, purpose, payload)
-
-    def _call_llm(
-        self,
-        ctx: InteractiveExecutionContext,
-        spec: dict[str, Any],
-        purpose: str,
-        payload: dict[str, Any],
-    ) -> dict[str, Any]:
-        """Call an LLM provider or deterministic inside fallback."""
-        provider = str(spec.get("provider") or "inside")
-        if provider == "inside":
-            result = self._call_inside_client(ctx, spec, purpose, payload)
-            if result is not None:
-                return result
-            return self._call_builtin(ctx, spec, purpose, payload)
-        return self._call_http(ctx, spec, purpose, payload)
-
     def _call_builtin(
         self,
         ctx: InteractiveExecutionContext,
@@ -300,7 +273,7 @@ class RuntimeServiceCaller:
         purpose: str,
         payload: dict[str, Any],
     ) -> dict[str, Any]:
-        """Built-in deterministic service implementations."""
+        """内置确定性策略分派。"""
         name = str(spec.get("name") or spec.get("id") or purpose)
         if "patch" in spec and isinstance(spec["patch"], dict):
             return {"patch": dict(spec["patch"])}
@@ -319,7 +292,7 @@ class RuntimeServiceCaller:
         return self._fallback(spec, purpose, payload)
 
     def _map_choice(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """Map free text to the closest available choice."""
+        """模糊匹配玩家文本到最接近的选项。"""
         text = str(payload.get("text") or "").lower()
         choices = list(payload.get("choices") or [])
         best_choice = choices[0] if choices else {}
@@ -345,15 +318,14 @@ class RuntimeServiceCaller:
         spec: dict[str, Any],
         payload: dict[str, Any],
     ) -> dict[str, Any]:
-        """Detect schedule patch from spec or source response data."""
+        """从 response data 中检测 schedule patch。"""
         response = payload.get("source_response") or {}
         data = response.get("data")
         if isinstance(data, dict) and isinstance(data.get("schedule_patch"), dict):
             return {"patch": dict(data["schedule_patch"])}
-        text = str(response.get("text") or "")
         if "patch" in spec and isinstance(spec["patch"], dict):
             return {"patch": dict(spec["patch"])}
-        if not text:
+        if not str(response.get("text") or ""):
             return {}
         return {"patch": None}
 
@@ -362,7 +334,7 @@ class RuntimeServiceCaller:
         ctx: InteractiveExecutionContext,
         spec: dict[str, Any],
     ) -> dict[str, Any]:
-        """Choose an ending from progress conditions."""
+        """根据条件选择结局。"""
         endings = list(spec.get("endings") or [])
         for ending in endings:
             when = ending.get("when") if isinstance(ending, dict) else None
@@ -384,7 +356,7 @@ class RuntimeServiceCaller:
         return {"ending": spec.get("ending")}
 
     def _plan_openchat_next(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """Choose the next openchat speaker deterministically."""
+        """轮询确定下一个发言者。"""
         participants = [str(item) for item in payload.get("participants", []) or []]
         if not participants:
             return {"stop": True}
@@ -400,14 +372,11 @@ class RuntimeServiceCaller:
         spec: dict[str, Any],
         payload: dict[str, Any],
     ) -> dict[str, Any]:
-        """Generate one story beat or temporary branch with deterministic fallback."""
+        """确定性 fallback 故事生成。"""
         text = str(spec.get("text") or payload.get("text") or "")
         if not text:
             text = "剧情继续向前推进。"
-        return {
-            "text": text,
-            "beats": [{"text": text}],
-        }
+        return {"text": text, "beats": [{"text": text}]}
 
     def _generate_flow_patch(
         self,
@@ -415,7 +384,7 @@ class RuntimeServiceCaller:
         spec: dict[str, Any],
         payload: dict[str, Any],
     ) -> dict[str, Any]:
-        """Generate a flow patch with deterministic fallback."""
+        """确定性 fallback flow patch 生成。"""
         if isinstance(spec.get("patch"), dict):
             return {"patch": dict(spec["patch"])}
         scene_id = f"generated_{len(ctx.patch_journal.by_type('flow_patch')) + 1}"
@@ -450,259 +419,10 @@ class RuntimeServiceCaller:
         purpose: str,
         payload: dict[str, Any],
     ) -> dict[str, Any]:
-        """Return explicit fallback or empty result."""
+        """返回 spec 中的 fallback 或空结果。"""
         fallback = spec.get("fallback")
         if isinstance(fallback, dict):
             return dict(fallback)
         if purpose == "story_generator":
             return self._generate_story(spec, payload)
         return {}
-
-    def _call_client(
-        self,
-        client: Any,
-        spec: dict[str, Any],
-        purpose: str,
-        payload: dict[str, Any],
-    ) -> Any:
-        """Call a user-provided LLM client."""
-        prompt = spec.get("prompt") or json.dumps(payload, ensure_ascii=False)
-        if hasattr(client, "run"):
-            value = client.run(str(prompt))
-        elif hasattr(client, "act"):
-            value = client.act(str(prompt), None)
-        elif hasattr(client, "generate_ruling"):
-            value = client.generate_ruling(prompt=prompt, action=purpose, world=payload)
-        elif hasattr(client, "complete"):
-            value = client.complete(prompt)
-        elif callable(client):
-            value = client({"purpose": purpose, "prompt": prompt, "payload": payload})
-        else:
-            raise TypeError("llm_client 必须实现 run、act、generate_ruling、complete 或 callable")
-        if inspect.isawaitable(value):
-            return self._await_sync(value)
-        return value
-
-    def _await_sync(self, value: Any) -> Any:
-        """Wait for an awaitable from a sync compatibility path."""
-        try:
-            asyncio.get_running_loop()
-        except RuntimeError:
-            return asyncio.run(value)
-        result: dict[str, Any] = {}
-
-        def run_in_thread() -> None:
-            try:
-                result["value"] = asyncio.run(value)
-            except BaseException as exc:  # noqa: BLE001 - re-raise in caller thread.
-                result["error"] = exc
-
-        thread = threading.Thread(target=run_in_thread, daemon=True)
-        thread.start()
-        thread.join()
-        if "error" in result:
-            raise result["error"]
-        return result.get("value")
-
-    def _call_inside_client(
-        self,
-        ctx: InteractiveExecutionContext,
-        spec: dict[str, Any],
-        purpose: str,
-        payload: dict[str, Any],
-    ) -> dict[str, Any] | None:
-        """Call a synchronous injected ccserver/LLM-like inside client."""
-        client = (
-            spec.get("client")
-            or ctx.session_metadata.get("inside_agent")
-            or ctx.session_metadata.get("llm_client")
-            or ctx.session_metadata.get("llm_provider")
-        )
-        if client is None:
-            return None
-        result = self._call_client(client, spec, purpose, payload)
-        return self._ensure_dict(result, "inside runtime service")
-
-    async def _call_inside_client_async(
-        self,
-        ctx: InteractiveExecutionContext,
-        spec: dict[str, Any],
-        purpose: str,
-        payload: dict[str, Any],
-        allow_create: bool = False,
-    ) -> dict[str, Any] | None:
-        """Call an injected ccserver Agent/client from an async runtime path."""
-        client = (
-            spec.get("client")
-            or ctx.session_metadata.get("inside_agent")
-            or ctx.session_metadata.get("llm_client")
-            or ctx.session_metadata.get("llm_provider")
-        )
-        if client is None and allow_create:
-            client = self._inside_agents.get_or_create(ctx.session_metadata, spec)
-        if client is None:
-            return None
-        prompt = spec.get("prompt") or json.dumps(
-            self._service_envelope(ctx, spec, purpose, payload, "inside"),
-            ensure_ascii=False,
-        )
-        if hasattr(client, "run"):
-            value = client.run(str(prompt))
-        elif hasattr(client, "act"):
-            value = client.act(str(prompt), None)
-        elif hasattr(client, "generate_ruling"):
-            value = client.generate_ruling(prompt=prompt, action=purpose, world=payload)
-        elif hasattr(client, "complete"):
-            value = client.complete(prompt)
-        elif callable(client):
-            value = client({"purpose": purpose, "prompt": prompt, "payload": payload})
-        else:
-            return None
-        if inspect.isawaitable(value):
-            value = await value
-        if isinstance(value, dict) and "text" in value and "data" in value:
-            data = value.get("data")
-            if isinstance(data, dict):
-                return data
-        return self._ensure_dict(value, "inside runtime service")
-
-    async def _call_inside_actor(
-        self,
-        ctx: InteractiveExecutionContext,
-        spec: dict[str, Any],
-        purpose: str,
-        payload: dict[str, Any],
-    ) -> dict[str, Any] | None:
-        """Call a **显式指定** 的 ccserver actor 作为 inside agent。
-
-        H1 缺口2 修复：不再在未指定时自动借用 `all_names[0]`（任意玩家 seat）。
-        借用玩家 seat 执行系统级 service（planner/story/condition）本身语义可疑，
-        且过去会把 full_context_payload（含全局 state、他人秘密）喂给该玩家 Agent，
-        绕过 KnowledgeFirewall。现在：
-          - 无显式指定 → 返回 None，交给 builtin fallback（不借用任何玩家）。
-          - 有显式指定 → 只喂该 actor 的 firewall 受限投影，绝不给全局 state。
-        无参数的隐藏系统 agent 由上游 `_call_inside_client_async(allow_create=True)`
-        负责（那是专用非玩家执行体，走独立 Agent，不占用玩家 seat）。
-        """
-        actor_name = str(
-            spec.get("agent_id")
-            or spec.get("seat_id")
-            or ctx.session_metadata.get("inside_agent_id")
-            or ""
-        )
-        all_names = ctx.cast.all_names()
-        # 不再自动借用 all_names[0]：未显式指定就放弃，交给 builtin fallback。
-        if not actor_name or actor_name not in all_names:
-            return None
-        # 显式借用某个 seat 的 actor 时，context 必须是该 actor 的 firewall 受限投影，
-        # 而非 full_context_payload（否则该 seat 的 Agent 会看到他人秘密）。
-        restricted_context = ctx.project_for_actor(actor_name, purpose="prompt")
-        prompt = spec.get("prompt") or json.dumps(
-            self._service_envelope(
-                ctx, spec, purpose, payload, "inside",
-                context_override=restricted_context,
-            ),
-            ensure_ascii=False,
-        )
-        response = await ctx.cast.get(actor_name).act(str(prompt), None)
-        text = str(response.get("text") or "")
-        data = response.get("data")
-        if isinstance(data, dict):
-            return data
-        if text:
-            try:
-                decoded = json.loads(text)
-            except json.JSONDecodeError:
-                return {"text": text, "actor": actor_name, "purpose": purpose}
-            if isinstance(decoded, dict):
-                return decoded
-        return {"text": text, "actor": actor_name, "purpose": purpose}
-
-    def _emit_inside_agent_warning(
-        self,
-        ctx: InteractiveExecutionContext,
-        purpose: str,
-    ) -> None:
-        """Expose inside-agent creation failure once per purpose."""
-        error = ctx.session_metadata.get("__interactive_inside_agent_error")
-        if not error:
-            return
-        key = f"__interactive_inside_agent_warning_{purpose}"
-        if ctx.session_metadata.get(key):
-            return
-        ctx.session_metadata[key] = True
-        ctx.emit_host({
-            "kind": "interactive_session_warning",
-            "message": f"内部 Agent 初始化失败，已使用 builtin fallback: {error}",
-            "purpose": purpose,
-        })
-
-    def _resolve_url(self, spec: dict[str, Any]) -> str:
-        """Resolve URL from DSL or environment."""
-        if spec.get("url"):
-            return str(spec["url"])
-        endpoint = str(spec.get("endpoint") or spec.get("id") or spec.get("name") or "")
-        if not endpoint:
-            return ""
-        env_name = "DRAMA_RUNTIME_SERVICE_" + "".join(
-            ch if ch.isalnum() else "_"
-            for ch in endpoint.upper()
-        )
-        return os.environ.get(env_name, "")
-
-    def _service_envelope(
-        self,
-        ctx: InteractiveExecutionContext,
-        spec: dict[str, Any],
-        purpose: str,
-        payload: dict[str, Any],
-        provider: str,
-        context_override: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        """Build the unified runtime-service protocol envelope.
-
-        context_override — 当调用体是某个具体 seat 的 actor（而非授权的隐藏系统 agent）
-        时传入其 firewall 受限投影，替代默认的 full_context_payload（含全局 state）。
-        这样任何"以某 seat 身份执行"的 service prompt 都不会看到他人秘密（H1 缺口2）。
-        """
-        return self._protocol.build(
-            runtime_type="interactive_session",
-            purpose=purpose,
-            provider=provider,
-            input_payload=payload,
-            context_payload=context_override if context_override is not None else ctx.full_context_payload(),
-            name=spec.get("name") or spec.get("plugin") or spec.get("id"),
-            call_id=spec.get("id"),
-            endpoint=spec.get("endpoint") or spec.get("url"),
-            metadata={
-                "current_state": ctx.current_state_id,
-                "current_scene": ctx.current_scene_id,
-            },
-        )
-
-    def _plugin_payload(
-        self,
-        ctx: InteractiveExecutionContext,
-        spec: dict[str, Any],
-        purpose: str,
-        payload: dict[str, Any],
-    ) -> dict[str, Any]:
-        """Return legacy plugin payload or an opt-in protocol envelope."""
-        if spec.get("envelope") is True or spec.get("protocol") == "envelope":
-            return self._service_envelope(ctx, spec, purpose, payload, "plugin")
-        return payload
-
-    def _ensure_dict(self, result: Any, label: str) -> dict[str, Any]:
-        """Normalize a service result to dict."""
-        if result is None:
-            return {}
-        if isinstance(result, dict):
-            return result
-        if isinstance(result, str):
-            try:
-                parsed = json.loads(result)
-            except json.JSONDecodeError:
-                return {"text": result}
-            if isinstance(parsed, dict):
-                return parsed
-        raise ValueError(f"{label} 必须返回 dict 或 JSON object 字符串")
