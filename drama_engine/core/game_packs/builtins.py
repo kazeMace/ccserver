@@ -9,6 +9,7 @@ from __future__ import annotations
 from drama_engine.core.game_packs.mechanisms import (
     board,
     cards,
+    cinematic,
     dice,
     economy,
     inventory,
@@ -80,6 +81,15 @@ def register_builtin_game_packs(registry: GamePackRuntimeRegistry) -> None:
         mechanisms=("adjust_attr", "stats.attr_at_least", "stats.attr_below"),
         default_config={},
         required_extensions=(),
+    ))
+    registry.register(GamePackManifest(
+        plugin_id="builtin.cinematic",
+        description="播片式剧情机制：逐条播放预制对话，点击推进，关键节点选择。适用 Galgame/视觉小说/互动影视。",
+        register=cinematic.register,
+        mechanisms=("cinematic_emit_line",),
+        default_config={"mode": "visual_novel", "auto_advance_on_video": True},
+        required_extensions=(),
+        projection_profile=cinematic.build_cinematic_projection_profile(),
     ))
 
 

@@ -47,14 +47,21 @@ class UnsupportedRuntimeRunner(BasicGameRunner):
 
 
 def read_runtime_declaration(script_path: str, params: dict[str, Any] | None = None) -> RuntimeSpec:
-    """从 YAML 文件读取 runtime 声明。
+    """从 YAML 文件或包目录读取 runtime 声明。
 
     只读取顶层 runtime，不编译完整 Script，避免 session 创建阶段就触发完整编译。
-    params 当前保留给后续 runtime 声明参数化使用。
+    支持包目录（含 manifest.yaml）和单文件两种模式。
     """
     assert script_path, "script_path 不能为空"
     _ = params or {}
-    raw_text = Path(script_path).read_text(encoding="utf-8")
+    path = Path(script_path)
+    if path.is_dir():
+        # 包目录：从 manifest.yaml 读取 runtime
+        manifest_path = path / "manifest.yaml"
+        assert manifest_path.exists(), f"包目录缺少 manifest.yaml: {path}"
+        raw_text = manifest_path.read_text(encoding="utf-8")
+    else:
+        raw_text = path.read_text(encoding="utf-8")
     doc = yaml.safe_load(raw_text) or {}
     registry = build_default_runtime_registry()
     return registry.parse_declaration(doc.get("runtime"))

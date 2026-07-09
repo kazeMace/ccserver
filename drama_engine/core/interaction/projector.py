@@ -38,6 +38,7 @@ _KIND_TO_ROLE: dict[str, str] = {
     "guardrail_flag": "system_meta",
     "rollback_applied": "system_meta",
     "control_announcement": "system",
+    "scene_location": "system",
 }
 
 # 动作 kind → 对外 primitive（§场景-2 封闭 8 种）。
@@ -121,13 +122,18 @@ class InteractionProjector:
             # 完整 ReplyOption（§3）：id/text/desc/disabled/disabled_reason/meta。
             # game_pack 可通过 metadata["option_meta"][cid] 预置 emoji / 实时票数等语义参数。
             option_meta = metadata.get("option_meta") or {}
+            option_defs = {
+                str(item.get("id")): item
+                for item in (metadata.get("options") or [])
+                if isinstance(item, dict) and item.get("id") is not None
+            }
             options = [
                 {
                     "id": str(c),
-                    "text": str(c),
-                    "desc": None,
-                    "disabled": False,
-                    "disabled_reason": None,
+                    "text": str(option_defs.get(str(c), {}).get("text") or c),
+                    "desc": option_defs.get(str(c), {}).get("desc"),
+                    "disabled": bool(option_defs.get(str(c), {}).get("disabled", False)),
+                    "disabled_reason": option_defs.get(str(c), {}).get("disabled_reason"),
                     "meta": option_meta.get(str(c)),
                 }
                 for c in candidates
@@ -174,7 +180,8 @@ class InteractionProjector:
         profile：game_pack 投影档案，富化 pending 的 widget/props（可选）。
         """
         fresh = [e for e in events if int(e.get("seq") or 0) > after]
-        messages = [self.project_event(e, self_seat) for e in fresh]
+        messages = [m for m in (self.project_event(e, self_seat) for e in fresh)
+                    if m["body"]["text"] or m["body"]["cards"]]
         pending = self.project_request(pending_request, profile=profile)
         if pending is not None and messages:
             messages[-1]["reply_request"] = pending
@@ -250,6 +257,14 @@ class InteractionProjector:
                 "kind": str(view_kind),
                 "variant": event.get("view_variant") or event.get("variant"),
                 "data": dict(event.get("data") or {}),
+            }]
+        # 媒体事件（video/audio/image）：kind + data 直接构成 card
+        kind = event.get("kind") or ""
+        if kind in ("video", "audio", "image") and event.get("data"):
+            return [{
+                "kind": kind,
+                "variant": event.get("variant"),
+                "data": dict(event.get("data")),
             }]
         cards = event.get("cards")
         if isinstance(cards, list):

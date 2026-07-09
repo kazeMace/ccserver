@@ -43,8 +43,13 @@ class InsideAgentFactory:
         """
         assert isinstance(metadata, dict), "metadata 必须是 dict"
 
-        # 优先返回缓存
-        existing = metadata.get(self.METADATA_KEY)
+        # 优先返回缓存（包括显式注入的 agent）
+        existing = (
+            metadata.get(self.METADATA_KEY)
+            or metadata.get("inside_agent")
+            or metadata.get("llm_client")
+            or metadata.get("llm_provider")
+        )
         if existing is not None:
             return existing
 

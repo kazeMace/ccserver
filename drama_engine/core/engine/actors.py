@@ -157,6 +157,11 @@ class SeatActor:
         if hasattr(self._controller, "set_scene_context"):
             self._controller.set_scene_context(scene_name, scene_display_name)
 
+    def set_action_request_hints(self, kind: str | None = None, metadata: dict[str, Any] | None = None) -> None:
+        """注入下一次真人输入请求的协议提示。"""
+        if hasattr(self._controller, "set_action_request_hints"):
+            self._controller.set_action_request_hints(kind=kind, metadata=metadata)
+
     def set_actor_profile(self, profile: ActorProfile) -> None:
         """
         设置稳定身份档案，并转发给 controller。

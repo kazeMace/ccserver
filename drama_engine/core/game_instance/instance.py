@@ -125,6 +125,9 @@ class GameInstance:
         from drama_engine.core.interaction.profile import EMPTY_PROFILE, ProjectionProfile
 
         script = getattr(runner, "_script", None)
+        if script is None:
+            # script 未就绪（assign 尚未完成），不缓存，返回空
+            return EMPTY_PROFILE
         registry = build_default_game_pack_runtime_registry()
         merged = ProjectionProfile()
         for source in (getattr(script, "game_pack", None), getattr(script, "rule_set", None)):
@@ -568,7 +571,78 @@ class GameInstance:
                 attrs = spec.get("attrs", []) if isinstance(spec, dict) else []
                 result[name] = {a: state.get_attr(seat_id, a) for a in attrs
                                 if state.get_attr(seat_id, a) is not None}
+            elif source == "story_tree":
+                result[name] = self._build_story_tree_panel(state)
         return result
+
+    def _build_story_tree_panel(self, state: Any) -> dict[str, Any]:
+        """构建剧情分支树面板数据。
+
+        从 State 读取进度，从脚本 metadata 读取完整 flow 结构，
+        组装成前端可渲染的树形数据。
+        """
+        visited_nodes = list(state.get_attr("GAME", "visited_nodes") or [])
+        choice_history = list(state.get_attr("GAME", "choice_history") or [])
+        current_node = state.get_attr("GAME", "__current_flow_node") or ""
+
+        # 从脚本 metadata 提取 flow 树结构
+        script_data = self.runtime.session.metadata.get("interactive_session", {})
+        base_flow = script_data.get("base_flow") or {}
+        flow_def = base_flow.get("flow") or {}
+        states_def = flow_def.get("states") or {}
+        scenes_def = base_flow.get("scenes") or {}
+
+        # 构建 nodes 列表
+        nodes = []
+        for state_id, state_spec in states_def.items():
+            scene_ids = state_spec.get("scenes") or []
+            # 从 scene 的 publication 或 context 取标题
+            title = state_id
+            if scene_ids and scene_ids[0] in scenes_def:
+                scene_spec = scenes_def[scene_ids[0]]
+                pub = scene_spec.get("publication", {})
+                msgs = pub.get("messages") or []
+                if msgs and isinstance(msgs[0], dict):
+                    content = msgs[0].get("content") or {}
+                    if isinstance(content, dict):
+                        title = (content.get("text") or state_id)[:30]
+            nodes.append({
+                "id": state_id,
+                "title": title,
+                "terminal": bool(state_spec.get("terminal")),
+            })
+
+        # 构建 edges 列表（从 choices.to 和 transitions）
+        edges = []
+        for state_id, state_spec in states_def.items():
+            scene_ids = state_spec.get("scenes") or []
+            # 从 scene 的 controller_action.choices 提取分支边
+            for scene_id in scene_ids:
+                if scene_id not in scenes_def:
+                    continue
+                scene_spec = scenes_def[scene_id]
+                ctrl = scene_spec.get("controller_action") or {}
+                for choice in (ctrl.get("choices") or []):
+                    target = choice.get("to")
+                    if target:
+                        edges.append({
+                            "from": state_id,
+                            "to": target,
+                            "choice_id": choice.get("id", ""),
+                            "choice_text": choice.get("text", ""),
+                        })
+            # 从 transitions 提取固定跳转边
+            for trans in (state_spec.get("transitions") or []):
+                target = trans.get("to")
+                if target:
+                    edges.append({"from": state_id, "to": target})
+
+        return {
+            "current_node": current_node,
+            "visited_nodes": visited_nodes,
+            "choice_history": choice_history,
+            "tree": {"nodes": nodes, "edges": edges},
+        }
 
     def submit_control_action(self, role: str, payload: dict[str, Any]) -> dict[str, Any]:
         """提交控制角色动作（host/director/writer 等）。

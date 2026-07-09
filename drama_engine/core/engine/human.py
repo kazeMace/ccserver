@@ -38,6 +38,7 @@ class ActionRequest:
     kind: str = "speech"
     allow_resubmit: bool = False
     timeout_seconds: float | None = None
+    metadata: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -147,6 +148,7 @@ class ServiceHumanInputPort:
             kind=request.kind,
             candidates=request.candidates,
             schema=request.schema,
+            metadata=request.metadata,
             scene_name=request.scene_name,
             scene_display_name=request.scene_display_name,
             allow_resubmit=request.allow_resubmit,
@@ -191,6 +193,8 @@ class HumanActorController:
         self._candidates: list = []
         self._scene_name = ""
         self._scene_display_name = ""
+        self._request_kind: str | None = None
+        self._request_metadata: dict[str, Any] = {}
 
     def set_actor(self, actor: SeatActor) -> None:
         """绑定所属 SeatActor。"""
@@ -212,6 +216,15 @@ class HumanActorController:
         """保存当前幕元信息，用于 ActionRequest 和真人提交前缀。"""
         self._scene_name = scene_name or ""
         self._scene_display_name = scene_display_name or scene_name or ""
+
+    def set_action_request_hints(self, kind: str | None = None, metadata: dict[str, Any] | None = None) -> None:
+        """注入下一次真人输入请求的协议提示。
+
+        controller_action 本身没有 collect model，但它有 choice/free_input 语义。
+        这些提示必须传到 ActionRequest.metadata，前端才能渲染选项和自由输入。
+        """
+        self._request_kind = kind or None
+        self._request_metadata = dict(metadata or {})
 
     def set_player_profile(
         self,
@@ -280,8 +293,11 @@ class HumanActorController:
             self._profile_sent = True
 
         schema = collect.model_json_schema() if collect is not None else None
-        kind = self._infer_action_kind(collect)
+        kind = self._request_kind or self._infer_action_kind(collect)
         candidates = self._candidates or None
+        metadata = dict(self._request_metadata)
+        self._request_kind = None
+        self._request_metadata = {}
 
         while True:
             request = ActionRequest(
@@ -293,6 +309,7 @@ class HumanActorController:
                 scene_name=self._scene_name,
                 scene_display_name=self._scene_display_name,
                 kind=kind,
+                metadata=metadata,
             )
             submission = await self._input_port.request_action(request, collect_model=collect)
             data = submission.data or {}
