@@ -64,12 +64,14 @@ function MediaCard({ card }: CardRendererProps) {
   };
   if (!d.url) return <div className="m-announce">媒体资源缺少 url</div>;
   const subtitleUrl = d.subtitleUrl ?? d.subtitle_url;
+  // 媒体类型：优先从 card.data.kind 读，兜底用 card.kind（后端 video/audio/image 直接作为 card.kind）
+  const mediaKind = d.kind ?? card.kind;
   return (
     <div className="m-media">
       {d.title ? <div className="media-title">{d.title}</div> : null}
-      {d.kind === "image" ? (
+      {mediaKind === "image" ? (
         <img src={d.url} alt={d.title ?? "media"} />
-      ) : d.kind === "audio" ? (
+      ) : mediaKind === "audio" ? (
         <audio src={d.url} controls preload="metadata" />
       ) : (
         <video src={d.url} poster={d.poster} controls preload="metadata" playsInline autoPlay={Boolean(d.autoplay)}>
@@ -99,6 +101,16 @@ function DeathNoticeCard({ card }: CardRendererProps) {
   return <div className="m-announce strong">☠️ {d.text ?? `${(d.dead_seats ?? []).join("、")} 出局`}</div>;
 }
 
+function LocationCard({ card }: CardRendererProps) {
+  const d = card.data as { locations?: { name: string }[] };
+  const locations = d.locations ?? [];
+  return (
+    <div className="m-announce">
+      📍 {locations.length ? locations.map((l) => l.name).join(" → ") : ""}
+    </div>
+  );
+}
+
 // 注册表：key 优先匹配 variant，其次 kind。
 export const CARD_REGISTRY: Record<string, CardRenderer> = {
   // by kind
@@ -107,6 +119,10 @@ export const CARD_REGISTRY: Record<string, CardRenderer> = {
   secret: SecretCard,
   affinity_delta: AffinityCard,
   media: MediaCard,
+  video: MediaCard,
+  audio: MediaCard,
+  image: MediaCard,
+  location: LocationCard,
   seer_result: SeerResultCard,
   death_notice: DeathNoticeCard,
 };

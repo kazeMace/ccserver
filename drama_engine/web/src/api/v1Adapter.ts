@@ -15,7 +15,11 @@ async function jsonFetch<T>(url: string, init?: RequestInit): Promise<T> {
     ...init,
     headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
   });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText} @ ${url}`);
+  if (!res.ok) {
+    const err = new Error(`${res.status} ${res.statusText} @ ${url}`);
+    (err as any).status = res.status;
+    throw err;
+  }
   return (await res.json()) as T;
 }
 

@@ -1,17 +1,20 @@
 // 右侧只读状态面板（§7 StateView）。panels 是开放字典，按已知 key 渲染，未知忽略。
 // 与消息流正交：不含待回复，纯展示 affinity/stats/circles/board/players/progress。
 
+import { useState } from "react";
 import type { PlayerCard, StateView, RoleDefinition } from "../types/interaction";
 import { RolesList } from "./RoleCard";
 
 export function Sidebar({ view, open, onClose }: { view: StateView | null; open?: boolean; onClose?: () => void }) {
   if (!view) return null;
   const panels = view.panels ?? {};
+  const storyTree = panels.story_tree as StoryTreeData | undefined;
   return (
     <>
       {open ? <div className="sidebar-overlay show" onClick={onClose} /> : null}
       <aside className={`sidebar${open ? " open" : ""}`}>
         {view.progress ? <ProgressSection progress={view.progress} /> : null}
+        {storyTree ? <StoryTreeSection data={storyTree} /> : null}
         {Array.isArray(panels.affinity) ? <AffinitySection rows={panels.affinity as AffinityRow[]} /> : null}
         {Array.isArray(panels.circles) ? <CirclesSection circles={panels.circles as CircleRow[]} /> : null}
         {Array.isArray(panels.stats) ? <StatsSection stats={panels.stats as StatRow[]} /> : null}
@@ -142,6 +145,121 @@ function PlayersSection({ players }: { players: PlayerCard[] }) {
           </div>
         ))}
       </div>
+    </Section>
+  );
+}
+
+// ═══ 剧情分支树（树形层级布局）═══
+
+interface StoryTreeNode { id: string; title: string; terminal?: boolean }
+interface StoryTreeEdge { from: string; to: string; choice_id?: string; choice_text?: string }
+interface StoryTreeData {
+  current_node: string;
+  visited_nodes: string[];
+  choice_history: { node: string; choice_id: string; choice_text: string; to: string }[];
+  tree: { nodes: StoryTreeNode[]; edges: StoryTreeEdge[] };
+}
+
+function StoryTreeSection({ data }: { data: StoryTreeData }) {
+  const { current_node, visited_nodes, tree } = data;
+  const visitedSet = new Set(visited_nodes);
+  const nodeMap = new Map(tree.nodes.map((n) => [n.id, n]));
+
+  // 按层级组织：从 initial 开始 BFS，每层是同级的节点
+  const initial = tree.nodes[0]?.id || "";
+  const getChildren = (nodeId: string) => tree.edges.filter((e) => e.from === nodeId).map((e) => e.to);
+
+  // BFS 构建层级
+  type LayerNode = { id: string; parentId: string | null };
+  const layers: LayerNode[][] = [];
+  const seen = new Set<string>();
+  let queue: LayerNode[] = [{ id: initial, parentId: null }];
+  while (queue.length > 0) {
+    layers.push(queue);
+    const next: LayerNode[] = [];
+    for (const item of queue) {
+      seen.add(item.id);
+      const children = getChildren(item.id);
+      for (const cid of children) {
+        if (!seen.has(cid)) {
+          next.push({ id: cid, parentId: item.id });
+          seen.add(cid);
+        }
+      }
+    }
+    queue = next;
+  }
+
+  // 判断节点是否相邻可见（父节点已访问）
+  const adjacentVisible = (nodeId: string, parentId: string | null) => {
+    if (visitedSet.has(nodeId)) return true;
+    if (parentId && visitedSet.has(parentId)) return true;
+    return false;
+  };
+
+  // 判断是否是已走过的路径上的连接线
+  const isOnPath = (nodeId: string) => visitedSet.has(nodeId);
+
+  const [open, setOpen] = useState(false);
+  const visitedCount = visited_nodes.length;
+  const totalCount = tree.nodes.length;
+  const currentNodeObj = nodeMap.get(current_node);
+
+  return (
+    <Section title="剧情路径">
+      {/* 预览卡片（点击弹出悬浮窗） */}
+      <div className="st-preview" onClick={() => setOpen(true)}>
+        <div className="st-preview-info">
+          <span className="st-preview-cur">▶ {currentNodeObj?.title || current_node}</span>
+          <span className="st-preview-progress">{visitedCount} / {totalCount} 节点已探索</span>
+        </div>
+        <span className="st-preview-toggle">查看全图 ▸</span>
+      </div>
+      {/* 悬浮弹窗 */}
+      {open ? (
+        <div className="st-modal-overlay" onClick={() => setOpen(false)}>
+          <div className="st-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="st-modal-head">
+              <span className="st-modal-title">剧情路径</span>
+              <button className="st-modal-close" onClick={() => setOpen(false)}>✕</button>
+            </div>
+            <div className="st-modal-body">
+              <div className="st-tree">
+                {layers.map((layer, li) => (
+                  <div key={li} className="st-layer">
+                    {li > 0 ? <div className="st-connectors" /> : null}
+                    <div className="st-row">
+                      {layer.map(({ id, parentId }) => {
+                        const node = nodeMap.get(id);
+                        if (!node) return null;
+                        const visible = adjacentVisible(id, parentId);
+                        if (!visible) return null;
+                        const isVisited = visitedSet.has(id);
+                        const isCurrent = id === current_node;
+                        const isLocked = !isVisited;
+                        return (
+                          <div
+                            key={id}
+                            className={`st-card${isCurrent ? " now" : ""}${isVisited ? " visited" : ""}${isLocked ? " locked" : ""}${node.terminal ? " terminal" : ""}`}
+                          >
+                            {isCurrent ? <span className="st-now-tag">Now</span> : null}
+                            <span className="st-card-icon">
+                              {isLocked ? "🔒" : isOnPath(id) ? "✓" : "●"}
+                            </span>
+                            <span className="st-card-title">
+                              {isLocked ? "Undiscovered" : node.title}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </Section>
   );
 }

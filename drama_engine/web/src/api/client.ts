@@ -22,7 +22,7 @@ export interface GameDef {
 
 export interface RoleInfo {
   name: string;
-  display_name: string;
+  display_name?: string;
   description?: string;
   portrait_url?: string;
   emoji?: string;

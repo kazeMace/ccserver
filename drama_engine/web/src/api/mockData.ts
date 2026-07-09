@@ -49,7 +49,7 @@ export interface MockStep {
 
 export interface MockGame {
   genre: string;
-  roles: { seat_id: string; name: string; emoji?: string; role?: string; controller?: "human" | "ai" | "system"; description?: string }[];
+  roles: { seat_id: string; name: string; emoji?: string; role?: string; controller?: "human" | "ai" | "system"; description?: string }[] | Record<string, { name: string; display_name?: string; description?: string; portrait_url?: string; emoji?: string; voice_id?: string; faction?: string }>;
   channels: { id: string; name: string; icon: string; lock?: boolean; badge?: number }[];
   players: { id: string; name: string; emoji: string; tag?: string; tagText?: string; online?: boolean; dead?: boolean }[];
   phase: string;
@@ -180,7 +180,7 @@ const THE_CLAUSE: MockGame = {
     nora: {
       name: "Nora Hampton",
       description: "30 岁的精英律师。聪明、独立、坚强，但因母亲的医药费陷入财务困境。表面冷静，内心敏感。",
-      portrait_url: "https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/characters/nora.jpg",
+      portrait_url: "https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/image/release/r_84b4ba46/character/72965/avatar_306fdcd6-d86d-4a4d-abe1-4935731f9d39.webp",
       emoji: "⚖️",
       voice_id: "en-US-JennyNeural",
       faction: "protagonist",
@@ -188,7 +188,7 @@ const THE_CLAUSE: MockGame = {
     marco: {
       name: "Marco Diaz",
       description: "35 岁的亿万富翁、冷酷商人。掌控欲强，习惯用钱解决问题，但内心深处渴望真实的感情。",
-      portrait_url: "https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/characters/marco.jpg",
+      portrait_url: "https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/image/release/r_84b4ba46/character/28296/avatar_7965866d-09ec-4d36-8a94-345ac7cd1915.webp",
       emoji: "🕴️",
       voice_id: "en-US-GuyNeural",
       faction: "male_lead",
@@ -196,7 +196,7 @@ const THE_CLAUSE: MockGame = {
     leila: {
       name: "Leila",
       description: "Nora 的闺蜜兼同事，28 岁。外向、乐观，总是支持 Nora 的决定。",
-      portrait_url: "https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/characters/leila.jpg",
+      portrait_url: "https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/image/release/r_84b4ba46/character/63588/avatar_8851ca73-7c50-4675-ba44-f9e2dff9f8eb.webp",
       emoji: "👭",
       voice_id: "en-US-AriaNeural",
       faction: "friend",
@@ -204,7 +204,7 @@ const THE_CLAUSE: MockGame = {
     nick: {
       name: "Nick",
       description: "Nora 的前男友，32 岁律师。自负、爱面子，对 Nora 还有感情但不愿承认。",
-      portrait_url: "https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/characters/nick.jpg",
+      portrait_url: "https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/image/release/r_84b4ba46/character/5071/avatar_f7b74e09-9851-4059-9013-56f95ed6af07.webp",
       emoji: "💼",
       voice_id: "en-US-AndrewNeural",
       faction: "ex_boyfriend",
@@ -212,7 +212,7 @@ const THE_CLAUSE: MockGame = {
     seth: {
       name: "Seth",
       description: "Marco 的商业对手，38 岁。阴险、狡猾，想搞垮 Marco 的 IPO。",
-      portrait_url: "https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/characters/seth.jpg",
+      portrait_url: "https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/image/release/r_84b4ba46/character/30082/avatar_b54b4ce7-3eff-4646-9f51-f59e0e882f65.webp",
       emoji: "😈",
       voice_id: "en-US-DavisNeural",
       faction: "antagonist",
@@ -238,9 +238,9 @@ const THE_CLAUSE: MockGame = {
         media(
           "video",
           "第一幕 · 初遇",
-          "https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/video/node_01.mp4",
-          "https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/video/node_01_poster.jpg",
-          "https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/subtitles/node_01.srt",
+          "https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/video/dialogue/74937/upload_af35ffad-3351-430a-9772-9fac13b1101e.mp4",
+          "",
+          "",
         ),
         narr("律所会议室。你是 Nora Hampton，刚刚输掉了一场本不该输的官司。"),
         narr("Marco Diaz 在夜里收购了你的委托人，让你的胜诉策略瞬间失效。傍晚，他的车停在你公寓楼下等你。"),

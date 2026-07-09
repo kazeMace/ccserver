@@ -2,15 +2,16 @@
 // 采用原型聊天范式：多频道（公开/狼人/私聊 = scope）+ 气泡消息流 + 自适应输入。
 // §2.3 铁律：inbox 已是该 seat 的 per-seat 投影，前端不做任何可见性过滤，频道仅按 scope 分组展示。
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { getClient } from "../api/client";
 import { GAMES } from "../api/mockData";
-import { inferGameKind, themeGenreForKind } from "../api/gamePresentation";
+import { inferGameKind, themeGenreForKind, isImmersiveNarrative } from "../api/gamePresentation";
 import { ImmersiveShell, type RailItem } from "../components/AppShell";
 import { Topbar, Channels, ConnStatus } from "../components/Chrome";
 import { MessageFeed } from "../components/MessageFeed";
 import { Composer } from "../components/Composer";
+import { ImmersiveStage } from "../components/ImmersiveStage";
 import { Sidebar } from "../components/Sidebar";
 import { useInbox } from "../hooks/useInbox";
 import { useStateView } from "../hooks/useStateView";
@@ -19,9 +20,24 @@ import { useChannels } from "../hooks/useChannels";
 export function PlayerPage() {
   const [params] = useSearchParams();
   const token = params.get("token") ?? "";
-  const { sessionId, seat } = useMemo(() => {
-    const [sid, s] = token.split(":");
-    return { sessionId: sid, seat: s || "Player_1" };
+
+  // 通过 token 向后端解析出真正的 session_id 和 seat_id
+  const [sessionId, setSessionId] = useState("");
+  const [seat, setSeat] = useState("");
+  const [resolveError, setResolveError] = useState("");
+
+  useEffect(() => {
+    if (!token) return;
+    fetch(`/api/player/reconnect?token=${encodeURIComponent(token)}`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`token 无效 (${res.status})`);
+        return res.json();
+      })
+      .then((data) => {
+        setSessionId(data.session_id);
+        setSeat(data.seat_id);
+      })
+      .catch((e) => setResolveError(String(e)));
   }, [token]);
 
   const [sideOpen, setSideOpen] = useState(false);
@@ -29,8 +45,8 @@ export function PlayerPage() {
   const [submitError, setSubmitError] = useState("");
   const [sessionGameHint, setSessionGameHint] = useState("");
 
-  const inbox = useInbox(sessionId, `player:${seat}`);
-  const view = useStateView(sessionId, `player:${seat}`);
+  const inbox = useInbox(sessionId, seat ? `player:${seat}` : "");
+  const view = useStateView(sessionId, seat ? `player:${seat}` : "");
 
   // game_pack 语义化频道名（scopeLabels）从 view.panels.scope_labels 取，未知走通用命名。
   const scopeLabels = (view?.panels?.scope_labels as Record<string, [string, string]>) ?? {};
@@ -60,6 +76,29 @@ export function PlayerPage() {
     );
   }
 
+  if (resolveError) {
+    return (
+      <div className="center-page">
+        <div className="panel-card">
+          <h1>玩家视角</h1>
+          <div className="c-cond">{resolveError}</div>
+          <div className="empty-hint">token 无效或 session 已过期，请重新获取玩家链接。</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!sessionId) {
+    return (
+      <div className="center-page">
+        <div className="panel-card">
+          <h1>玩家视角</h1>
+          <div className="empty-hint">正在连接……</div>
+        </div>
+      </div>
+    );
+  }
+
   const genre = inferGameKind(view?.panels?.genre as string) ?? inferGameKind(sessionGameHint) ?? inferGameKind(sessionId);
   const railItems: RailItem[] = GAMES.map((g) => ({
     id: g.id,
@@ -69,24 +108,54 @@ export function PlayerPage() {
     href: g.id === genre ? `/player?token=${sessionId}:${seat}` : `/create?game=${g.id}`,
   }));
 
+  // 顶部悬浮控件（视角切换 + 连接状态 + 移动端侧栏按钮），沉浸式与聊天式共用。
+  const topRight = (
+    <>
+      <div className="view-links">
+        <Link className="view-link" to={`/host/sessions/${sessionId}`}>主持</Link>
+        <Link className="view-link" to={`/viewer/sessions/${sessionId}`}>观众</Link>
+        <Link className="view-link active" to={`/player?token=${sessionId}:${seat}`}>玩家</Link>
+      </div>
+      <ConnStatus status={inbox.status} />
+      <button className="icon-btn mobile-only" onClick={() => setSideOpen(true)}>ℹ️</button>
+    </>
+  );
+
+  const doSubmit = async (p: Parameters<typeof inbox.submit>[0]) => {
+    setSubmitError("");
+    try {
+      await inbox.submit(p);
+    } catch (e) {
+      setSubmitError(String(e instanceof Error ? e.message : e));
+    }
+  };
+
+  // 文字冒险 / galgame：全屏沉浸式舞台（逐句揭示 + 场景/立绘 + 底部 dock）。两侧 rail/sidebar 不变。
+  if (isImmersiveNarrative(genre)) {
+    return (
+      <ImmersiveShell genre={themeGenreForKind(genre)} railItems={railItems}>
+        <ImmersiveStage
+          messages={inbox.messages}
+          pending={inbox.pending}
+          status={inbox.status}
+          submitting={inbox.submitting}
+          onSubmit={doSubmit}
+          roles={view?.roles}
+          selfSeat={seat}
+          phase={inbox.phase}
+          title={`玩家 · ${seat}`}
+          topRight={topRight}
+          submitError={submitError}
+        />
+        <Sidebar view={view} open={sideOpen} onClose={() => setSideOpen(false)} />
+      </ImmersiveShell>
+    );
+  }
+
   return (
     <ImmersiveShell genre={themeGenreForKind(genre)} railItems={railItems}>
       <div className="stage">
-        <Topbar
-          title={`玩家 · ${seat}`}
-          phase={inbox.phase}
-          right={
-            <>
-              <div className="view-links">
-                <Link className="view-link" to={`/host/sessions/${sessionId}`}>主持</Link>
-                <Link className="view-link" to={`/viewer/sessions/${sessionId}`}>观众</Link>
-                <Link className="view-link active" to={`/player?token=${sessionId}:${seat}`}>玩家</Link>
-              </div>
-              <ConnStatus status={inbox.status} />
-              <button className="icon-btn mobile-only" onClick={() => setSideOpen(true)}>ℹ️</button>
-            </>
-          }
-        />
+        <Topbar title={`玩家 · ${seat}`} phase={inbox.phase} right={topRight} />
         <Channels channels={channels} active={activeChannel} onSelect={setActiveChannel} />
         <MessageFeed messages={shownMessages} selfSeat={seat} />
         {submitError ? <div className="c-cond" style={{ textAlign: "center", padding: "4px 0" }}>{submitError}</div> : null}
@@ -96,14 +165,7 @@ export function PlayerPage() {
             reply={inbox.pending}
             status={inbox.status}
             submitting={inbox.submitting}
-            onSubmit={async (p) => {
-              setSubmitError("");
-              try {
-                await inbox.submit(p);
-              } catch (e) {
-                setSubmitError(String(e instanceof Error ? e.message : e));
-              }
-            }}
+            onSubmit={doSubmit}
           />
         ) : (
           <div className="composer">

@@ -3,12 +3,11 @@
 import type { RoleDefinition } from "../types/interaction";
 
 export interface RoleCardProps {
-  roleId: string;
   role: RoleDefinition;
   variant?: "compact" | "full"; // compact: 列表项，full: 完整卡片
 }
 
-export function RoleCard({ roleId, role, variant = "compact" }: RoleCardProps) {
+export function RoleCard({ role, variant = "compact" }: RoleCardProps) {
   if (variant === "compact") {
     return (
       <div className="role-card-compact">
@@ -22,9 +21,6 @@ export function RoleCard({ roleId, role, variant = "compact" }: RoleCardProps) {
         <div className="role-info">
           <div className="role-name">{role.name}</div>
           {role.faction ? <div className="role-faction">{role.faction}</div> : null}
-          {role.description && variant === "full" ? (
-            <div className="role-description">{role.description}</div>
-          ) : null}
         </div>
       </div>
     );
@@ -68,7 +64,7 @@ export function RolesList({ roles }: { roles: Record<string, RoleDefinition> }) 
   return (
     <div className="roles-list">
       {entries.map(([roleId, role]) => (
-        <RoleCard key={roleId} roleId={roleId} role={role} variant="compact" />
+        <RoleCard key={roleId} role={role} variant="compact" />
       ))}
     </div>
   );

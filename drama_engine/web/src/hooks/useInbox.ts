@@ -61,9 +61,14 @@ export function useInbox(sessionId: string, seat: string, intervalMs = 1500): In
   }, [sessionId, seat]);
 
   useEffect(() => {
-    poll();
-    const t = setInterval(poll, intervalMs);
-    return () => clearInterval(t);
+    let alive = true;
+    const safePoll = async () => {
+      if (!alive) return;
+      await poll();
+    };
+    safePoll();
+    const t = setInterval(safePoll, intervalMs);
+    return () => { alive = false; clearInterval(t); };
   }, [poll, intervalMs]);
 
   const submit = useCallback(

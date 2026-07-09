@@ -22,3 +22,9 @@ export function themeGenreForKind(kind?: GameKind): string | undefined {
   if (!kind) return undefined;
   return kind === "the_clause" ? "galgame" : kind;
 }
+
+// 是否走「沉浸式叙事」呈现（全屏场景 + 逐句揭示 + 底部选项/输入 dock）。
+// 文字冒险 / galgame 类走沉浸式；狼人杀、剧本杀、综艺、桌游仍用聊天流。
+export function isImmersiveNarrative(kind?: GameKind): boolean {
+  return kind === "the_clause";
+}

@@ -8,9 +8,13 @@ Vite + React + TypeScript 前端，对接统一交互协议 `interaction.v1`
 - **协议驱动 UI**：一切下行内容是 `InteractionMessage`，一切待回复是 `ReplyRequest`。
   组件按两轴降级链分派（`../docs/interaction_protocol_design.md` §9）：
   - 展示轴：`card.variant → card.kind → role → body.text`（`registry/cards.tsx`）
-  - 输入轴：`reply.widget → reply.primitive`（8 原语兜底，`registry/widgets.tsx` + `components/Composer.tsx`）
+  - 输入轴：`reply.widget → reply.primitive`（8 原语兜底，`registry/widgets.tsx` + `components/inputs.tsx`）
 - **前端零可见性过滤**（§2.3 铁律）：inbox 是 per-seat 投影，前端不做任何 secret/others 判断。
 - **一套接口通吃多品类**：狼人杀/galgame/剧本杀/综艺/桌游共用同一组件，差异走 widget/card/props/panels。
+- **两种主区呈现，同一数据面**：
+  - 聊天流（`MessageFeed` + `Composer`）：狼人杀/剧本杀/综艺/桌游，多频道气泡。
+  - 沉浸式舞台（`ImmersiveStage`）：文字冒险/galgame，全屏场景 + 逐句点击揭示 + 全屏视频 + 底部选项/输入 dock。
+    由 `api/gamePresentation.ts` 的 `isImmersiveNarrative(kind)` 判定；两种呈现共用 `components/inputs.tsx` 的输入原语。
 
 ## 目录
 
@@ -23,7 +27,8 @@ src/
     v1Adapter.ts           直连 /inbox /reply /view（端点就绪后）
     mockData.ts            5 个演示游戏脚本
   registry/                widget / card 降级链注册表
-  components/              Message / Composer / Sidebar / RoundTable / ViewPlugins / Chrome / MessageFeed
+  components/              inputs（8 原语，共享）/ Composer / MessageFeed / Message / ImmersiveStage
+                           / Sidebar / RoundTable / ViewPlugins / Chrome
   hooks/                   useInbox（游标+回滚对齐）/ useStateView
   pages/                   Create / Host / Player / Viewer
 ```

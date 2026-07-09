@@ -35,8 +35,9 @@ export function HostPage() {
     try {
       await fn();
       await inbox.refresh();
-    } catch (e) {
-      alert(String(e));
+    } catch (e: any) {
+      // 409 是状态冲突（已发牌/已运行等），静默处理
+      if (e?.status !== 409) alert(String(e));
     } finally {
       setBusy(false);
     }
@@ -58,11 +59,21 @@ export function HostPage() {
     loadPoints().catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
+  const [playerLink, setPlayerLink] = useState("");
   useEffect(() => {
     if (!sessionId) return;
     client
       .getSession(sessionId)
-      .then((summary) => setSessionGameHint(`${summary.game_id ?? ""} ${String(summary.script_path ?? "")}`))
+      .then((summary) => {
+        setSessionGameHint(`${summary.game_id ?? ""} ${String(summary.script_path ?? "")}`);
+        // 取第一个玩家链接作为快捷入口
+        const links = summary.player_links ?? {};
+        const first = Object.values(links)[0];
+        if (first) {
+          try { setPlayerLink(new URL(first).pathname + new URL(first).search); }
+          catch { setPlayerLink(first); }
+        }
+      })
       .catch(() => setSessionGameHint(""));
   }, [client, sessionId]);
 
@@ -76,7 +87,7 @@ export function HostPage() {
             <div className="ctrl-group">
               <div className="ctrl-row">
                 <button className="btn" disabled={busy} onClick={() => run(() => client.assign(sessionId))}>发牌</button>
-                <button className="btn primary" disabled={busy} onClick={() => run(() => client.start(sessionId))}>开始</button>
+                <button className="btn primary" disabled={busy} onClick={() => run(async () => { await client.assign(sessionId).catch(() => {}); await client.start(sessionId).catch(() => {}); })}>开始</button>
               </div>
               <div className="ctrl-row">
                 <button className="btn" disabled={busy} onClick={() => run(() => client.pause(sessionId))}>暂停</button>
@@ -120,7 +131,7 @@ export function HostPage() {
                 <div className="view-links">
                   <Link className="view-link active" to={`/host/sessions/${sessionId}`}>主持</Link>
                   <Link className="view-link" to={`/viewer/sessions/${sessionId}`}>观众</Link>
-                  <Link className="view-link" to={`/player?token=${sessionId}:Player_1`}>玩家</Link>
+                  <Link className="view-link" to={playerLink || `/player?token=${sessionId}:Player_1`}>玩家</Link>
                 </div>
                 <ConnStatus status={inbox.status} />
               </>

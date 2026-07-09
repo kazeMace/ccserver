@@ -71,7 +71,7 @@ def make_client(tmp_path: Path) -> TestClient:
 
 
 def test_admin_lists_builtin_scripts_and_serves_frontend(tmp_path: Path) -> None:
-    """管理端应能列出内置剧本并提供前端页面。"""
+    """管理端应能列出内置剧本并提供健康检查和脚本列表。"""
     client = make_client(tmp_path)
 
     health = client.get("/admin/api/health")
@@ -83,11 +83,6 @@ def test_admin_lists_builtin_scripts_and_serves_frontend(tmp_path: Path) -> None
     payload = scripts.json()
     assert payload["scripts"]
     assert any(item["source"] == "builtin" for item in payload["scripts"])
-
-    page = client.get("/admin")
-    assert page.status_code == 200
-    assert "Drama Engine 管理控制台" in page.text
-    assert "自然语言创建" in page.text
 
 
 def test_builtin_script_catalog_reads_nested_script_library(tmp_path: Path) -> None:

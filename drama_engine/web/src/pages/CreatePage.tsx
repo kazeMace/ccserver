@@ -195,13 +195,31 @@ export function CreatePage() {
 }
 
 function importRolesFromGame(game: GameDef): GameRoleDef[] {
-  const roles: GameRoleDef[] = game.roles?.length
-    ? game.roles
-    : (game.default_seat_ids ?? ["Player_1"]).map((seat, index) => ({
-        seat_id: seat,
-        name: seat,
-        controller: index === 0 ? "human" : "ai",
-      }));
+  let roles: GameRoleDef[];
+
+  if (Array.isArray(game.roles) && game.roles.length > 0) {
+    // 旧格式：roles 是 GameRoleDef[]
+    roles = game.roles;
+  } else if (game.roles && !Array.isArray(game.roles)) {
+    // 新格式：roles 是 Record<string, RoleInfo>（角色定义，非座位列表）
+    // 座位数取脚本声明的 default_seat_ids，没有则默认 1 个玩家座位
+    const seatIds = game.default_seat_ids ?? ["Player_1"];
+    roles = seatIds.map((seat, index) => ({
+      seat_id: seat,
+      name: seat,
+      emoji: "🙂",
+      role: "",
+      controller: index === 0 ? "human" as const : "ai" as const,
+    }));
+  } else {
+    // 无 roles：用 default_seat_ids 兜底
+    roles = (game.default_seat_ids ?? ["Player_1"]).map((seat, index) => ({
+      seat_id: seat,
+      name: seat,
+      controller: index === 0 ? "human" as const : "ai" as const,
+    }));
+  }
+
   const humanSeats = new Set(game.default_human_seat_ids ?? roles.filter((r) => r.controller === "human").map((r) => r.seat_id));
   return roles.map((r, index) => ({
     seat_id: r.seat_id || `Player_${index + 1}`,
@@ -346,10 +364,24 @@ function isTheClauseGame(game: GameDef): boolean {
   );
 }
 
+/** 从后端返回的绝对 URL 中提取路径部分，用于前端内部导航。 */
+function toRelativePath(urlOrPath: string): string {
+  if (!urlOrPath) return "";
+  // 已经是相对路径
+  if (urlOrPath.startsWith("/")) return urlOrPath;
+  // 绝对 URL：提取 pathname + search
+  try {
+    const parsed = new URL(urlOrPath);
+    return parsed.pathname + parsed.search;
+  } catch {
+    return urlOrPath;
+  }
+}
+
 function CreateResult({ summary, onReset }: { summary: SessionSummary; onReset: () => void }) {
   const links = summary.player_links ?? {};
-  const hostUrl = summary.host_url ?? `/host/sessions/${summary.session_id}`;
-  const viewerUrl = summary.viewer_url ?? `/viewer/sessions/${summary.session_id}`;
+  const hostUrl = toRelativePath(summary.host_url ?? `/host/sessions/${summary.session_id}`);
+  const viewerUrl = toRelativePath(summary.viewer_url ?? `/viewer/sessions/${summary.session_id}`);
   return (
     <div>
       <div className="link-row">
@@ -363,13 +395,16 @@ function CreateResult({ summary, onReset }: { summary: SessionSummary; onReset: 
       {Object.keys(links).length ? (
         <div className="result-links">
           <label>玩家链接</label>
-          {Object.entries(links).map(([seat, url]) => (
-            <div className="link-row" key={seat}>
-              <span className="seat">{seat}</span>
-              <Link to={url}>{url}</Link>
-              <button className="btn sm" onClick={() => navigator.clipboard?.writeText(location.origin + url)}>复制</button>
-            </div>
-          ))}
+          {Object.entries(links).map(([seat, rawUrl]) => {
+            const path = toRelativePath(rawUrl);
+            return (
+              <div className="link-row" key={seat}>
+                <span className="seat">{seat}</span>
+                <Link to={path}>{path}</Link>
+                <button className="btn sm" onClick={() => navigator.clipboard?.writeText(location.origin + path)}>复制</button>
+              </div>
+            );
+          })}
         </div>
       ) : null}
       <button className="btn" style={{ width: "100%", marginTop: 16 }} onClick={onReset}>再建一局</button>

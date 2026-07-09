@@ -405,8 +405,7 @@ input, textarea { font-family: inherit; }
 .m-media video, .m-media img {
   display: block;
   width: 100%;
-  aspect-ratio: 16 / 9;
-  object-fit: cover;
+  height: auto;
   background: #000;
 }
 .m-media audio {
@@ -568,6 +567,37 @@ input, textarea { font-family: inherit; }
 }
 .side-section { padding: 16px; border-bottom: 1px solid var(--line); }
 .side-title { font-size: 11px; font-weight: 700; letter-spacing: 1.5px; color: var(--text-lo); text-transform: uppercase; margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
+
+/* 剧情分支树 */
+.st-tree { overflow-x: auto; overflow-y: visible; padding-bottom: 8px; }
+.st-layer { display: flex; flex-direction: column; align-items: center; }
+.st-connectors { width: 2px; height: 16px; background: var(--line); margin: 0 auto; }
+.st-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; padding: 4px 0; }
+.st-card { display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px; border-radius: 20px; background: rgba(255,255,255,0.06); border: 1.5px solid var(--line); font-size: 11px; white-space: nowrap; position: relative; transition: all 0.2s; }
+.st-card.visited { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2); }
+.st-card.now { border-color: var(--accent); background: rgba(var(--accent-rgb, 236,72,153), 0.1); box-shadow: 0 0 8px rgba(var(--accent-rgb, 236,72,153), 0.3); }
+.st-card.locked { opacity: 0.4; border-style: dashed; }
+.st-card.terminal .st-card-icon { color: gold; }
+.st-card-icon { font-size: 11px; }
+.st-card.visited .st-card-icon { color: var(--accent); }
+.st-card-title { font-weight: 500; color: var(--text-hi); max-width: 100px; overflow: hidden; text-overflow: ellipsis; }
+.st-card.locked .st-card-title { color: var(--text-lo); font-style: italic; }
+.st-now-tag { position: absolute; top: -10px; left: 50%; transform: translateX(-50%); font-size: 9px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 0.5px; }
+/* 预览卡片 */
+.st-preview { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; background: rgba(255,255,255,0.04); border: 1px solid var(--line); border-radius: 8px; cursor: pointer; transition: background 0.15s; }
+.st-preview:hover { background: rgba(255,255,255,0.08); }
+.st-preview-info { display: flex; flex-direction: column; gap: 2px; }
+.st-preview-cur { font-size: 12px; font-weight: 600; color: var(--accent); }
+.st-preview-progress { font-size: 10px; color: var(--text-lo); }
+.st-preview-toggle { font-size: 10px; color: var(--text-lo); white-space: nowrap; }
+/* 悬浮弹窗 */
+.st-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 9999; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px); }
+.st-modal { background: var(--bg-base, #0d0f14); border: 1px solid var(--line); border-radius: 16px; width: min(90vw, 700px); max-height: 80vh; display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+.st-modal-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--line); }
+.st-modal-title { font-size: 14px; font-weight: 700; color: var(--text-hi); letter-spacing: 0.5px; }
+.st-modal-close { background: none; border: none; color: var(--text-lo); font-size: 18px; cursor: pointer; padding: 4px 8px; border-radius: 4px; }
+.st-modal-close:hover { background: rgba(255,255,255,0.1); color: var(--text-hi); }
+.st-modal-body { padding: 24px; overflow: auto; }
 
 /* 进度 */
 .progress-days { display: flex; gap: 6px; }
@@ -1022,5 +1052,201 @@ input, textarea { font-family: inherit; }
 .role-card-full .role-voice {
   font-size: 12px;
   color: var(--text-lo);
+}
+
+/* ============================================================
+   沉浸式叙事舞台（文字冒险 / galgame）
+   —— 全屏场景 + 逐句点击揭示 + 底部选项/输入 dock
+   ============================================================ */
+.imm-stage {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  display: block;
+  background: #06070b;
+  overflow: hidden;
+}
+.imm-stage.clickable { cursor: pointer; }
+
+/* 顶部悬浮控制条（覆盖在场景之上） */
+.imm-top {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  background: linear-gradient(180deg, rgba(0,0,0,0.55), transparent);
+}
+.imm-top-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.imm-top-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.imm-title { font-weight: 700; font-size: 14px; color: var(--text-hi); text-shadow: 0 1px 4px rgba(0,0,0,0.6); }
+.imm-phase {
+  display: inline-flex; align-items: center;
+  padding: 4px 11px; border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent);
+  font-size: 12px; font-weight: 600; border: 1px solid var(--accent);
+  white-space: nowrap;
+}
+
+/* 背景层：视频/图片/立绘底，铺满整屏，位于最底层 */
+.imm-bg-layer { position: absolute; inset: 0; z-index: 0; background: #000; overflow: hidden; }
+.imm-scene-empty {
+  position: absolute; inset: 0; z-index: 1;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-lo); font-size: 14px;
+}
+
+/* 立绘模糊底 / 主题渐变底 */
+.imm-bg {
+  position: absolute; inset: 0;
+  background-size: cover; background-position: center top;
+  filter: blur(28px) brightness(0.5);
+  transform: scale(1.15);
+}
+.imm-bg-flat {
+  background:
+    radial-gradient(circle at 50% 18%, var(--accent-soft), transparent 55%),
+    linear-gradient(180deg, var(--bg-stage), #06070b);
+  filter: none; transform: none;
+}
+
+/* 底部暗角：保证浮层文字对比度 */
+.imm-vignette {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 55%;
+  background: linear-gradient(180deg, transparent, rgba(0,0,0,0.72));
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* 视频 / 图片：铺满背景层。object-fit:contain 保留完整画面，两侧留黑边 */
+.imm-media-el { width: 100%; height: 100%; object-fit: contain; background: #000; }
+.imm-audio-wrap { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; }
+.imm-media-title { color: var(--accent); font-size: 15px; font-weight: 700; letter-spacing: 0.5px; }
+.imm-audio { width: min(80vw, 420px); }
+
+/* 立绘层：浮在背景之上、浮层之下 */
+.imm-figure {
+  position: absolute;
+  bottom: 0; left: 50%; transform: translateX(-50%);
+  height: 82%;
+  z-index: 5;
+  display: flex; align-items: flex-end; justify-content: center;
+  pointer-events: none;
+  animation: immFigureIn 0.4s cubic-bezier(0.16,1,0.3,1);
+}
+.imm-figure img { height: 100%; width: auto; object-fit: contain; filter: drop-shadow(0 8px 30px rgba(0,0,0,0.5)); }
+.imm-figure-emoji {
+  width: 180px; height: 180px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 96px;
+  background: radial-gradient(circle at 50% 35%, var(--accent-soft), transparent 70%);
+  border: 2px solid var(--accent);
+  margin-bottom: 12%;
+}
+@keyframes immFigureIn { from { opacity: 0; transform: translate(-50%, 14px); } to { opacity: 1; transform: translateX(-50%); } }
+
+/* 前景浮层：对话框 / 输入 dock，绝对定位在底部，浮在视频/图片/立绘之上 */
+.imm-overlay {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  z-index: 15;
+  padding: 0 18px calc(22px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.imm-error {
+  max-width: 760px; margin: 0 auto;
+  text-align: center; color: var(--danger); font-size: 12.5px;
+}
+
+/* 视频节拍的点击引导（无对话框时） */
+.imm-media-hint {
+  align-self: center;
+  padding: 7px 18px; border-radius: 999px;
+  background: rgba(0,0,0,0.5); color: #fff; font-size: 13px; font-weight: 600;
+  border: 1px solid rgba(255,255,255,0.25); backdrop-filter: blur(6px);
+  animation: immBlink 1.4s ease infinite;
+}
+
+/* 逐句对话框 */
+.imm-dialogue {
+  max-width: 760px;
+  margin: 0 auto;
+  background: rgba(16, 18, 26, 0.92);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  padding: 18px 22px 16px;
+  box-shadow: var(--shadow-pop);
+  backdrop-filter: blur(12px);
+  animation: immLineIn 0.28s cubic-bezier(0.16,1,0.3,1);
+}
+@keyframes immLineIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+
+.imm-speaker { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.imm-speaker-avatar {
+  width: 26px; height: 26px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center; font-size: 16px;
+  background: var(--bg-elevated); border: 1px solid var(--line-strong);
+}
+.imm-speaker-name { font-size: 14px; font-weight: 800; color: var(--accent); letter-spacing: 0.5px; }
+
+.imm-line {
+  font-family: var(--font-serif);
+  font-size: 17px;
+  line-height: 1.85;
+  color: var(--text-hi);
+  white-space: pre-line;
+  word-break: break-word;
+}
+
+/* 玩家自己的台词：靠右、强调色 */
+.imm-dialogue.self .imm-speaker-name { color: var(--accent-2); }
+.imm-dialogue.self { border-color: var(--accent-2); }
+
+/* 旁白：无说话者、居中衬线 */
+.imm-dialogue.narration .imm-line { text-align: center; color: var(--text-hi); font-style: italic; }
+.imm-dialogue.narration .imm-speaker-name { color: var(--text-lo); }
+
+/* 系统 / 线索 / 私密 / 好感度 变体 */
+.imm-dialogue.system { background: rgba(16,18,26,0.85); }
+.imm-dialogue.system .imm-line { font-family: var(--font-sans); font-size: 14px; color: var(--text-mid); text-align: center; }
+.imm-dialogue.clue { border-left: 3px solid var(--accent); }
+.imm-dialogue.secret { border-left: 3px solid var(--accent); }
+.imm-dialogue.secret .imm-speaker-name::before { content: "🔒 "; }
+.imm-dialogue.affinity { max-width: 420px; text-align: center; }
+.imm-dialogue.affinity .imm-line { font-family: var(--font-sans); font-size: 14px; font-weight: 600; color: var(--accent); }
+.imm-dialogue.affinity.down .imm-line { color: var(--danger); }
+
+/* 底部提示（点击屏幕继续 / 等待剧情推进），闪烁引导点击 */
+.imm-hint {
+  margin-top: 10px; text-align: right;
+  font-size: 12px; font-weight: 700; color: var(--accent);
+  animation: immBlink 1.4s ease infinite;
+}
+@keyframes immBlink { 0%,100%{ opacity: 1; } 50%{ opacity: 0.45; } }
+
+/* 底部输入 dock（待回复时浮出）：复用 .choices/.text-row/.vote-grid/.form-fields 等原语样式 */
+.imm-dock {
+  max-width: 760px;
+  margin: 0 auto;
+  background: rgba(16, 18, 26, 0.94);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  padding: 16px 20px 18px;
+  box-shadow: var(--shadow-pop);
+  backdrop-filter: blur(12px);
+  animation: immLineIn 0.28s cubic-bezier(0.16,1,0.3,1);
+}
+.imm-dock .reply-prompt { font-size: 14px; color: var(--text-hi); margin-bottom: 12px; }
+
+/* 移动端：立绘缩小、字号下调 */
+@media (max-width: 640px) {
+  .imm-line { font-size: 15.5px; }
+  .imm-figure-emoji { width: 128px; height: 128px; font-size: 64px; }
+  .imm-bottom { padding: 0 12px calc(14px + env(safe-area-inset-bottom)); }
+  .imm-media-caption { bottom: 22%; font-size: 13px; }
 }
 

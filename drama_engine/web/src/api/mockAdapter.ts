@@ -156,14 +156,24 @@ export class MockAdapter implements DramaClient {
   async listGames(): Promise<GameDef[]> {
     return GAMES.map((g) => {
       const script = SCRIPTS[g.id];
-      const roles = script?.roles ?? [];
+      const rawRoles = script?.roles;
+      // 兼容 roles 为 array（旧格式）和 dict（新格式，如 THE_CLAUSE）
+      if (Array.isArray(rawRoles)) {
+        return {
+          game_id: g.id,
+          script_path: `mock/${g.id}`,
+          title: g.name,
+          default_seat_ids: rawRoles.map((r) => r.seat_id),
+          default_human_seat_ids: rawRoles.filter((r) => r.controller === "human").map((r) => r.seat_id),
+          roles: rawRoles,
+        };
+      }
+      // dict 格式：直接透传，由前端 importRolesFromGame 处理
       return {
         game_id: g.id,
         script_path: `mock/${g.id}`,
         title: g.name,
-        default_seat_ids: roles.map((r) => r.seat_id),
-        default_human_seat_ids: roles.filter((r) => r.controller === "human").map((r) => r.seat_id),
-        roles,
+        roles: rawRoles ?? undefined,
       };
     });
   }
