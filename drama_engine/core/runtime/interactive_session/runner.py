@@ -10,6 +10,7 @@ from typing import Any
 from drama_engine.core.dsl.components import CandidateResolver, ConditionEvaluator, EffectExecutor, ValueResolver
 from drama_engine.core.dsl.plugins import build_default_plugin_registry
 from drama_engine.core.engine import SetAttr, State, StateWriter, Vocabulary
+from drama_engine.core.executor import build_executor_registry
 from drama_engine.core.ports.memory import configure_runtime_memory_backend
 from drama_engine.core.runner.base import BasicGameRunner
 from drama_engine.core.runtime.interactive_session.compiler import InteractiveSessionCompiler
@@ -85,6 +86,7 @@ class InteractiveSessionRunner(BasicGameRunner):
             candidate_resolver=CandidateResolver(evaluator),
             value_resolver=ValueResolver(plugins),
             plugin_registry=plugins,
+            executor_registry=build_executor_registry(session_state.metadata, plugins),
             patch_journal=PatchJournal(),
             emit_public=self._emit_public,
             emit_host=self._emit_host,

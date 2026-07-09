@@ -46,6 +46,7 @@ def _build_ctx(secret_attrs: list[str]) -> InteractiveExecutionContext:
         candidate_resolver=None,
         value_resolver=None,
         plugin_registry=None,
+        executor_registry=None,
         patch_journal=None,
         emit_public=None,
         emit_host=None,

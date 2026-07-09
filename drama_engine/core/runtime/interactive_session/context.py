@@ -9,6 +9,7 @@ from typing import Any
 
 from drama_engine.core.dsl.components import CandidateResolver, ConditionEvaluator, EffectExecutor, ValueResolver
 from drama_engine.core.engine import Cast, State, StateWriter
+from drama_engine.core.executor import ExecutorRegistry
 from drama_engine.core.runtime.interactive_session.models import InteractiveScript
 from drama_engine.core.runtime.interactive_session.patch.journal import PatchJournal
 
@@ -26,6 +27,7 @@ class InteractiveExecutionContext:
     candidate_resolver: CandidateResolver
     value_resolver: ValueResolver
     plugin_registry: Any
+    executor_registry: ExecutorRegistry | None
     patch_journal: PatchJournal
     emit_public: Any
     emit_host: Any
