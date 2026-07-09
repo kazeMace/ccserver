@@ -20,16 +20,16 @@ class GuardRailSpec:
     字段：
       enabled      — 是否启用守卫。false 时完全旁路，零开销。
       checks       — 要检查的维度，如 ["in_character", "on_topic", "no_secret_leak"]。
-                     这些名字会拼进 LLM 判定 prompt，语义由 evaluator 理解。
+                     这些名字会拼进 LLM 判定 prompt，语义由 executor 理解。
       on_violation — 违规处理策略名：block | rewrite | soft_warn | pass_with_flag。
-      evaluator    — 判定用的 evaluator 声明（透传给 ConditionEvaluator，
+      executor     — 判定用的 executor 声明（透传给 ConditionEvaluator，
                      通常 {kind: llm, provider: inside, min_confidence: ...}）。
     """
 
     enabled: bool = False
     checks: list[str] = field(default_factory=list)
     on_violation: str = "soft_warn"
-    evaluator: dict[str, Any] = field(default_factory=dict)
+    executor: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         allowed = {"block", "rewrite", "soft_warn", "pass_with_flag"}

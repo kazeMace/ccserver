@@ -127,8 +127,8 @@ class FreeInputComponentRegistry:
                 logger.warning("[FreeInputComponentRegistry] 未注册的 InputGuard: %s，跳过", name)
                 continue
             config = dict(spec.get("config") or {})
-            # 把 evaluator 也放进 config，方便组件内部判断后端
-            config.setdefault("evaluator", spec.get("evaluator", "builtin"))
+            # 把 executor 也放进 config，方便组件内部判断后端
+            config.setdefault("executor", spec.get("executor", spec.get("evaluator", "builtin")))
             guards.append(cls(config))
         return guards
 
@@ -137,7 +137,7 @@ class FreeInputComponentRegistry:
 
         参数:
             specs: guards.output 配置列表
-                [{"name": "character_voice", "evaluator": "llm", "config": {...}}, ...]
+                [{"name": "character_voice", "executor": "llm", "config": {...}}, ...]
 
         返回:
             OutputGuard 实例列表（按配置顺序）
@@ -150,7 +150,7 @@ class FreeInputComponentRegistry:
                 logger.warning("[FreeInputComponentRegistry] 未注册的 OutputGuard: %s，跳过", name)
                 continue
             config = dict(spec.get("config") or {})
-            config.setdefault("evaluator", spec.get("evaluator", "builtin"))
+            config.setdefault("executor", spec.get("executor", spec.get("evaluator", "builtin")))
             config.setdefault("on_fail", spec.get("on_fail", "reject"))
             config.setdefault("max_retries", spec.get("max_retries", 2))
             guards.append(cls(config))
@@ -161,7 +161,7 @@ class FreeInputComponentRegistry:
 
         参数:
             spec: generation.planner 配置
-                {"name": "llm_planner", "evaluator": "llm", "config": {...}}
+                {"name": "llm_planner", "executor": "llm", "config": {...}}
                 None 表示未配置
 
         返回:
@@ -177,7 +177,7 @@ class FreeInputComponentRegistry:
             logger.warning("[FreeInputComponentRegistry] 未注册的 Planner: %s", name)
             return None
         config = dict(spec.get("config") or {})
-        config.setdefault("evaluator", spec.get("evaluator", "builtin"))
+        config.setdefault("executor", spec.get("executor", spec.get("evaluator", "builtin")))
         return cls(config)
 
     def resolve_choice_designer(self, spec: dict[str, Any] | None) -> ChoiceDesigner | None:
@@ -185,7 +185,7 @@ class FreeInputComponentRegistry:
 
         参数:
             spec: generation.choice_designer 配置
-                {"name": "attitude_triad", "evaluator": "llm", "config": {...}}
+                {"name": "attitude_triad", "executor": "llm", "config": {...}}
                 None 表示未配置
 
         返回:
@@ -201,7 +201,7 @@ class FreeInputComponentRegistry:
             logger.warning("[FreeInputComponentRegistry] 未注册的 ChoiceDesigner: %s", name)
             return None
         config = dict(spec.get("config") or {})
-        config.setdefault("evaluator", spec.get("evaluator", "builtin"))
+        config.setdefault("executor", spec.get("executor", spec.get("evaluator", "builtin")))
         return cls(config)
 
     def resolve_asset_resolver(self, spec: dict[str, Any] | None) -> AssetResolver | None:
@@ -225,7 +225,7 @@ class FreeInputComponentRegistry:
             logger.warning("[FreeInputComponentRegistry] 未注册的 AssetResolver: %s", name)
             return None
         config = dict(spec.get("config") or {})
-        config.setdefault("evaluator", spec.get("evaluator", "builtin"))
+        config.setdefault("executor", spec.get("executor", spec.get("evaluator", "builtin")))
         return cls(config)
 
     # ════════════════════════════════════════

@@ -1,6 +1,6 @@
 """模块4：OOC 内容守卫 GuardRail 测试（策略模式）。
 
-用假 evaluator 模拟 LLM 判定，验证：
+用假 executor 模拟 LLM 判定，验证：
   - enabled=false 完全旁路；
   - 合规发言放行；
   - 四种违规策略各自行为（block/rewrite/soft_warn/pass_with_flag）。
@@ -44,13 +44,13 @@ def _spec(on_violation: str, enabled: bool = True) -> GuardRailSpec:
         enabled=enabled,
         checks=["in_character", "on_topic"],
         on_violation=on_violation,
-        evaluator={"kind": "llm", "provider": "inside"},
+        executor={"kind": "llm", "provider": "inside"},
     )
 
 
 @pytest.mark.asyncio
 async def test_disabled_bypasses() -> None:
-    """未启用时完全放行，不调用 evaluator。"""
+    """未启用时完全放行，不调用 executor。"""
     evaluator = _FakeEvaluator(passed=False)
     guard = GuardRail(_spec("block", enabled=False))
     outcome = await guard.check(_FakeCtx(evaluator), {"actor": "P1", "text": "任意"})

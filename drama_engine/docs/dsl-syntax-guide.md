@@ -22,7 +22,7 @@
 11. [scenes — 场景定义（核心）](#11-scenes--场景定义核心)
 12. [scope — 消息域](#12-scope--消息域)
 13. [when — 条件判断（全局通用）](#13-when--条件判断全局通用)
-14. [evaluator — 条件求值器](#14-evaluator--条件求值器)
+14. [executor — 条件执行器](#14-executor--条件执行器)
 15. [participants — 参与者选择](#15-participants--参与者选择)
 16. [schedule — 调度模式](#16-schedule--调度模式)
 17. [dynamic — 动态子调度](#17-dynamic--动态子调度)
@@ -65,8 +65,8 @@
 本文所有示例使用新版语法：
 
 - 条件统一使用 `left / op / right`
-- 内置条件判断统一使用 `evaluator: builtin`
-- 机制型能力统一优先使用 `evaluator: plugin`
+- 内置条件判断统一使用 `executor: builtin`
+- 机制型能力统一优先使用 `executor: plugin`
 - 剧情动态生长使用 **patch**，不直接修改原始 DSL
 - scene 内部使用 `scope / participants / schedule / participant_action / controller_action / resolution / publication / referee / hooks`
 
@@ -766,28 +766,28 @@ when:
 
 ---
 
-## 14. evaluator — 条件求值器
+## 14. executor — 条件执行器
 
-条件判断统一抽象为 evaluator。有五种类型：
+条件判断统一抽象为 executor。有五种类型：
 
 ### 14.1 builtin — 内置条件
 
 ```yaml
 when:
-  evaluator: builtin
+  executor: builtin
   condition:
     left: GAME.round
     op: greater_than_equal
     right: 1
 ```
 
-默认就是 builtin，不写 `evaluator` 时等同于 `evaluator: builtin`。
+默认就是 builtin，不写 `executor` 时等同于 `executor: builtin`。
 
 ### 14.2 code — 代码执行
 
 ```yaml
 when:
-  evaluator: code
+  executor: code
   language: python              # 支持 python / shell / node / bun
   env:
     MAX_BEATS: "20"
@@ -805,7 +805,7 @@ when:
 
 ```yaml
 when:
-  evaluator: http
+  executor: http
   url: https://example.com/runtime/check
   method: POST
   headers:
@@ -838,7 +838,7 @@ when:
 
 ```yaml
 when:
-  evaluator: llm
+  executor: llm
   provider: inside              # 默认值，使用 ccserver 内部 agent
   semantic_id: judge_story_progress
   input:
@@ -852,7 +852,7 @@ when:
 
 ```yaml
 when:
-  evaluator: plugin
+  executor: plugin
   name: choose_ending_by_progress
   input:
     include_state: true
@@ -892,7 +892,7 @@ participants:
 
 ```yaml
 participants:
-  evaluator: plugin
+  executor: plugin
   name: select_current_scene_participants
   input:
     include_state: true
@@ -923,7 +923,7 @@ participants:
 | `source` | string | 筛选来源（如 `GAME.players`） |
 | `where` | condition | 筛选条件 |
 | `from_state` | string | 从 State 路径读取列表 |
-| `plugin` / `evaluator` | dict | plugin 选择 |
+| `plugin` / `executor` | dict | plugin 选择 |
 | `ordered` | bool | 是否保留顺序 |
 | `min` | int | 人数不足时跳过本幕 |
 
@@ -991,11 +991,11 @@ schedule:
   actor: A                         # 首个发言者
   opening: A 先开场，然后由 planner 决定下一位
   planner:                         # 每轮后决定下一位
-    evaluator: plugin
+    executor: plugin
     name: plan_openchat_next
   max_turns: 12                    # 最多发言段数
   stop_when:                       # 停止条件
-    evaluator: builtin
+    executor: builtin
     condition:
       left: SCENE.ready_to_end
       op: equal
@@ -1013,7 +1013,7 @@ schedule:
   mode: loop_until
   max_rounds: 5                    # 最多轮数
   stop_when:                       # 每轮后检查停止条件
-    evaluator: plugin
+    executor: plugin
     name: check_discussion_complete
 ```
 
@@ -1024,7 +1024,7 @@ schedule:
 | `mode` | string | 调度模式 |
 | `actor` | string / dict | single/openchat 的首个 actor |
 | `order` | dict | 顺序策略 |
-| `planner` | dict | openchat 每轮决定下一位的 evaluator |
+| `planner` | dict | openchat 每轮决定下一位的 executor |
 | `opening` / `cue` | string | 首轮提示词 |
 | `max_turns` | int | openchat 最多发言段数 |
 | `max_rounds` | int | loop_until 最多轮数 |
@@ -1047,7 +1047,7 @@ schedule:
     check_on: after_message        # 什么时候运行 detector
 
     detector:                      # 检测是否需要插入子调度
-      evaluator: plugin
+      executor: plugin
       name: detect_schedule_request
       input:
         include_message: true
@@ -1281,7 +1281,7 @@ controller_action:
     enabled: true
     mode: choose_mapping
     mapper:
-      evaluator: plugin
+      executor: plugin
       name: map_free_text_to_choice
 ```
 
@@ -1294,7 +1294,7 @@ free_input:
   enabled: true
   mode: branch_then_return
   generator:
-    evaluator: plugin
+    executor: plugin
     name: generate_temporary_branch
   return_to:
     type: scene                   # scene 或 state
@@ -1312,13 +1312,13 @@ free_input:
   ending:
     candidates: [good_end, bad_end, true_end]
     selector:
-      evaluator: plugin
+      executor: plugin
       name: choose_ending_by_progress
       input:
         include_state: true
         include_story_summary: true
   generator:
-    evaluator: plugin
+    executor: plugin
     name: generate_constrained_beat
 ```
 
@@ -1331,23 +1331,638 @@ free_input:
   enabled: true
   mode: free_continue
   generator:
-    evaluator: plugin
+    executor: plugin
     name: generate_free_beat
 ```
 
 ### 20.5 grow_flow — 动态生长
 
-动态生长 flow。runtime 生成 patch，不修改原始 DSL。
+动态生长模式。玩家每次交互后，runtime 通过组件管道（Pipeline）生成新的场景节点并 patch 到 flow 中，
+实现无限递归的剧情分支生长。与 choose_mapping 同级，是标准的 FreeInputStrategy。
+
+**模式推导**：`free_input` 只要含 `generation:` 块即自动识别为 grow_flow，无需显式写 `mode: grow_flow`。
+
+**配置块位置**：各维度配置（constraint / narration_style / interaction_mode / presentation）
+统一嵌套在 `generation:` 下。runtime 按 `generation` → `generator`（旧语法）→ 顶层平铺（最老语法）
+的优先级回退读取，三种写法都兼容，推荐用 `generation`。
+
+**软约束（自动注入）**：生成 prompt 会自动带上剧本设定（`meta.description`）和全部角色人设
+（顶层 `roles:` 块）作为锚点，确保自由扩展的剧情不跑偏、对话符合人设。脚本无需额外配置。
+
+#### 基本结构
+
+```yaml
+free_input:
+  enabled: true
+  # 有 generation 块即自动识别为 grow_flow，无需写 mode
+  generation:
+    # ─── 维度 1：续写风格 ───
+    narration_style: dialogue_sequence
+
+    # ─── 维度 2：互动方式 ───
+    interaction_mode: branch_choice
+
+    # ─── 维度 3：剧情约束 ───
+    constraint:
+      type: free                      # free = 无限扩展（默认推荐）
+      ending:                         # 保留结局候选：LLM 可通过 should_end 自然收束
+        candidates:
+          - id: good_ending
+            to: ending_good_scene
+            when: {left: "STORY.affection", op: "gte", right: 80}
+          - id: bad_ending
+            to: ending_bad_scene
+            when: null
+
+    # ─── 维度 4：交互展示 ───
+    presentation: cinematic
+
+    # ─── 生成器参数 ───
+    executor: llm                    # 可省略，默认 llm（无 client/dry-run 时自动降级模板）
+    model: null                       # 可选：覆盖模型 ID（null = 继承 session 全局配置）
+    directive: "保持悬疑氛围"          # 可选：额外创作指令
+```
+
+#### 五维组件模型
+
+grow_flow 通过 5 个正交维度的组件组合来决定生成行为，每个维度独立可替换：
+
+| 维度 | 字段 | 职责 |
+|------|------|------|
+| 续写风格 | `narration_style` | 决定 LLM 输出格式和写作风格 |
+| 互动方式 | `interaction_mode` | 决定生成场景的交互结构（choices/free_text） |
+| 剧情约束 | `constraint` | 控制何时收束、是否注入提示 |
+| 交互展示 | `presentation` | 决定最终 scene patch 的结构 |
+| 生成器 | `executor` | 决定调用 LLM 还是模板 |
+
+#### narration_style 可选值
+
+| 值 | 说明 |
+|---|---|
+| `plain_narration` | 平铺直叙，纯旁白第三人称描写 |
+| `dialogue_sequence` | 逐句对话列表（speaker + text），类似 The Clause |
+| `mixed` | 旁白 + 对话混排 |
+
+#### interaction_mode 可选值
+
+| 值 | 说明 |
+|---|---|
+| `branch_choice` | 生成分支选项（含 grow_flow 递归自引用） |
+| `free_input_only` | 无固定选项，完全自由输入 |
+| `confirm_advance` | 只有一个"继续"按钮 |
+
+#### constraint 配置
+
+`constraint.type` 决定约束类型：
+
+| type | 说明 |
+|------|------|
+| `free` | 无约束，无限生长（**默认**，不写 constraint 时等同 free）。LLM 可通过 `should_end` + `ending_id` 自行收束到预设结局 |
+| `max_rounds` | 达到 max_count 或 max_depth 后强制结束 |
+| `ending_bound` | 朝预设结局收束，支持 hint/force 深度控制 |
+
+> **无限扩展 + 可选结局**：`type: free` 搭配 `ending.candidates` 是推荐组合。
+> 剧情不会因深度上限被强制截断，但预设结局仍作为候选交给 LLM——当剧情
+> 自然到达结局时，LLM 返回 `should_end: true` + 对应 `ending_id` 即可收束。
+
+**深度参数**（所有数值参数设为 `0` 或不写即表示禁用）：
+
+| 参数 | 含义 | 禁用 |
+|------|------|------|
+| `max_depth` | 绝对深度上限，到了强制收束 | `0` 或不写 = 无深度限制 |
+| `force_at_depth` | 提前强制收束深度 | `0` 或不写 = 不启用，仅靠 max_depth |
+| `hint_at_depth` | 到该深度时在 prompt 中注入收束提示 | `0` 或不写 = 不注入提示 |
+| `max_count` | 总生成场景数上限 | `0` 或不写 = 无总数限制 |
+
+**深度计算规则**：原始手写场景 depth=0，每次 grow_flow 生成 depth+1。
+两者都设时取较小值生效（`min(max_depth, force_at_depth)`）。
+
+**ending.candidates**：
+
+```yaml
+ending:
+  candidates:
+    - id: good_ending           # 结局标识
+      to: ending_good_scene     # 跳转目标 scene/node
+      when:                     # 触发条件（null = 无条件 fallback）
+        left: "STORY.affection"
+        op: "gte"
+        right: 80
+    - id: bad_ending
+      to: ending_bad_scene
+      when: null                # 无条件 fallback（最后兜底）
+```
+
+#### presentation 可选值
+
+| 值 | 说明 |
+|---|---|
+| `cinematic` | 播片式：dialogue_history 放 context，逐句播放 |
+| `chat_flow` | 聊天气泡式：publication.messages 为消息列表 |
+| `visual_novel` | 经典 AVG：单条 narration + 底部选项 dock |
+
+#### executor 可选值
+
+| 值 | 说明 |
+|---|---|
+| `llm` | 调用 LLM 生成（**默认**，通过 InsideAgentFactory，继承 session 全局模型配置；无 client 或 dry-run 时自动降级模板） |
+| `builtin` | 模板 dry-run（不调 LLM，返回固定结构，仅测试用） |
+
+#### 典型配置示例
+
+```yaml
+# 最简配置（builtin dry-run 测试）
+free_input:
+  enabled: true
+  mode: grow_flow
+  generator:
+    executor: builtin
+
+# 无限生长 + 可选结局（推荐：不限深度，LLM 自然收束）
+free_input:
+  enabled: true
+  generation:
+    narration_style: dialogue_sequence
+    interaction_mode: branch_choice
+    constraint:
+      type: free
+      ending:
+        candidates:
+          - id: good_ending
+            to: node_29_end_heart
+            when: {left: "STORY.affection_marco", op: "gte", right: 60}
+          - id: bad_ending
+            to: node_28_end_reason
+            when: null
+    presentation: cinematic
+
+# 完整配置（有提示 + 有强制 + 结局候选）
+free_input:
+  enabled: true
+  mode: grow_flow
+  generator:
+    executor: llm
+    narration_style: dialogue_sequence
+    interaction_mode: branch_choice
+    constraint:
+      type: ending_bound
+      hint_at_depth: 4
+      force_at_depth: 6
+      max_depth: 6
+      ending:
+        candidates:
+          - id: good_ending
+            to: node_29_end_heart
+            when: {left: "STORY.affection_marco", op: "gte", right: 60}
+          - id: bad_ending
+            to: node_28_end_reason
+            when: null
+    presentation: cinematic
+    directive: "保持浪漫悬疑氛围，对话简洁有力"
+
+# 只限总数不限深度
+free_input:
+  enabled: true
+  mode: grow_flow
+  generator:
+    executor: llm
+    narration_style: plain_narration
+    interaction_mode: confirm_advance
+    constraint:
+      type: max_rounds
+      max_count: 10
+    presentation: visual_novel
+```
+
+#### 执行管道
+
+```
+Constraint.check() → 是否收束？
+  ├─ 是 → Constraint.build_ending_patch() → 跳转结局
+  └─ 否 → NarrationStyle.build_prompt()
+         → Generator.generate(prompt)
+         → NarrationStyle.parse_response(raw)
+         → InteractionMode.build_controller_action(parsed)
+         → Presentation.build_scene_patch(narration + interaction)
+         → 注册到 GrowFlowState + 设置 interactive_next_target
+```
+
+#### 扩展机制
+
+GamePack 可通过 `GrowFlowComponentRegistry` 注册自定义组件：
+
+```python
+def register(api):
+    api.register_grow_flow_narration("epistolary", EpistolaryStyle)
+    api.register_grow_flow_constraint("karma_bound", KarmaBoundConstraint)
+```
+
+注册后即可在 DSL 中通过名称引用：`narration_style: epistolary`。
+
+### 20.6 跨模式组件层（Cross-Cutting Components）
+
+所有 5 种 free_input 模式都可以配置跨模式组件。这些组件在模式执行前后提供输入校验、输出校验、规划、选项设计和资产匹配能力。
+
+#### 完整执行流程
+
+```
+玩家输入
+    │
+    ▼
+[InputGuard Chain]    ← guards.input（前置校验）
+    │
+    ▼
+[Planner]             ← generation.planner（可选规划）
+    │
+    ▼
+[Mode Strategy]       ← 原有 5 种模式各自执行
+    │
+    ▼
+[OutputGuard Chain]   ← guards.output（后置校验，仅生成类模式）
+    │
+    ▼
+[ChoiceDesigner]      ← generation.choice_designer（可选独立选项设计）
+    │
+    ▼
+[AssetResolver]       ← generation.asset_resolver（可选资产匹配）
+    │
+    ▼
+最终结果
+```
+
+#### guards — 输入输出校验
 
 ```yaml
 free_input:
   enabled: true
   mode: grow_flow
-  patch_store: session            # patch 存储位置
-  generator:
-    evaluator: plugin
-    name: generate_flow_patch
+
+  guards:
+    # 输入守卫：校验玩家自由输入，任一失败则拒绝
+    input:
+      - name: character_existence      # 检查提到的角色是否存在
+      - name: behavior_plausibility    # 检查行为是否合理
+        executor: llm
+      - name: content_safety           # 内容安全过滤
+        config:
+          blocked_patterns: ["hack", "exploit"]
+
+    # 输出守卫：校验生成内容质量，仅生成类模式生效
+    output:
+      - name: output_character_existence   # 生成内容中的角色是否合法
+      - name: schema_conformance           # 输出结构是否完整
+      - name: character_voice              # 对话是否符合角色人设
+        executor: llm
+        config:
+          on_fail: retry                   # retry / fallback / reject / skip
+          max_retries: 2
 ```
+
+**内置 InputGuard：**
+
+| name | 后端 | 说明 |
+|------|------|------|
+| `character_existence` | builtin | 检查输入中提及的角色名是否存在于剧本 characters |
+| `content_safety` | builtin | 基于关键词黑名单的内容安全过滤 |
+| `behavior_plausibility` | llm | 检查行为是否符合角色设定和当前情境 |
+
+**内置 OutputGuard：**
+
+| name | 后端 | 说明 |
+|------|------|------|
+| `output_character_existence` | builtin | 检查生成内容中的 speaker 是否合法 |
+| `schema_conformance` | builtin | 检查输出结构完整性（至少有 narration 或 dialogue_history） |
+| `character_voice` | llm | 检查对话是否符合角色语气/人设 |
+
+**OutputGuard on_fail 策略：**
+
+| 值 | 说明 |
+|------|------|
+| `retry` | 重新生成，最多 max_retries 次 |
+| `fallback` | 回退到保守/模板输出 |
+| `reject` | 拒绝，返回错误（默认） |
+| `skip` | 跳过此 Guard，记录日志继续 |
+
+#### mapper — 输入映射（原 choose_mapping 的通用化）
+
+mapper 是一个可选的前置步骤：尝试把自由输入映射到现有 choice。
+
+```yaml
+free_input:
+  enabled: true
+  mode: grow_flow            # 任何 mode 都可以配 mapper
+
+  mapper:
+    enabled: true
+    executor: llm           # builtin / llm / plugin / http
+    fallback: generate       # 映射失败时的策略
+```
+
+**mapper.fallback 可选值：**
+
+| 值 | 说明 |
+|------|------|
+| `generate` | 映射失败 → 进入生成流程（默认，需要有 generation 块） |
+| `reject` | 映射失败 → 提示玩家重新输入 |
+| `closest` | 无论置信度多低都映射到最近的 choice |
+| `random` | 映射失败 → 随机选一个 choice |
+
+#### planner — 剧情规划
+
+Planner 在生成前产出标题/大纲/角色列表，注入 Generator 的 prompt 指导方向。
+
+```yaml
+free_input:
+  enabled: true
+  mode: grow_flow
+  generation:
+    planner:
+      name: llm_planner
+      executor: llm
+      config:
+        generate_title: true
+        generate_synopsis: true
+```
+
+**内置 Planner：**
+
+| name | 说明 |
+|------|------|
+| `null_planner` | 不规划，直接跳过（默认） |
+| `llm_planner` | LLM 生成标题 + 简介 + 涉及角色列表 |
+
+#### choice_designer — 独立选项设计
+
+当 interaction_mode 决定"需要 choices"时，可以由独立的 ChoiceDesigner 组件生成选项内容，
+而不是让 Generator 一次性产出。
+
+```yaml
+free_input:
+  enabled: true
+  mode: grow_flow
+  generation:
+    interaction_mode: branch_choice    # 需要 choices
+
+    choice_designer:
+      name: attitude_triad
+      executor: llm
+      config:
+        count: 3
+        attitudes: [bold, neutral, cautious]
+```
+
+**与 InteractionMode 的关系：**
+- InteractionMode 决定**结构**：要不要 choices、要不要 free_input、要不要限时
+- ChoiceDesigner 决定**内容**：choices 具体是什么文字
+- 配置了 choice_designer 时，Generator prompt 中**不注入** choices 生成指令
+- 未配置 choice_designer 时，保持现有行为（Generator 一次性输出剧情 + choices）
+
+**内置 ChoiceDesigner：**
+
+| name | 说明 |
+|------|------|
+| `passthrough` | 透传 Generator 产出的 choices（默认兼容） |
+| `attitude_triad` | 独立生成 N 个不同态度的选项 |
+
+#### asset_resolver — 资产匹配
+
+从预制资产池中为生成的内容匹配最佳图片/立绘/BGM。
+
+```yaml
+free_input:
+  enabled: true
+  mode: grow_flow
+  generation:
+    asset_resolver:
+      name: tag_matcher
+      config:
+        pool_ref: "assets/backgrounds"
+        max_results: 3
+```
+
+**内置 AssetResolver：**
+
+| name | 后端 | 说明 |
+|------|------|------|
+| `tag_matcher` | builtin | 基于标签交集得分匹配 |
+| `llm_matcher` | llm | LLM 语义匹配（需注册） |
+
+#### executor 通用说明
+
+所有跨模式组件统一支持 4 种执行后端：
+
+| executor | 说明 |
+|-----------|------|
+| `builtin` | 内置 Python 实现（默认） |
+| `llm` | 调用 LLM 自动构造 prompt |
+| `plugin` | 从 GamePack/PluginRegistry 获取用户注册的函数 |
+| `http` | 调用外部 HTTP 服务 |
+
+#### 组件扩展
+
+通过 GamePack 的 `register(api)` 注册自定义跨模式组件：
+
+```python
+def register(api):
+    api.register_input_guard("my_game.world_rule", WorldRuleGuard)
+    api.register_output_guard("my_game.lore_check", LoreConsistencyGuard)
+    api.register_planner("my_game.story_planner", StoryPlanner)
+    api.register_choice_designer("my_game.dramatic", DramaticChoiceDesigner)
+    api.register_asset_resolver("my_game.portrait", PortraitResolver)
+```
+
+注册后在 DSL 中通过 name 引用：`name: my_game.world_rule`。
+
+#### 完整配置示例
+
+```yaml
+controller_action:
+  enabled: true
+  controller:
+    type: human
+  kind: cinematic
+  choices:
+    - id: accept
+      text: "接受提议"
+      to: scene_next
+    - id: negotiate
+      text: "谈条件"              # 无 to → 触发生成
+
+  free_input:
+    enabled: true
+    mode: grow_flow
+
+    guards:
+      input:
+        - name: character_existence
+        - name: content_safety
+      output:
+        - name: output_character_existence
+        - name: character_voice
+          executor: llm
+          config:
+            on_fail: retry
+            max_retries: 2
+
+    mapper:
+      enabled: true
+      executor: llm
+      fallback: generate
+
+    generation:
+      planner:
+        name: llm_planner
+        executor: llm
+        config:
+          generate_title: true
+          generate_synopsis: true
+
+      narration_style: dialogue_sequence
+      interaction_mode: branch_choice
+      constraint:
+        type: ending_bound
+        max_depth: 8
+        hint_at_depth: 6
+        force_at_depth: 8
+        ending:
+          candidates:
+            - id: good_end
+              to: scene_happy
+              when: {left: "STORY.trust", op: "gte", right: 70}
+            - id: bad_end
+              to: scene_bad
+
+      choice_designer:
+        name: attitude_triad
+        executor: llm
+        config:
+          count: 3
+          attitudes: [bold, neutral, cautious]
+
+      asset_resolver:
+        name: tag_matcher
+        config:
+          pool_ref: "assets/backgrounds"
+
+      presentation: cinematic
+      directive: "保持浪漫悬疑氛围"
+```
+
+#### 各场景组件参与矩阵
+
+| 场景 | InputGuard | Mapper | Planner | Generator | OutputGuard | ChoiceDesigner | AssetResolver |
+|------|-----------|--------|---------|-----------|-------------|---------------|---------------|
+| 选 choice 有 to | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| 选 choice 无 to | ❌ | ❌ | ⚪ | ✅ | ✅ | ⚪ | ⚪ |
+| 自由输入→映射成功→有 to | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| 自由输入→映射失败→生成 | ✅ | ✅ | ⚪ | ✅ | ✅ | ⚪ | ⚪ |
+| 自由输入→无 mapper→生成 | ✅ | ❌ | ⚪ | ✅ | ✅ | ⚪ | ⚪ |
+| 点继续→需要生成 | ❌ | ❌ | ⚪ | ✅ | ✅ | ⚪ | ⚪ |
+
+✅ 必须 | ⚪ 可选 | ❌ 不参与
+
+### 20.7 constraint 类型扩展
+
+原有 grow_flow 的 `constraint` 字段现在支持更多约束类型，统一覆盖所有生成场景：
+
+| type | 行为 | 对应原 mode |
+|------|------|------------|
+| `free` | 无限制，自由发展 | free_continue |
+| `max_rounds` | N 轮后停止 | — |
+| `max_depth` | 深度到 N 停止 | grow_flow + max_depth |
+| `ending_bound` | 朝预设结局收束（hint → force） | constrained_continue |
+| `branch_return` | 生成 1 段后回到触发点 | branch_then_return |
+| `chapter_bound` | 被章节节点拉回（LLM 判断时机） | 新增 |
+
+#### branch_return
+
+生成一段旁支剧情后自动回到触发场景。适用于"探索但不影响主线"的需求。
+
+```yaml
+free_input:
+  enabled: true
+  mode: grow_flow
+  generation:
+    constraint:
+      type: branch_return
+      max_segments: 1          # 最多生成几段（默认 1）
+      return_to: current       # current = 回到当前 scene（默认）
+```
+
+#### chapter_bound
+
+由 LLM 判断"何时该回到主线"，适用于章节化的自由探索。
+
+```yaml
+free_input:
+  enabled: true
+  mode: grow_flow
+  generation:
+    constraint:
+      type: chapter_bound
+      chapter_anchor: scene_chapter2_start    # 锚定的章节 scene_id
+      max_depth: 12                           # 安全上限
+      executor: llm                          # 判断"是否该收束"的后端
+      hint: "当玩家的探索已经偏离主题或达到自然停顿点时收束"
+```
+
+#### 原有 mode 兼容
+
+编译器保持向后兼容：遇到旧写法时自动展开为新结构。
+
+| 原 mode | 等价新配置 |
+|---------|-----------|
+| `choose_mapping` | `mapper.enabled: true, mapper.fallback: random`（无 generation 块） |
+| `branch_then_return` | `generation.constraint.type: branch_return` |
+| `constrained_continue` | `generation.constraint.type: ending_bound` |
+| `free_continue` | `generation.constraint.type: free` |
+| `grow_flow` | 完整 `generation` 块 |
+
+### 20.8 NarrativeJournal — 叙事日志持久化
+
+所有玩家的故事进程按 `user_id + session_id` 自动持久化为叙事树。预制跳转和生成内容统一记录。
+
+#### 自动行为
+
+- 玩家选 choice 跳转到预制 scene → 记录 `preset` 节点
+- 触发生成流程产出内容 → 记录 `generated` 节点
+- 节点间通过 parent/children 形成树结构
+- 每次进入新节点时自动调用，无需在 DSL 中额外配置
+
+#### 数据结构
+
+```
+NarrativeNode:
+  node_id        — 唯一标识
+  session_id     — session 标识
+  user_id        — 用户标识
+  source         — "preset" / "generated"
+  title          — 节点标题
+  synopsis       — 简介
+  content        — 内容块列表（narration / dialogue / media）
+  assets         — 关联资产
+  choices_presented — 呈现过的选项
+  player_action  — 玩家做了什么 {type, value, choice_id}
+  parent_id      — 父节点
+  children_ids   — 子节点列表
+  depth          — 树中深度
+  branch_type    — "main" / "generated" / "side_branch"
+  created_at     — 创建时间
+  duration_ms    — 玩家停留时长
+```
+
+#### 查询接口
+
+| 方法 | 说明 |
+|------|------|
+| `get_tree(session_id, user_id)` | 获取完整叙事树 |
+| `get_path(session_id, user_id)` | 获取根到最深节点的线性路径 |
+| `get_node(node_id)` | 获取单节点详情 |
+
+#### 存储后端
+
+- 开发阶段：JSON 文件（每 session 一个文件）
+- 生产阶段：替换为数据库实现（接口为 `NarrativeStore` 协议）
 
 ---
 
@@ -1472,7 +2087,7 @@ referee:
 referee:
   enabled: true
   check_on: [after_message]
-  evaluator: plugin
+  executor: plugin
   name: check_story_should_end
 ```
 
@@ -1484,7 +2099,7 @@ referee:
   check_on: [after_scene]
   include: [vote_scene, debate_scene]     # 只在这些 scene 检查
   exclude: [intro_scene]                  # 排除这些 scene
-  evaluator: plugin
+  executor: plugin
   name: check_game_result
 ```
 
@@ -1943,7 +2558,7 @@ guardrail:
   enabled: true
   checks: [in_character, on_topic, no_secret_leak]
   on_violation: rewrite                # 违规处理策略
-  evaluator:
+  executor:
     kind: llm
     provider: inside
     min_confidence: 0.7
@@ -1998,7 +2613,7 @@ flow_patch:
         enabled: true
         mode: constrained_continue
         generator:
-          evaluator: plugin
+          executor: plugin
           name: generate_constrained_beat
 ```
 
@@ -2345,7 +2960,7 @@ initial_state:
 | `selection_result.xxx` | 统计结果字段 |
 | `RESOLUTION.selected` | resolution 选出的结果 |
 | `item` / `item.xxx` | for_each/pending 当前项 |
-| `result` / `result.xxx` | http/llm evaluator 返回结果 |
+| `result` / `result.xxx` | http/llm executor 返回结果 |
 | `MESSAGE.text` | 当前触发消息文本 |
 
 ---
@@ -2411,7 +3026,7 @@ guardrail:
   enabled: true
   checks: [in_character, on_topic, no_secret_leak]
   on_violation: rewrite
-  evaluator:
+  executor:
     kind: llm
     provider: inside
 
@@ -2468,7 +3083,7 @@ scenes:
         enabled: true
         check_on: after_message
         detector:
-          evaluator: plugin
+          executor: plugin
           name: detect_schedule_request
         allowed:
           modes: [single, sequential, openchat]
@@ -2649,13 +3264,13 @@ scenes:
         enabled: true
         mode: choose_mapping
         mapper:
-          evaluator: plugin
+          executor: plugin
           name: map_free_text_to_choice
 
     referee:
       enabled: true
       check_on: [after_scene]
-      evaluator: plugin
+      executor: plugin
       name: check_story_should_end
 
 concepts:
@@ -2704,7 +3319,7 @@ concepts:
 | 建议 | 级别 | 说明 |
 | --- | --- | --- |
 | 使用 `left / op / right` 代替旧条件字段 | warning | 旧写法仅兼容历史脚本 |
-| `python` 条件应改用 `evaluator: code` | warning | python 是 legacy |
+| `python` 条件应改用 `executor: code` | warning | python 是 legacy |
 | `when` 中读取状态建议显式 `{ref: ...}` | info | 风格建议 |
 | `concepts` 应覆盖所有 roles/factions/scopes | warning | 帮助 actor 理解 |
 | `visibility.secret_attrs` 声明是唯一事实来源 | info | 未声明时默认全部公开 |

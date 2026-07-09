@@ -63,13 +63,12 @@ class GuardRail:
     async def _judge(self, ctx: Any, response: dict[str, Any], text: str) -> GuardDecision:
         """调用 LLM 判定发言是否违规。
 
-        构造 evaluator 条件 dict，走 ConditionEvaluator.evaluate_async；
+        构造 executor 条件 dict，走 ConditionEvaluator.evaluate_async；
         约定：条件为真表示「合规」，为假表示「违规」。判定失败按 fallback（默认合规）处理。
         """
         evaluator = ctx.condition_evaluator
         if evaluator is None:
-            # 无 evaluator（如最小测试 ctx）：无法判定，保守放行。
-            return GuardDecision(violated=False, reason="无 evaluator，跳过判定")
+            return GuardDecision(violated=False, reason="无 condition_evaluator，跳过判定")
         cond = self._build_condition(text)
         try:
             passed = await evaluator.evaluate_async(
@@ -85,25 +84,21 @@ class GuardRail:
         return GuardDecision(violated=not passed, reason="" if passed else "发言未通过内容守卫判定")
 
     def _build_condition(self, text: str) -> dict[str, Any]:
-        """把 GuardRailSpec.evaluator 与检查维度组装成 ConditionEvaluator 条件 dict。"""
+        """把 GuardRailSpec.executor 与检查维度组装成 ConditionEvaluator 条件 dict。"""
         checks_text = "、".join(self._spec.checks) if self._spec.checks else "是否符合当前角色与场景"
-        # 默认 prompt：让模型判定「发言是否合规（in_character 且 on_topic 且不泄密）」，
-        # 返回 {result: bool, confidence: float}；DSL evaluator 里可用 prompt 覆盖。
         default_prompt = (
             "你是剧情内容守卫。请判断下面这句发言是否合规——"
             f"需同时满足以下维度：{checks_text}。"
             "合规返回 result=true，越界/离题/泄密返回 result=false。"
             f"\n发言内容：{text}\n请返回 JSON：{{\"result\": bool, \"confidence\": 0~1}}"
         )
-        cond = dict(self._spec.evaluator or {})
-        # 归一化 evaluator 字段：DSL 里可能写 kind: llm，这里统一成 evaluator: llm。
-        if "evaluator" not in cond:
-            cond["evaluator"] = str(cond.pop("kind", None) or "llm")
+        cond = dict(self._spec.executor or {})
+        # 归一化 executor 字段：DSL 里可能写 kind: llm，这里统一成 executor: llm。
+        if "executor" not in cond:
+            cond["executor"] = str(cond.pop("kind", None) or "llm")
         cond.setdefault("provider", "inside")
         cond.setdefault("prompt", default_prompt)
-        # 判定失败默认按「合规」放行（fallback=True），避免误杀正常发言。
         cond.setdefault("fallback", True)
-        # 把待判定文本一并带上，便于 evaluator input 引用。
         cond["_guard_text"] = text
         return cond
 
@@ -136,7 +131,7 @@ class GuardRail:
         return _rewrite
 
     def _resolve_inside_client(self, ctx: Any) -> Any:
-        """解析可用的 inside LLM/Agent client（与 external evaluator 同源）。"""
+        """解析可用的 inside LLM/Agent client（与 executor 同源）。"""
         metadata = getattr(ctx, "session_metadata", None) or {}
         client = (
             metadata.get("inside_agent")
@@ -150,7 +145,7 @@ class GuardRail:
                 InsideAgentFactory,
             )
 
-            return InsideAgentFactory().get_or_create(metadata, dict(self._spec.evaluator or {}))
+            return InsideAgentFactory().get_or_create(metadata, dict(self._spec.executor or {}))
         except Exception as exc:  # noqa: BLE001 - 无 client 时由调用方降级。
             logger.debug("[GuardRail] 无法获取 inside client: %s", exc)
             return None

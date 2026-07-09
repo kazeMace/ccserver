@@ -95,7 +95,7 @@ scenes:
       rules:
         # hp 归零则失败
         - when:
-            evaluator: plugin
+            executor: plugin
             name: stats.attr_below
             input:
               entity: Hero
@@ -142,7 +142,7 @@ scenes:
       check_on: [after_scene]
       rules:
         - when:
-            evaluator: plugin
+            executor: plugin
             name: stats.attr_at_least
             input:
               entity: Hero

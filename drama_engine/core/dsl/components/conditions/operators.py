@@ -1,4 +1,4 @@
-"""Comparison operators shared by condition evaluators."""
+"""Comparison operators shared by condition executors."""
 
 from __future__ import annotations
 

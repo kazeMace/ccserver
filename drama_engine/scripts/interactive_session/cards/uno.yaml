@@ -102,7 +102,7 @@ scenes:
       check_on: after_scene
       rules:
         - when:
-            evaluator: plugin
+            executor: plugin
             name: cards.hand_empty
             input:
               entity: Player_1

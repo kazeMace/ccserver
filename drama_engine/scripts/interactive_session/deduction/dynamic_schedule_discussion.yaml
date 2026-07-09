@@ -50,7 +50,7 @@ scenes:
         enabled: true
         check_on: after_message
         detector:
-          evaluator: plugin
+          executor: plugin
           name: detect_schedule_request
           patch:
             type: push_schedule

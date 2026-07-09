@@ -1,4 +1,4 @@
-"""Plugin-backed condition evaluator."""
+"""Plugin-backed condition executor."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ class PluginConditionEvaluator:
 
     def __init__(self, plugin_registry: Any = None):
         """
-        Initialize the plugin evaluator.
+        Initialize the plugin executor.
 
         Args:
             plugin_registry: Registry that provides evaluate_condition().

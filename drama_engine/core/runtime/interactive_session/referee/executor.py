@@ -29,9 +29,9 @@ class RefereeExecutor:
         if not self._matches_include_exclude(referee, scene, event):
             return None
 
-        if referee.evaluator:
+        if referee.executor:
             passed = await ctx.condition_evaluator.evaluate_async(
-                referee.evaluator,
+                referee.executor,
                 ctx.state,
                 actor=None,
                 responses=ctx.last_responses,

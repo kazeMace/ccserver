@@ -302,8 +302,8 @@ class ScheduleExecutor:
         """Plan the next openchat speaker through service or round-robin."""
         service_spec = schedule.planner or {}
         if not service_spec and isinstance(schedule.order, dict):
-            evaluator = schedule.order.get("evaluator") or schedule.order.get("provider") or schedule.order.get("name")
-            if evaluator:
+            executor_name = schedule.order.get("executor") or schedule.order.get("evaluator") or schedule.order.get("provider") or schedule.order.get("name")
+            if executor_name:
                 service_spec = dict(schedule.order)
         if service_spec:
             result = await self._services.call_async(

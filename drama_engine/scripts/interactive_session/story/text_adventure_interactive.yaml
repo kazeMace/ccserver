@@ -79,10 +79,11 @@ scenes:
           to: leave_scene
       free_input:
         enabled: true
-        mode: choose_mapping
         mapper:
-          evaluator: plugin
+          enabled: true
+          executor: plugin
           name: map_free_text_to_choice
+          fallback: random
 
   enter_house_scene:
     type: scene

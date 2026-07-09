@@ -61,7 +61,7 @@ class InteractiveExecutionContext:
         )
 
     def runtime_extra(self) -> dict[str, Any]:
-        """Build common extra context for evaluators."""
+        """Build common extra context for executors."""
         return {
             "__state": self.state,
             "current_state": self.current_state_id,
@@ -98,14 +98,14 @@ class InteractiveExecutionContext:
         return result
 
     def condition_extra(self, **items: Any) -> dict[str, Any]:
-        """Build evaluator extra data that may call back into this runtime.
+        """Build executor extra data that may call back into this runtime.
 
         Args:
             **items: Extra event/hook-specific context.
 
         Returns:
             Dict with normal runtime context plus a non-serializable runtime
-            pointer for async inside evaluators.
+            pointer for async inside executors.
         """
         result = self.runtime_extra()
         result["__interactive_ctx"] = self

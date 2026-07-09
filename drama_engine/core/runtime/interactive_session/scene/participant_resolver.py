@@ -1,7 +1,7 @@
 """Scene 参与者解析器（从 SceneExecutor 拆出，M3）。
 
 职责单一：把 scene.participants 的各种声明（static / list / all / filter / source /
-from_state / service-evaluator）解析成一份合法的参与者名单，并应用 order_by / limit。
+from_state / service-executor）解析成一份合法的参与者名单，并应用 order_by / limit。
 SceneExecutor 只负责编排，参与者「怎么选」收敛到这里。
 """
 
@@ -18,7 +18,7 @@ class ParticipantResolver:
     """把 scene.participants 声明解析为合法参与者名单。"""
 
     def __init__(self, services: RuntimeServiceCaller) -> None:
-        """绑定运行时服务调用器（供 service-evaluator 型参与者选择使用）。"""
+        """绑定运行时服务调用器（供 service-executor 型参与者选择使用）。"""
         assert services is not None, "services 不能为空"
         self._services = services
 
@@ -34,10 +34,10 @@ class ParticipantResolver:
             return []
         if "static" in spec:
             return [str(name) for name in spec.get("static", []) if str(name) in all_names]
-        evaluator = spec.get("evaluator") or spec.get("provider")
-        if not evaluator and spec.get("plugin"):
-            evaluator = "plugin"
-        if evaluator in {"plugin", "inside", "builtin", "http", "llm"}:
+        executor = spec.get("executor") or spec.get("evaluator") or spec.get("provider")
+        if not executor and spec.get("plugin"):
+            executor = "plugin"
+        if executor in {"plugin", "inside", "builtin", "http", "llm"}:
             return await self._resolve_service_participants(ctx, scene, spec, all_names)
         if "from_state" in spec or "from_state_set" in spec:
             value = ctx.value_resolver.resolve(
@@ -160,7 +160,7 @@ class ParticipantResolver:
         spec: dict[str, Any],
         all_names: list[str],
     ) -> list[str]:
-        """Resolve participants through a runtime service or evaluator."""
+        """Resolve participants through a runtime service or executor."""
         result = await self._services.call_async(
             ctx,
             spec,

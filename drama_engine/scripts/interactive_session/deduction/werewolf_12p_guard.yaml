@@ -302,7 +302,7 @@ referee:
   check_on: after_scene
   rules:
     - when:
-        evaluator: plugin
+        executor: plugin
         name: social.faction_cleared
         input:
           faction: wolf
@@ -310,7 +310,7 @@ referee:
       result:
         end: good_win
     - when:
-        evaluator: plugin
+        executor: plugin
         name: social.faction_cleared
         input:
           faction: good

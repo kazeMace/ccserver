@@ -1,4 +1,4 @@
-"""Primitive condition evaluator."""
+"""Primitive condition executor."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ class PrimitiveConditionEvaluator:
 
     def __init__(self, plugin_registry: Any = None, evaluate_condition: Callable | None = None):
         """
-        Initialize the primitive evaluator.
+        Initialize the primitive executor.
 
         Args:
             plugin_registry: Optional plugin registry for value resolvers.
@@ -331,7 +331,7 @@ class PrimitiveConditionEvaluator:
     def entity_matches_filter(self, entity: str, filter_spec: dict, state: State) -> bool:
         """Return whether one entity matches a filter spec."""
         if self.looks_like_condition(filter_spec):
-            assert self._evaluate is not None, "nested condition evaluator 不能为空"
+            assert self._evaluate is not None, "nested condition executor 不能为空"
             return self._evaluate(
                 filter_spec,
                 state=state,

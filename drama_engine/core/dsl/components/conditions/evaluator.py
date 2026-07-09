@@ -21,8 +21,8 @@ class ConditionEvaluator:
     methods live in composed evaluators:
 
     - PrimitiveConditionEvaluator: ref/left/value/count/state/item/filter.
-    - CodeConditionEvaluator: evaluator: code and legacy python.
-    - ExternalConditionEvaluator: evaluator: http / llm.
+    - CodeConditionEvaluator: executor: code and legacy python.
+    - ExternalConditionEvaluator: executor: http / llm.
     - PluginConditionEvaluator: plugin registry delegation.
     """
 
@@ -88,8 +88,8 @@ class ConditionEvaluator:
                 entity,
             )
 
-        if "evaluator" in cond:
-            return self._evaluate_by_evaluator(
+        if "executor" in cond or "evaluator" in cond:
+            return self._evaluate_by_executor(
                 cond,
                 state,
                 actor,
@@ -198,8 +198,8 @@ class ConditionEvaluator:
                 extra,
                 entity,
             )
-        if "evaluator" in cond:
-            evaluator = str(cond.get("evaluator") or "builtin")
+        if "executor" in cond or "evaluator" in cond:
+            evaluator = str(cond.get("executor") or cond.get("evaluator") or "builtin")
             if evaluator in {"http", "llm"}:
                 return await self._external.evaluate_async(
                     cond,
@@ -213,7 +213,7 @@ class ConditionEvaluator:
             if evaluator == "plugin":
                 plugin_name = cond.get("plugin") or cond.get("name") or cond.get("id")
                 if not plugin_name:
-                    raise ValueError(f"plugin evaluator 缺少 name/id/plugin: {cond}")
+                    raise ValueError(f"plugin executor 缺少 name/id/plugin: {cond}")
                 return await self._plugin.evaluate_async(
                     str(plugin_name),
                     cond,
@@ -248,7 +248,7 @@ class ConditionEvaluator:
             )
         return self.evaluate(cond, state, actor, candidate, responses, extra, entity)
 
-    def _evaluate_by_evaluator(
+    def _evaluate_by_executor(
         self,
         cond: dict,
         state: State,
@@ -258,8 +258,8 @@ class ConditionEvaluator:
         extra: dict | None,
         entity: str | None,
     ) -> bool:
-        """Dispatch an explicit evaluator condition."""
-        evaluator = str(cond.get("evaluator") or "builtin")
+        """Dispatch an explicit executor condition."""
+        evaluator = str(cond.get("executor") or cond.get("evaluator") or "builtin")
         if evaluator in {"builtin", "primitive"}:
             if "left" in cond and "op" in cond:
                 return self._primitive.evaluate_compare_condition(
@@ -292,7 +292,7 @@ class ConditionEvaluator:
                     extra,
                     entity,
                 )
-            raise ValueError(f"builtin evaluator 缺少 left/op 或 condition: {cond}")
+            raise ValueError(f"builtin executor 缺少 left/op 或 condition: {cond}")
         if evaluator == "code":
             return self._code.evaluate(
                 cond,
@@ -316,7 +316,7 @@ class ConditionEvaluator:
         if evaluator == "plugin":
             plugin_name = cond.get("plugin") or cond.get("name") or cond.get("id")
             if not plugin_name:
-                raise ValueError(f"plugin evaluator 缺少 name/id/plugin: {cond}")
+                raise ValueError(f"plugin executor 缺少 name/id/plugin: {cond}")
             return self._plugin.evaluate(
                 str(plugin_name),
                 cond,
@@ -327,7 +327,7 @@ class ConditionEvaluator:
                 extra,
                 entity,
             )
-        raise ValueError(f"未知 condition evaluator: {evaluator}")
+        raise ValueError(f"未知 condition executor: {evaluator}")
 
     def filter_entities(self, filter_spec: dict, state: State) -> set:
         """Compatibility proxy for entity filtering."""

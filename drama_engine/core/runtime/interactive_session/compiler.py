@@ -45,14 +45,61 @@ class InteractiveSessionCompiler:
         self._dsl_registry = build_default_dsl_registry()
 
     def compile(self, yaml_path: str, params: dict[str, Any] | None = None) -> InteractiveScript:
-        """Read and compile a YAML file."""
+        """Read and compile a YAML file or package directory.
+
+        支持两种模式：
+          - 单文件: yaml_path 指向 .yaml 文件
+          - 包目录: yaml_path 指向目录，内含 manifest.yaml + script.yaml + roles.yaml 等
+        """
         assert yaml_path, "yaml_path 不能为空"
-        raw_text = Path(yaml_path).read_text(encoding="utf-8")
-        preliminary = yaml.safe_load(raw_text) or {}
-        resolved_params = self._resolve_params(preliminary, params or {})
-        expanded_text = self._expand_params(raw_text, resolved_params)
-        doc = yaml.safe_load(expanded_text) or {}
+        path = Path(yaml_path)
+
+        if path.is_dir():
+            doc = self._load_package(path)
+        else:
+            raw_text = path.read_text(encoding="utf-8")
+            preliminary = yaml.safe_load(raw_text) or {}
+            resolved_params = self._resolve_params(preliminary, params or {})
+            expanded_text = self._expand_params(raw_text, resolved_params)
+            doc = yaml.safe_load(expanded_text) or {}
+
         return self.compile_doc(doc)
+
+    def _load_package(self, pkg_dir: Path) -> dict[str, Any]:
+        """加载包目录，合并各子文件为统一文档。
+
+        包目录结构:
+          manifest.yaml — meta / runtime / game_pack
+          roles.yaml    — roles 定义
+          script.yaml   — players / state / flow / scenes / referee / concepts 等
+
+        所有文件合并为一个 dict 后交给 compile_doc 处理。
+        """
+        doc: dict[str, Any] = {}
+
+        # 加载 manifest（必须存在）
+        manifest_path = pkg_dir / "manifest.yaml"
+        assert manifest_path.exists(), f"包目录缺少 manifest.yaml: {pkg_dir}"
+        manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8")) or {}
+        doc.update(manifest)
+
+        # 加载 roles（可选）
+        roles_path = pkg_dir / "roles.yaml"
+        if roles_path.exists():
+            roles_data = yaml.safe_load(roles_path.read_text(encoding="utf-8")) or {}
+            if isinstance(roles_data, dict):
+                doc.update(roles_data)
+            elif isinstance(roles_data, list):
+                doc["roles"] = roles_data
+
+        # 加载 script（必须存在）
+        script_path = pkg_dir / "script.yaml"
+        assert script_path.exists(), f"包目录缺少 script.yaml: {pkg_dir}"
+        script_data = yaml.safe_load(script_path.read_text(encoding="utf-8")) or {}
+        doc.update(script_data)
+
+        logger.info("[Compiler] 加载包目录: %s (keys=%s)", pkg_dir.name, list(doc.keys()))
+        return doc
 
     def compile_doc(self, doc: dict[str, Any]) -> InteractiveScript:
         """Compile an already parsed document."""
@@ -80,12 +127,14 @@ class InteractiveSessionCompiler:
         # 【H3 修复】在编译期校验所有 effect.type 是否已知，避免运行时才发现拼写错误。
         # 传递 canonical 以便检查是否有 plugins/game_pack 声明。
         self._validate_all_effects(scenes, flow, referee, canonical)
+        roles = self._compile_roles(canonical.get("roles"))
         return InteractiveScript(
             meta=dict(canonical.get("meta") or {}),
             runtime=runtime,
             flow=flow,
             scenes=scenes,
             players=players,
+            roles=roles,
             state=state,
             scopes=scopes,
             referee=referee,
@@ -111,6 +160,33 @@ class InteractiveSessionCompiler:
             self.compile(yaml_path, params=params)
         except (AssertionError, ValueError, TypeError, yaml.YAMLError) as exc:
             return [str(exc)]
+        return []
+
+    def _compile_roles(self, roles: Any) -> list[dict[str, Any]]:
+        """编译角色定义列表。
+
+        顶层 roles: 可以是 list（每项一个角色 dict）或 dict（role_name → 详情）。
+        统一编译成 list[dict]，每项保证含 name 字段。
+
+        参数:
+            roles: canonical 中的 roles 原始值
+
+        返回:
+            角色 dict 列表
+        """
+        if isinstance(roles, list):
+            result = []
+            for item in roles:
+                if isinstance(item, dict) and item.get("name"):
+                    result.append(dict(item))
+            return result
+        if isinstance(roles, dict):
+            result = []
+            for name, detail in roles.items():
+                entry = dict(detail) if isinstance(detail, dict) else {}
+                entry.setdefault("name", str(name))
+                result.append(entry)
+            return result
         return []
 
     def _compile_scope(self, spec: dict[str, Any]) -> ScopeSpec:
@@ -143,7 +219,7 @@ class InteractiveSessionCompiler:
             enabled=bool(spec.get("enabled", False)),
             checks=[str(item) for item in spec.get("checks", []) or []],
             on_violation=str(spec.get("on_violation") or "soft_warn"),
-            evaluator=dict(spec.get("evaluator") or {}),
+            executor=dict(spec.get("executor") or spec.get("evaluator") or {}),
         )
 
     def _compile_scene(self, scene_id: str, spec: dict[str, Any]) -> SceneSpec:
@@ -166,6 +242,7 @@ class InteractiveSessionCompiler:
             referee=self._compile_referee(spec.get("referee") or {}),
             guardrail=self._compile_guardrail(spec.get("guardrail") or {}),
             hooks=dict(spec.get("hooks") or {}),
+            context=dict(spec.get("context") or {}),
             raw=dict(spec),
         )
 
@@ -262,13 +339,13 @@ class InteractiveSessionCompiler:
             include=spec.get("include"),
             exclude=spec.get("exclude"),
             rules=list(spec.get("rules") or []),
-            evaluator=self._explicit_evaluator_spec(spec),
+            executor=self._explicit_executor_spec(spec),
             result=spec.get("result"),
         )
 
-    def _explicit_evaluator_spec(self, spec: dict[str, Any]) -> dict[str, Any] | None:
-        """Extract direct evaluator declaration from a referee-like object."""
-        if "evaluator" not in spec:
+    def _explicit_executor_spec(self, spec: dict[str, Any]) -> dict[str, Any] | None:
+        """Extract direct executor declaration from a referee-like object."""
+        if "executor" not in spec and "evaluator" not in spec:
             return None
         result = {
             key: value
@@ -311,6 +388,7 @@ class InteractiveSessionCompiler:
             "limit",
             "min",
             "evaluator",
+            "executor",
             "provider",
             "plugin",
             "name",
@@ -353,6 +431,11 @@ class InteractiveSessionCompiler:
             modes = {"choose_mapping", "branch_then_return", "constrained_continue", "free_continue", "grow_flow"}
             mode = str(free_input.get("mode") or "")
             assert mode in modes, f"未知 free_input.mode: {mode}"
+        elif isinstance(free_input, dict) and free_input.get("enabled"):
+            # 新语法：没有显式 mode，通过 mapper/generation 存在性推导
+            # mapper 存在且无 generation → 等价 choose_mapping
+            # 有 generation → 等价 grow_flow
+            pass
         controller = spec.get("controller") or {}
         if isinstance(controller, dict):
             controller_type = str(controller.get("type") or "none")
@@ -368,12 +451,12 @@ class InteractiveSessionCompiler:
             self._validate_service_provider(planner, "schedule.planner")
         order = spec.get("order")
         if isinstance(order, dict) and (
-            order.get("evaluator") or order.get("provider") or order.get("type")
+            order.get("executor") or order.get("evaluator") or order.get("provider") or order.get("type")
         ):
             self._validate_service_provider(order, "schedule.order")
         detector = dynamic_spec.get("detector")
         if isinstance(detector, dict) and (
-            detector.get("evaluator") or detector.get("provider") or detector.get("type") or detector.get("plugin")
+            detector.get("executor") or detector.get("evaluator") or detector.get("provider") or detector.get("type") or detector.get("plugin")
         ):
             self._validate_service_provider(detector, "schedule.dynamic.detector")
         merge_back = dynamic_spec.get("merge_back")
@@ -713,13 +796,13 @@ class InteractiveSessionCompiler:
         """Validate runtime-service provider names when present."""
         if not isinstance(spec, dict):
             return
-        provider = spec.get("provider") or spec.get("evaluator") or spec.get("type")
+        provider = spec.get("executor") or spec.get("provider") or spec.get("evaluator") or spec.get("type")
         if provider is None and spec.get("plugin"):
             provider = "plugin"
         if provider is None:
             return
-        allowed = {"builtin", "plugin", "inside", "http", "llm"}
-        assert str(provider) in allowed, f"{label}.provider/evaluator 未知: {provider}"
+        allowed = {"builtin", "plugin", "inside", "http", "llm", "code"}
+        assert str(provider) in allowed, f"{label}.executor 未知: {provider}"
 
     def _resolve_params(self, doc: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
         """Resolve params defaults and overrides."""

@@ -1,4 +1,4 @@
-"""Build input payloads for evaluator and runtime-service calls.
+"""Build input payloads for executor and runtime-service calls.
 
 This helper keeps the DSL `input:` contract in one place.  Callers provide a
 full default payload and an optional resolver for `{ref: ...}` expressions; the
@@ -15,7 +15,7 @@ Resolver = Callable[[Any], Any]
 
 
 class ServiceInputBuilder:
-    """Materialize `input:` declarations for external evaluators/services."""
+    """Materialize `input:` declarations for external executors/services."""
 
     INCLUDE_KEYS = {
         "include_state",
@@ -42,7 +42,7 @@ class ServiceInputBuilder:
             input_spec: Value from DSL `input:`.  `None` means use the complete
                 default payload.  Dicts may contain include flags and explicit
                 fields.
-            default_payload: Complete serializable runtime/evaluator context.
+            default_payload: Complete serializable runtime/executor context.
             resolver: Optional callback used to resolve `{ref: ...}` objects.
 
         Returns:

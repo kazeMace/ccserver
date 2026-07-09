@@ -109,7 +109,7 @@ class ControllerActionSpec:
     free_input: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        valid_kinds = {"choice", "free_text", "narration", "none"}
+        valid_kinds = {"choice", "free_text", "narration", "cinematic", "none"}
         valid_controllers = {"human", "agent", "system", "plugin", "none"}
         assert self.kind in valid_kinds, f"未知 controller_action.kind: {self.kind}"
         controller_type = str(self.controller.get("type") or "none")
@@ -125,7 +125,7 @@ class RefereeSpec:
     include: Any = None
     exclude: Any = None
     rules: list[dict[str, Any]] = field(default_factory=list)
-    evaluator: dict[str, Any] | None = None
+    executor: dict[str, Any] | None = None
     result: Any = None
 
     def __post_init__(self) -> None:
@@ -181,6 +181,7 @@ class SceneSpec:
     # scene 级 OOC 内容守卫；覆盖全局 guardrail。默认未启用。
     guardrail: GuardRailSpec = field(default_factory=GuardRailSpec)
     hooks: dict[str, Any] = field(default_factory=dict)
+    context: dict[str, Any] = field(default_factory=dict)
     raw: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -232,6 +233,8 @@ class InteractiveScript:
     flow: FlowSpec
     scenes: dict[str, SceneSpec]
     players: dict[str, Any] = field(default_factory=dict)
+    # 角色定义列表，由顶层 roles: 块编译而来。每项含 name/display_name/description 等。
+    roles: list[dict[str, Any]] = field(default_factory=list)
     state: dict[str, Any] = field(default_factory=dict)
     scopes: dict[str, ScopeSpec] = field(default_factory=dict)
     referee: RefereeSpec = field(default_factory=RefereeSpec)

@@ -109,7 +109,7 @@ referee:
   rules:
     # 卧底被投出 → 平民胜。
     - when:
-        evaluator: plugin
+        executor: plugin
         name: social.faction_cleared
         input:
           faction: undercover

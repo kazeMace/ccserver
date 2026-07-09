@@ -1,4 +1,4 @@
-"""Code-backed condition evaluator."""
+"""Code-backed condition executor."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ class CodeConditionEvaluator:
 
     def __init__(self, entity_matches_filter: Callable[[str, dict, State], bool]):
         """
-        Initialize the code evaluator.
+        Initialize the code executor.
 
         Args:
             entity_matches_filter: Function used by Python helper `entities()`.
@@ -32,13 +32,13 @@ class CodeConditionEvaluator:
         extra: dict | None,
         entity: str | None,
     ) -> bool:
-        """Evaluate an `evaluator: code` condition."""
+        """Evaluate an `executor: code` condition."""
         runtime = str(cond.get("runtime") or cond.get("language") or "python")
         timeout = int(cond.get("timeout_ms") or 1000) / 1000
         env = {str(k): str(v) for k, v in dict(cond.get("env") or {}).items()}
         code = cond.get("code")
         if not code:
-            raise ValueError(f"code evaluator 缺少 code: {cond}")
+            raise ValueError(f"code executor 缺少 code: {cond}")
         if runtime == "python":
             return self.evaluate_python(
                 {"code": code, "env": env},
@@ -207,7 +207,7 @@ class CodeConditionEvaluator:
             return ["node", "-e", code]
         if runtime in {"bun", "bun_js"}:
             return ["bun", "-e", code]
-        raise ValueError(f"code evaluator 不支持 runtime: {runtime}")
+        raise ValueError(f"code executor 不支持 runtime: {runtime}")
 
     def _state_snapshot(self, state: State) -> dict[str, dict[str, Any]]:
         """Build a read-only state snapshot for external code."""

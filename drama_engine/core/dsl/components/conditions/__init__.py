@@ -1,4 +1,4 @@
-"""Condition evaluator package."""
+"""Condition executor package."""
 
 from __future__ import annotations
 

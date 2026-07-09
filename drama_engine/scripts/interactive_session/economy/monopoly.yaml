@@ -85,7 +85,7 @@ scenes:
       check_on: after_scene
       rules:
         - when:
-            evaluator: plugin
+            executor: plugin
             name: economy.bankrupt
             input:
               entity: Player_2
@@ -124,7 +124,7 @@ scenes:
       check_on: after_scene
       rules:
         - when:
-            evaluator: plugin
+            executor: plugin
             name: economy.bankrupt
             input:
               entity: Player_1

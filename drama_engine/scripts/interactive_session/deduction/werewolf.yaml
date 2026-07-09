@@ -197,7 +197,7 @@ referee:
   rules:
     # 狼全出局 → 好人胜。
     - when:
-        evaluator: plugin
+        executor: plugin
         name: social.faction_cleared
         input:
           faction: wolf
@@ -206,7 +206,7 @@ referee:
         end: good_win
     # 好人全出局 → 狼人胜。
     - when:
-        evaluator: plugin
+        executor: plugin
         name: social.faction_cleared
         input:
           faction: good

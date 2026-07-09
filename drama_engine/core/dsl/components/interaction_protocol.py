@@ -35,7 +35,7 @@ class InteractionProtocolBuilder:
             provider: Provider family, such as ``plugin``, ``http`` or ``inside``.
             input_payload: Materialized input requested by the DSL ``input`` spec.
             context_payload: Full serializable runtime context.
-            name: Optional service/evaluator name.
+            name: Optional service/executor name.
             call_id: Optional stable call id from DSL.
             endpoint: Optional external endpoint name or URL.
             hook: Optional lifecycle hook that caused this call.

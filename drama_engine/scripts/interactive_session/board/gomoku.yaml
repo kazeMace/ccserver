@@ -87,7 +87,7 @@ scenes:
       check_on: after_scene
       rules:
         - when:
-            evaluator: plugin
+            executor: plugin
             name: board.connect_n
             input:
               n: 5
@@ -128,7 +128,7 @@ scenes:
       check_on: after_scene
       rules:
         - when:
-            evaluator: plugin
+            executor: plugin
             name: board.connect_n
             input:
               n: 5

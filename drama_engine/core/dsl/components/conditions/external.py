@@ -1,4 +1,4 @@
-"""HTTP and LLM condition evaluator."""
+"""HTTP and LLM condition executor."""
 
 from __future__ import annotations
 
@@ -21,11 +21,11 @@ class ExternalConditionEvaluator:
 
     def __init__(self, evaluate_condition: Callable, resolve_value_expr: Callable):
         """
-        Initialize the external evaluator.
+        Initialize the external executor.
 
         Args:
             evaluate_condition: Callback used to evaluate pass_when.
-            resolve_value_expr: Callback used to resolve evaluator input refs.
+            resolve_value_expr: Callback used to resolve executor input refs.
         """
         self._evaluate = evaluate_condition
         self._resolve_value_expr = resolve_value_expr
@@ -42,9 +42,10 @@ class ExternalConditionEvaluator:
         extra: dict | None,
         entity: str | None,
     ) -> bool:
-        """Evaluate an `evaluator: http` or `evaluator: llm` condition."""
-        url = self._resolve_evaluator_url(cond)
-        if not url and cond.get("evaluator") == "llm" and str(cond.get("provider") or "inside") == "inside":
+        """Evaluate an `executor: http` or `executor: llm` condition."""
+        url = self._resolve_executor_url(cond)
+        executor_type = cond.get("executor") or cond.get("evaluator")
+        if not url and executor_type == "llm" and str(cond.get("provider") or "inside") == "inside":
             client_result = self._call_inside_client(cond, state, actor, candidate, responses, extra, entity)
             if client_result is not None:
                 return self._result_passes(cond, client_result, state, actor, candidate, responses, extra, entity)
@@ -88,7 +89,7 @@ class ExternalConditionEvaluator:
                 entity,
                 responses,
                 extra,
-                provider=str(cond.get("provider") or cond.get("evaluator") or "http"),
+                provider=str(cond.get("provider") or cond.get("executor") or cond.get("evaluator") or "http"),
             )
         )
         timeout = int(cond.get("timeout_ms") or 3000) / 1000
@@ -117,7 +118,8 @@ class ExternalConditionEvaluator:
         entity: str | None,
     ) -> bool:
         """Evaluate an external condition from an async runtime path."""
-        if cond.get("evaluator") == "llm" and str(cond.get("provider") or "inside") == "inside":
+        executor_type = cond.get("executor") or cond.get("evaluator")
+        if executor_type == "llm" and str(cond.get("provider") or "inside") == "inside":
             client_result = await self._call_inside_client_async(
                 cond,
                 state,
@@ -207,7 +209,7 @@ class ExternalConditionEvaluator:
                 )
 
                 client = InsideAgentFactory().get_or_create(runtime_ctx.session_metadata, cond)
-            except Exception:  # noqa: BLE001 - keep sync evaluator deterministic.
+            except Exception:  # noqa: BLE001 - keep sync executor deterministic.
                 client = None
         if client is None:
             return None
@@ -315,7 +317,7 @@ class ExternalConditionEvaluator:
                 )
 
                 client = InsideAgentFactory().get_or_create(runtime_ctx.session_metadata, cond)
-            except Exception:  # noqa: BLE001 - keep evaluator fallback deterministic.
+            except Exception:  # noqa: BLE001 - keep executor fallback deterministic.
                 client = None
             if client is not None:
                 return await self._call_explicit_inside_client(
@@ -440,7 +442,7 @@ class ExternalConditionEvaluator:
             return decoded if isinstance(decoded, dict) else {"result": bool(decoded)}
         return {"result": bool(value)}
 
-    def _resolve_evaluator_url(self, cond: dict) -> str:
+    def _resolve_executor_url(self, cond: dict) -> str:
         """Resolve the HTTP endpoint URL from DSL or environment."""
         if cond.get("url"):
             return str(cond["url"])
@@ -464,7 +466,7 @@ class ExternalConditionEvaluator:
         extra: dict | None,
         entity: str | None,
     ) -> Any:
-        """Materialize evaluator.input include flags and `{ref: ...}` values."""
+        """Materialize executor.input include flags and `{ref: ...}` values."""
         input_spec = cond.get("input") if "input" in cond else None
 
         def resolve(value: Any) -> Any:
@@ -490,7 +492,7 @@ class ExternalConditionEvaluator:
         extra: dict | None,
         entity: str | None,
     ) -> Any:
-        """Resolve ref expressions inside evaluator.input."""
+        """Resolve ref expressions inside executor.input."""
         if isinstance(input_spec, dict):
             if set(input_spec.keys()) == {"ref"}:
                 return self._resolve_value_expr(
@@ -538,7 +540,7 @@ class ExternalConditionEvaluator:
         extra: dict | None,
         entity: str | None,
     ) -> dict[str, Any]:
-        """Build default full evaluator input when DSL omits input."""
+        """Build default full executor input when DSL omits input."""
         extra = extra or {}
         return {
             "state": state.snapshot(),
