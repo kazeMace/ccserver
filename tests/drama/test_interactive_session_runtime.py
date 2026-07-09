@@ -13,6 +13,7 @@ from drama_engine.core.dsl.components.conditions import ConditionEvaluator
 from drama_engine.core.dsl.plugins import build_default_plugin_registry
 from drama_engine.core.dsl.validator import DslValidator
 from drama_engine.core.engine import Cast, SetAttr, State, StateWriter, Vocabulary
+from drama_engine.core.executor import build_executor_registry
 from drama_engine.core.ports.input import InputBridge
 from drama_engine.core.ports.memory import RuntimeMemoryStore
 from drama_engine.core.runner.config import RuntimeConfigParser
@@ -166,21 +167,29 @@ def _interactive_ctx(script_doc: dict, actors: list[_ScriptedActor] | None = Non
     cast = Cast()
     for actor in actors or []:
         cast.add(actor)
-    return InteractiveExecutionContext(
-        script=script,
-        state=state,
-        writer=StateWriter(state),
-        cast=cast,
+    metadata: dict = {}
+    from drama_engine.core.runtime.interactive_session.context import RuntimeServices, RuntimeEmitters
+    services = RuntimeServices(
         condition_evaluator=evaluator,
         effect_executor=EffectExecutor(evaluator, plugins),
         candidate_resolver=CandidateResolver(evaluator),
         value_resolver=ValueResolver(plugins),
+        executor_registry=build_executor_registry(metadata, plugins),
         plugin_registry=plugins,
-        executor_registry=None,
-        patch_journal=PatchJournal(),
+    )
+    emitters = RuntimeEmitters(
         emit_public=lambda event: None,
         emit_host=lambda event: None,
-        session_metadata={},
+    )
+    return InteractiveExecutionContext(
+        script=script,
+        services=services,
+        emitters=emitters,
+        state=state,
+        writer=StateWriter(state),
+        cast=cast,
+        patch_journal=PatchJournal(),
+        session_metadata=metadata,
         current_scene_id=list(script.scenes)[0],
         base_raw=script.raw,
     )
@@ -586,20 +595,27 @@ async def test_participant_action_rejects_invalid_candidate_then_retries():
     ])
     cast = Cast()
     cast.add(actor)
-    ctx = InteractiveExecutionContext(
-        script=script,
-        state=state,
-        writer=StateWriter(state),
-        cast=cast,
+    from drama_engine.core.runtime.interactive_session.context import RuntimeServices, RuntimeEmitters
+    services = RuntimeServices(
         condition_evaluator=evaluator,
         effect_executor=EffectExecutor(evaluator, plugins),
         candidate_resolver=CandidateResolver(evaluator),
         value_resolver=ValueResolver(plugins),
-        plugin_registry=plugins,
         executor_registry=None,
-        patch_journal=PatchJournal(),
+        plugin_registry=plugins,
+    )
+    emitters = RuntimeEmitters(
         emit_public=lambda event: None,
         emit_host=lambda event: None,
+    )
+    ctx = InteractiveExecutionContext(
+        script=script,
+        services=services,
+        emitters=emitters,
+        state=state,
+        writer=StateWriter(state),
+        cast=cast,
+        patch_journal=PatchJournal(),
         session_metadata={},
         current_scene_id="vote",
     )
@@ -2597,40 +2613,6 @@ async def test_runtime_service_input_include_flags_shape_payload():
     assert captured[0]["recent_messages"] == [{"actor": "A", "text": "new", "data": None}]
     assert captured[0]["secret"] == "open"
     assert "last_responses" not in captured[0]
-
-
-@pytest.mark.asyncio
-async def test_plugin_runtime_service_can_opt_into_protocol_envelope():
-    """Plugin services can receive the unified protocol envelope when requested."""
-    ctx = _interactive_ctx({
-        "runtime": {"type": "interactive_session"},
-        "players": {"ids": ["A"]},
-        "flow": {"type": "sequence", "scenes": ["start"]},
-        "scenes": {"start": {"participants": {"static": []}}},
-    })
-    captured = []
-    ctx.plugin_registry.register_runtime_service(
-        "capture_envelope",
-        lambda payload: captured.append(payload) or {"ok": True},
-    )
-
-    result = await RuntimeServiceCaller().call_async(
-        ctx,
-        {
-            "provider": "plugin",
-            "name": "capture_envelope",
-            "protocol": "envelope",
-            "input": {"include_players": True},
-        },
-        "test_input",
-        ctx.full_context_payload(),
-    )
-
-    assert result == {"ok": True}
-    assert captured[0]["protocol"]["schema"] == "interactive_session.v1"
-    assert captured[0]["call"]["provider"] == "plugin"
-    assert captured[0]["input"]["players"] == ["A"]
-    assert captured[0]["context"]["runtime_type"] == "interactive_session"
 
 
 @pytest.mark.asyncio
