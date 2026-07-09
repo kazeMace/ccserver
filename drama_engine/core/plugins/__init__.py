@@ -1,6 +1,10 @@
-"""Re-export 兼容层 — 实际实现已迁移到 drama_engine.core.plugins。"""
+"""插件注册表包 — 运行时 dispatch hub。
 
-from drama_engine.core.plugins.registry import (  # noqa: F401
+提供 PluginRegistry（能力注册表）和 PluginApi（插件窄接口），
+以及所有内置插件类和 context 数据类。
+"""
+
+from drama_engine.core.plugins.registry import (
     BuiltinPartyRuleSetPlugin,
     CoreViewsPlugin,
     EffectContext,
