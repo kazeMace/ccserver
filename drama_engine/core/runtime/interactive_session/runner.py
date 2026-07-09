@@ -91,7 +91,8 @@ class InteractiveSessionRunner(BasicGameRunner):
         # 安装 DSL 声明的 GamePack（机制集合）：把其机制注册进 plugin registry，
         # 并把默认 config 与 DSL config 合并后写入 GAME 状态。
         self._install_game_pack(script, plugins, state)
-        evaluator = ConditionEvaluator(plugins)
+        executor_registry = build_executor_registry(session_state.metadata, plugins)
+        evaluator = ConditionEvaluator(plugins, executor_registry=executor_registry)
 
         # 加载 hooks/ 目录扫描到的钩子
         hook_runner = None
@@ -106,7 +107,7 @@ class InteractiveSessionRunner(BasicGameRunner):
             effect_executor=EffectExecutor(evaluator, plugins),
             candidate_resolver=CandidateResolver(evaluator),
             value_resolver=ValueResolver(plugins),
-            executor_registry=build_executor_registry(session_state.metadata, plugins),
+            executor_registry=executor_registry,
             plugin_registry=plugins,
         )
         emitters = RuntimeEmitters(

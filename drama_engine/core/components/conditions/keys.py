@@ -59,8 +59,6 @@ CONDITION_KEYS = NEW_OPERATOR_KEYS | OLD_OPERATOR_KEYS | {
     "value",
     "count",
     "item_available",
-    "python",
-    "expr",
     "plugin",
 }
 

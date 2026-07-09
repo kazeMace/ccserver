@@ -173,7 +173,6 @@ CONDITION_FIELD_SCHEMA = DslSchema(
         DslField("fallback", "boolean", False, "外部 executor 不可用或低置信度时的默认结果。"),
         DslField("state", "string", False, "Legacy：旧状态路径写法，请改用 left。"),
         DslField("equals/not_equals/gte/lte/gt/lt", "any", False, "Legacy：旧比较字段，请改用 op/right。"),
-        DslField("python", "string|object", False, "Legacy：旧 Python 条件，请改用 evaluator: code。"),
     ),
 )
 

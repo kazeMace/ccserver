@@ -451,7 +451,7 @@ def test_not_equals_state():
 def test_python_expr_condition():
     state = _make_state(round=1)
     assert evaluator.evaluate(
-        {"python": "attr('GAME', 'round') == 1"},
+        {"executor": "code", "language": "python", "code": "result = attr('GAME', 'round') == 1"},
         state,
         actor=None,
     ) is True
@@ -465,24 +465,12 @@ def test_python_code_condition():
     state = _make_state_with_players(players)
     assert evaluator.evaluate(
         {
-            "python": {
-                "code": "result = count({'alive': True, 'faction': 'wolf'}) == 1"
-            }
+            "executor": "code",
+            "language": "python",
+            "code": "result = count({'alive': True, 'faction': 'wolf'}) == 1",
         },
         state,
         actor=None,
     ) is True
 
 
-def test_expr_fallback_uses_default():
-    state = _make_state(round=1)
-    assert evaluator.evaluate(
-        {"expr": "只有首夜触发的复杂自然语言条件", "default": True},
-        state,
-        actor=None,
-    ) is True
-    assert evaluator.evaluate(
-        {"expr": "未配置 LLM 时默认不触发"},
-        state,
-        actor=None,
-    ) is False
