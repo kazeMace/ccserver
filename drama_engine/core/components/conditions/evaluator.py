@@ -88,7 +88,7 @@ class ConditionEvaluator:
                 entity,
             )
 
-        if "executor" in cond or "evaluator" in cond:
+        if "executor" in cond:
             return self._evaluate_by_executor(
                 cond,
                 state,
@@ -198,8 +198,8 @@ class ConditionEvaluator:
                 extra,
                 entity,
             )
-        if "executor" in cond or "evaluator" in cond:
-            evaluator = str(cond.get("executor") or cond.get("evaluator") or "builtin")
+        if "executor" in cond:
+            evaluator = str(cond.get("executor") or "builtin")
             if evaluator in {"http", "llm"}:
                 return await self._external.evaluate_async(
                     cond,
@@ -259,7 +259,7 @@ class ConditionEvaluator:
         entity: str | None,
     ) -> bool:
         """Dispatch an explicit executor condition."""
-        evaluator = str(cond.get("executor") or cond.get("evaluator") or "builtin")
+        evaluator = str(cond.get("executor") or "builtin")
         if evaluator in {"builtin", "primitive"}:
             if "left" in cond and "op" in cond:
                 return self._primitive.evaluate_compare_condition(

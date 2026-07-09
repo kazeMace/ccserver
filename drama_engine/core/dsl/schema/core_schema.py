@@ -156,13 +156,6 @@ CONDITION_FIELD_SCHEMA = DslSchema(
         DslField("right", "any", False, "推荐写法：通用右侧值表达式，例如字面量、GAME.round、actor.role、{count: ...}。"),
         DslField("ref", "string", False, "Legacy alias：旧 ref/op/value 左侧引用，请改用 left。"),
         DslField("value", "any", False, "Legacy alias：旧 ref/op/value 或 value/operator 写法，请改用 right。"),
-        DslField("evaluator", "string", False, "旧写法，请改用 executor。primitive 为默认；code/http/llm/plugin 为扩展判断。", (
-            "primitive",
-            "code",
-            "http",
-            "llm",
-            "plugin",
-        )),
         DslField("executor", "string", False, "执行后端。primitive 为默认；code/http/llm/plugin 为扩展判断。", (
             "primitive",
             "code",

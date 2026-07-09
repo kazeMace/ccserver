@@ -284,7 +284,7 @@ def test_unified_ref_op_condition():
         actor=None,
     ) is True
     assert evaluator.evaluate(
-        {"evaluator": "primitive", "ref": "GAME.round", "op": "less_than", "value": 3},
+        {"executor": "primitive", "ref": "GAME.round", "op": "less_than", "value": 3},
         state,
         actor=None,
     ) is False
@@ -379,7 +379,7 @@ def test_code_evaluator_python_with_env():
 
     assert evaluator.evaluate(
         {
-            "evaluator": "code",
+            "executor": "code",
             "runtime": "python",
             "env": {"MIN_ROUND": "3"},
             "code": "result = state('GAME.round') >= int(env('MIN_ROUND'))",
@@ -395,7 +395,7 @@ def test_code_evaluator_shell_exit_code():
 
     assert evaluator.evaluate(
         {
-            "evaluator": "code",
+            "executor": "code",
             "runtime": "shell",
             "code": "python - <<'PY'\nimport json, os, sys\nctx=json.loads(os.environ['DRAMA_CONDITION_CONTEXT'])\nsys.exit(0 if ctx['state']['GAME']['round'] == 1 else 1)\nPY",
         },
@@ -410,7 +410,7 @@ def test_http_evaluator_without_endpoint_uses_fallback():
 
     assert evaluator.evaluate(
         {
-            "evaluator": "llm",
+            "executor": "llm",
             "id": "story_ending_judge",
             "endpoint": "semantic.story_ending_judge",
             "fallback": True,

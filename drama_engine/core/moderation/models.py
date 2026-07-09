@@ -18,18 +18,21 @@ class GuardRailSpec:
     """OOC 守卫规格 / GuardRail spec（由 DSL guardrail 块编译）。
 
     字段：
-      enabled      — 是否启用守卫。false 时完全旁路，零开销。
-      checks       — 要检查的维度，如 ["in_character", "on_topic", "no_secret_leak"]。
-                     这些名字会拼进 LLM 判定 prompt，语义由 executor 理解。
-      on_violation — 违规处理策略名：block | rewrite | soft_warn | pass_with_flag。
-      executor     — 判定用的 executor 声明（透传给 ConditionEvaluator，
-                     通常 {kind: llm, provider: inside, min_confidence: ...}）。
+      enabled        — 是否启用守卫。false 时完全旁路，零开销。
+      checks         — 要检查的维度，如 ["in_character", "on_topic", "no_secret_leak"]。
+                       这些名字会拼进判定 prompt，语义由具体 GuardRail 实现理解。
+      on_violation   — 违规处理策略名：block | rewrite | soft_warn | pass_with_flag。
+      executor       — 标识用哪种 GuardRail 实现：llm / plugin / http。默认 llm。
+      min_confidence — 判定阈值（0~1），低于此值视为不确定，按 fallback 处理。
+      config         — executor 级额外配置（如 model_name / url / plugin_name 等）。
     """
 
     enabled: bool = False
     checks: list[str] = field(default_factory=list)
     on_violation: str = "soft_warn"
-    executor: dict[str, Any] = field(default_factory=dict)
+    executor: str = "llm"
+    min_confidence: float = 0.0
+    config: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         allowed = {"block", "rewrite", "soft_warn", "pass_with_flag"}

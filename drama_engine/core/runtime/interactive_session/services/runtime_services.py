@@ -36,20 +36,11 @@ class RuntimeServiceCaller:
     def _resolve_executor(self, spec: dict[str, Any]) -> str:
         """解析 executor 类型。
 
-        兼容旧的 evaluator/provider/type 字段。
-        "inside" 映射到 "llm"（inside 是旧写法，实际就是 ccserver Agent 调 LLM）。
+        只读 spec["executor"] 字段，不再兼容旧的 evaluator/provider/type。
         """
-        executor = (
-            spec.get("executor")
-            or spec.get("provider")
-            or spec.get("evaluator")
-            or spec.get("type")
-        )
+        executor = spec.get("executor")
         if executor:
             name = str(executor)
-            # inside 是 llm 的旧名称
-            if name == "inside":
-                return "llm"
             if name in TRANSPORT_EXECUTORS:
                 return name
         if spec.get("plugin"):

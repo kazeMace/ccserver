@@ -7,12 +7,13 @@ GuardRail 在发言写入前判定其是否越界，并按 DSL guardrail.on_viol
 策略处理（block / rewrite / soft_warn / pass_with_flag）。
 """
 
-from drama_engine.core.moderation.guardrail import GuardRail, build_guardrail
+from drama_engine.core.moderation.guardrail import GuardRail, LLMGuardRail, build_guardrail
 from drama_engine.core.moderation.models import GuardDecision, GuardOutcome, GuardRailSpec
 from drama_engine.core.moderation.strategies import ViolationStrategy, build_strategy
 
 __all__ = [
     "GuardRail",
+    "LLMGuardRail",
     "build_guardrail",
     "GuardRailSpec",
     "GuardDecision",

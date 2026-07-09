@@ -121,7 +121,7 @@ class StrategyResolver:
         if not strategy_spec:
             return "builtin"
 
-        executor = strategy_spec.get("executor") or strategy_spec.get("evaluator")
+        executor = strategy_spec.get("executor")
         if executor in {"builtin", "plugin", "llm", "http"}:
             return executor
 

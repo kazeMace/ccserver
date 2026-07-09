@@ -215,11 +215,25 @@ class InteractiveSessionCompiler:
         GuardRailSpec.__post_init__ 里做，拼写错误会在 validate 阶段被捕获。
         """
         assert isinstance(spec, dict), "guardrail 块必须是 dict"
+        # executor 是字符串（标识 GuardRail 实现类型），config 是额外配置 dict
+        raw_executor = spec.get("executor")
+        if isinstance(raw_executor, dict):
+            # 兼容旧 dict 形式：提取 executor 类型，其余作为 config
+            executor_type = str(raw_executor.get("executor") or raw_executor.get("kind") or "llm")
+            config = {k: v for k, v in raw_executor.items() if k not in ("executor", "kind")}
+        elif isinstance(raw_executor, str):
+            executor_type = raw_executor
+            config = {}
+        else:
+            executor_type = "llm"
+            config = {}
         return GuardRailSpec(
             enabled=bool(spec.get("enabled", False)),
             checks=[str(item) for item in spec.get("checks", []) or []],
             on_violation=str(spec.get("on_violation") or "soft_warn"),
-            executor=dict(spec.get("executor") or spec.get("evaluator") or {}),
+            executor=executor_type,
+            min_confidence=float(spec.get("min_confidence") or 0.0),
+            config=config,
         )
 
     def _compile_scene(self, scene_id: str, spec: dict[str, Any]) -> SceneSpec:
@@ -345,7 +359,7 @@ class InteractiveSessionCompiler:
 
     def _explicit_executor_spec(self, spec: dict[str, Any]) -> dict[str, Any] | None:
         """Extract direct executor declaration from a referee-like object."""
-        if "executor" not in spec and "evaluator" not in spec:
+        if "executor" not in spec:
             return None
         result = {
             key: value
@@ -387,9 +401,7 @@ class InteractiveSessionCompiler:
             "order_by",
             "limit",
             "min",
-            "evaluator",
             "executor",
-            "provider",
             "plugin",
             "name",
             "id",
@@ -450,13 +462,11 @@ class InteractiveSessionCompiler:
         if isinstance(planner, dict):
             self._validate_service_provider(planner, "schedule.planner")
         order = spec.get("order")
-        if isinstance(order, dict) and (
-            order.get("executor") or order.get("evaluator") or order.get("provider") or order.get("type")
-        ):
+        if isinstance(order, dict) and order.get("executor"):
             self._validate_service_provider(order, "schedule.order")
         detector = dynamic_spec.get("detector")
         if isinstance(detector, dict) and (
-            detector.get("executor") or detector.get("evaluator") or detector.get("provider") or detector.get("type") or detector.get("plugin")
+            detector.get("executor") or detector.get("plugin")
         ):
             self._validate_service_provider(detector, "schedule.dynamic.detector")
         merge_back = dynamic_spec.get("merge_back")
@@ -796,13 +806,13 @@ class InteractiveSessionCompiler:
         """Validate runtime-service provider names when present."""
         if not isinstance(spec, dict):
             return
-        provider = spec.get("executor") or spec.get("provider") or spec.get("evaluator") or spec.get("type")
-        if provider is None and spec.get("plugin"):
-            provider = "plugin"
-        if provider is None:
+        executor = spec.get("executor")
+        if executor is None and spec.get("plugin"):
+            executor = "plugin"
+        if executor is None:
             return
-        allowed = {"builtin", "plugin", "inside", "http", "llm", "code"}
-        assert str(provider) in allowed, f"{label}.executor 未知: {provider}"
+        allowed = {"builtin", "plugin", "http", "llm", "code"}
+        assert str(executor) in allowed, f"{label}.executor 未知: {executor}"
 
     def _resolve_params(self, doc: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
         """Resolve params defaults and overrides."""

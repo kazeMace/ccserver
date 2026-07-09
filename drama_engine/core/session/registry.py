@@ -9,9 +9,12 @@ from typing import Any
 from drama_engine.core.session.events import SessionEventStore
 from drama_engine.core.game_instance.state import (
     SESSION_ASSIGNED,
+    SESSION_ENDED,
+    SESSION_FAILED,
     SESSION_LOBBY,
     SESSION_PAUSED,
     SESSION_RUNNING,
+    SESSION_TERMINATED,
     SessionState,
 )
 from drama_engine.core.session.persistence import JsonSessionStore
@@ -43,8 +46,11 @@ class SessionRegistry:
         if self._store is not None and load_existing:
             self._load_from_store()
 
+    # 终态 session 不恢复也不持久化，防止 registry.json 无限增长
+    TERMINAL_STATES = {SESSION_ENDED, SESSION_TERMINATED, SESSION_FAILED}
+
     def _load_from_store(self) -> None:
-        """从持久化 store 恢复 session 和 token。"""
+        """从持久化 store 恢复 session 和 token（跳过终态 session）。"""
         assert self._store is not None, "store 不能为空"
         snapshot = self._store.load_all()
         if snapshot is None:
@@ -54,19 +60,32 @@ class SessionRegistry:
             self._token_service.load(token_data)
         sessions_data = snapshot.get("sessions") or []
         assert isinstance(sessions_data, list), "sessions 必须是 list"
+        skipped = 0
         for item in sessions_data:
             assert isinstance(item, dict), "session snapshot 必须是 dict"
+            session_dict = item.get("session") or {}
+            if session_dict.get("status") in self.TERMINAL_STATES:
+                skipped += 1
+                continue
             runtime = self._runtime_from_snapshot(item)
             self._sessions[runtime.session.session_id] = runtime
-        logger.info("[SessionRegistry] 从持久化恢复 session 数：%d", len(self._sessions))
+        logger.info(
+            "[SessionRegistry] 从持久化恢复 session 数：%d（跳过终态：%d）",
+            len(self._sessions),
+            skipped,
+        )
 
     def _save_to_store(self) -> None:
-        """保存当前 registry 快照。"""
+        """保存当前 registry 快照（排除终态 session）。"""
         if self._store is None:
             return
+        active_runtimes = [
+            runtime for runtime in self._sessions.values()
+            if runtime.session.status not in self.TERMINAL_STATES
+        ]
         snapshot = {
             "tokens": self._token_service.dump(),
-            "sessions": [self._runtime_to_snapshot(runtime) for runtime in self._sessions.values()],
+            "sessions": [self._runtime_to_snapshot(runtime) for runtime in active_runtimes],
         }
         self._store.save_all(snapshot)
 

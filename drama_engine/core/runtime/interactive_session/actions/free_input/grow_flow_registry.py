@@ -110,7 +110,7 @@ class GrowFlowComponentRegistry:
         LLMGrowFlowGenerator 在无 client 或 dry_run 场景会自动降级到模板，
         所以默认 llm 不会在测试/dry-run 环境报错。
         """
-        executor = str(spec.get("executor") or spec.get("evaluator") or "llm")
+        executor = str(spec.get("executor") or "llm")
         # llm / builtin / plugin / http → 映射到注册的 generator
         name = executor if executor in self._generators else "llm"
         cls = self._generators.get(name)

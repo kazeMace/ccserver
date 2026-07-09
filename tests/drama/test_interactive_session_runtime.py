@@ -387,7 +387,7 @@ def test_builtin_condition_supports_count_ref_where():
 
     passed = ConditionEvaluator().evaluate(
         {
-            "evaluator": "builtin",
+            "executor": "builtin",
             "condition": {
                 "left": {
                     "count": {
@@ -424,7 +424,7 @@ async def test_async_code_condition_evaluator_runs_code():
 
     passed = await ConditionEvaluator().evaluate_async(
         {
-            "evaluator": "code",
+            "executor": "code",
             "language": "python",
             "code": "result = state('GAME.round') == 2",
         },
@@ -725,7 +725,7 @@ async def test_script_declared_runtime_service_maps_choice(tmp_path):
                     "free_input": {
                         "enabled": True,
                         "mode": "choose_mapping",
-                        "mapper": {"evaluator": "plugin", "name": "map_free_text_to_choice"},
+                        "mapper": {"executor": "plugin", "name": "map_free_text_to_choice"},
                     },
                 },
             },
@@ -779,7 +779,7 @@ async def test_referee_evaluator_uses_result_effects(tmp_path):
         "referee": {
             "enabled": True,
             "check_on": "after_scene",
-            "evaluator": "plugin",
+            "executor": "plugin",
             "name": "always_end",
             "result": {
                 "effects": [{"type": "set_state", "path": "GAME.evaluator_effect", "value": True}],
@@ -814,7 +814,7 @@ async def test_referee_evaluator_non_terminal_result_continues_rules():
         "referee": {
             "enabled": True,
             "check_on": "after_scene",
-            "evaluator": "builtin",
+            "executor": "builtin",
             "condition": {"left": "STORY.ready", "op": "equal", "right": None},
             "result": {
                 "effects": [
@@ -1421,7 +1421,7 @@ async def test_participants_service_uses_fallback_and_options():
         "scenes": {
             "select": {
                 "participants": {
-                    "provider": "plugin",
+                    "executor": "plugin",
                     "name": "select_missing",
                     "fallback": ["B", "C"],
                     "order_by": "seat_index",
@@ -1612,7 +1612,7 @@ async def test_generated_beats_stop_publishing_after_referee_result(tmp_path):
                     "free_input": {
                         "enabled": True,
                         "mode": "free_continue",
-                        "generator": {"evaluator": "plugin", "name": "two_beats"},
+                        "generator": {"executor": "plugin", "name": "two_beats"},
                     },
                 },
             }
@@ -1657,7 +1657,7 @@ async def test_plugin_participants_are_resolved(tmp_path):
         "flow": {"type": "sequence", "scenes": ["talk"]},
         "scenes": {
             "talk": {
-                "participants": {"evaluator": "plugin", "name": "select_current_scene_participants"},
+                "participants": {"executor": "plugin", "name": "select_current_scene_participants"},
                 "schedule": {"mode": "sequential"},
                 "participant_action": {"kind": "speak", "response": {"mode": "text"}},
             }
@@ -1816,7 +1816,7 @@ async def test_human_controller_without_seat_uses_human_actor():
 
 @pytest.mark.asyncio
 async def test_referee_inside_provider_can_call_async_agent():
-    """referee evaluator llm/provider=inside should await a ccserver Agent-like client."""
+    """referee executor llm should await a ccserver Agent-like client."""
     ctx = _interactive_ctx({
         "runtime": {"type": "interactive_session"},
         "players": {"ids": ["P1"]},
@@ -1831,8 +1831,7 @@ async def test_referee_inside_provider_can_call_async_agent():
         "referee": {
             "enabled": True,
             "check_on": "after_scene",
-            "evaluator": "llm",
-            "provider": "inside",
+            "executor": "llm",
             "result": {"end": "inside_done"},
         },
     }, actors=[_ScriptedActor("P1", [])])
@@ -1862,7 +1861,7 @@ def test_sync_inside_condition_can_create_and_wait_for_agent(monkeypatch):
     )
 
     passed = ctx.condition_evaluator.evaluate(
-        {"evaluator": "llm", "provider": "inside"},
+        {"executor": "llm"},
         ctx.state,
         actor=None,
         responses=[],
@@ -1890,7 +1889,7 @@ async def test_candidate_when_inside_provider_uses_async_agent():
                     "kind": "choose",
                     "candidates": {
                         "static": ["B"],
-                        "when": {"evaluator": "llm", "provider": "inside"},
+                        "when": {"executor": "llm"},
                     },
                     "response": {"mode": "structured", "schema": "choose"},
                 },
@@ -1931,7 +1930,7 @@ async def test_async_plugin_condition_is_awaited():
     ctx.condition_evaluator = ConditionEvaluator(plugins)
 
     result = await ctx.condition_evaluator.evaluate_async(
-        {"evaluator": "plugin", "name": "async_false"},
+        {"executor": "plugin", "name": "async_false"},
         ctx.state,
         actor=None,
         extra=ctx.condition_extra(),
@@ -1957,7 +1956,7 @@ async def test_http_condition_ignores_runtime_only_extra(monkeypatch):
     monkeypatch.setattr(urllib.request, "urlopen", fail_urlopen)
 
     passed = await ctx.condition_evaluator.evaluate_async(
-        {"evaluator": "http", "url": "http://127.0.0.1/check", "fallback": True},
+        {"executor": "http", "url": "http://127.0.0.1/check", "fallback": True},
         ctx.state,
         actor=None,
         responses=[],
@@ -2337,7 +2336,7 @@ async def test_runoff_policy_can_jump_to_configured_scene():
 
 @pytest.mark.asyncio
 async def test_inside_runtime_service_awaits_agent_run():
-    """runtime service provider=inside should await a ccserver Agent-like run method."""
+    """runtime service executor=llm should await a ccserver Agent-like run method."""
     ctx = _interactive_ctx({
         "runtime": {"type": "interactive_session"},
         "players": {"ids": ["P1"]},
@@ -2349,7 +2348,7 @@ async def test_inside_runtime_service_awaits_agent_run():
 
     result = await RuntimeServiceCaller().call_async(
         ctx,
-        {"provider": "inside", "prompt": "plan"},
+        {"executor": "llm", "prompt": "plan"},
         "story_generator",
         ctx.full_context_payload(),
     )
@@ -2466,7 +2465,7 @@ async def test_external_condition_input_include_players_participants_and_message
 
     passed = await ctx.condition_evaluator.evaluate_async(
         {
-            "evaluator": "http",
+            "executor": "http",
             "url": "http://127.0.0.1/check",
             "input": {
                 "include_players": True,
@@ -2551,7 +2550,7 @@ async def test_dynamic_child_openchat_uses_planner_stop():
                                 "participants": ["B", "C"],
                                 "max_turns": 3,
                                 "first_speaker": "C",
-                                "planner": {"provider": "plugin", "name": "stop_child_chat"},
+                                "planner": {"executor": "plugin", "name": "stop_child_chat"},
                             }
                         },
                     },
@@ -2593,7 +2592,7 @@ async def test_runtime_service_input_include_flags_shape_payload():
     result = await RuntimeServiceCaller().call_async(
         ctx,
         {
-            "provider": "plugin",
+            "executor": "plugin",
             "name": "capture_input",
             "input": {
                 "include_state": True,

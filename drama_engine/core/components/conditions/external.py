@@ -44,14 +44,14 @@ class ExternalConditionEvaluator:
     ) -> bool:
         """Evaluate an `executor: http` or `executor: llm` condition."""
         url = self._resolve_executor_url(cond)
-        executor_type = cond.get("executor") or cond.get("evaluator")
-        if not url and executor_type == "llm" and str(cond.get("provider") or "inside") == "inside":
+        executor_type = cond.get("executor")
+        if not url and executor_type == "llm":
             client_result = self._call_inside_client(cond, state, actor, candidate, responses, extra, entity)
             if client_result is not None:
                 return self._result_passes(cond, client_result, state, actor, candidate, responses, extra, entity)
             result = {
                 "result": bool(cond.get("fallback", False)),
-                "provider": "inside",
+                "executor": "llm",
                 "input": self._build_input(
                     cond,
                     self._default_input(state, actor, candidate, responses, extra, entity),
@@ -89,7 +89,7 @@ class ExternalConditionEvaluator:
                 entity,
                 responses,
                 extra,
-                provider=str(cond.get("provider") or cond.get("executor") or cond.get("evaluator") or "http"),
+                provider=str(cond.get("executor") or "http"),
             )
         )
         timeout = int(cond.get("timeout_ms") or 3000) / 1000
@@ -118,8 +118,8 @@ class ExternalConditionEvaluator:
         entity: str | None,
     ) -> bool:
         """Evaluate an external condition from an async runtime path."""
-        executor_type = cond.get("executor") or cond.get("evaluator")
-        if executor_type == "llm" and str(cond.get("provider") or "inside") == "inside":
+        executor_type = cond.get("executor")
+        if executor_type == "llm":
             client_result = await self._call_inside_client_async(
                 cond,
                 state,
@@ -233,7 +233,7 @@ class ExternalConditionEvaluator:
                 entity,
                 responses,
                 extra,
-                provider="inside",
+                provider="llm",
             ),
             ensure_ascii=False,
         )
@@ -361,7 +361,7 @@ class ExternalConditionEvaluator:
                         entity,
                         responses,
                         extra,
-                        provider="inside",
+                        provider="llm",
                     ),
                     ensure_ascii=False,
                 )
@@ -406,7 +406,7 @@ class ExternalConditionEvaluator:
                 entity,
                 responses,
                 extra,
-                provider="inside",
+                provider="llm",
             ),
             ensure_ascii=False,
         )

@@ -34,10 +34,10 @@ class ParticipantResolver:
             return []
         if "static" in spec:
             return [str(name) for name in spec.get("static", []) if str(name) in all_names]
-        executor = spec.get("executor") or spec.get("evaluator") or spec.get("provider")
+        executor = spec.get("executor")
         if not executor and spec.get("plugin"):
             executor = "plugin"
-        if executor in {"plugin", "inside", "builtin", "http", "llm"}:
+        if executor in {"plugin", "builtin", "http", "llm", "code"}:
             return await self._resolve_service_participants(ctx, scene, spec, all_names)
         if "from_state" in spec or "from_state_set" in spec:
             value = ctx.value_resolver.resolve(

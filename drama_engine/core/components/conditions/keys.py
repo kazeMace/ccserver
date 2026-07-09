@@ -36,7 +36,6 @@ CONDITION_KEYS = NEW_OPERATOR_KEYS | OLD_OPERATOR_KEYS | {
     "not",
     # Preferred unified condition syntax.
     "executor",
-    "evaluator",
     "id",
     "ref",
     "left",

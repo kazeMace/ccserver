@@ -128,7 +128,7 @@ class FreeInputComponentRegistry:
                 continue
             config = dict(spec.get("config") or {})
             # 把 executor 也放进 config，方便组件内部判断后端
-            config.setdefault("executor", spec.get("executor", spec.get("evaluator", "builtin")))
+            config.setdefault("executor", spec.get("executor", "builtin"))
             guards.append(cls(config))
         return guards
 
@@ -150,7 +150,7 @@ class FreeInputComponentRegistry:
                 logger.warning("[FreeInputComponentRegistry] 未注册的 OutputGuard: %s，跳过", name)
                 continue
             config = dict(spec.get("config") or {})
-            config.setdefault("executor", spec.get("executor", spec.get("evaluator", "builtin")))
+            config.setdefault("executor", spec.get("executor", "builtin"))
             config.setdefault("on_fail", spec.get("on_fail", "reject"))
             config.setdefault("max_retries", spec.get("max_retries", 2))
             guards.append(cls(config))

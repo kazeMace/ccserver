@@ -207,9 +207,6 @@ guardrail:
   - in_character
   - on_topic
   on_violation: soft_warn
-  executor:
-    kind: llm
-    provider: inside
 flow:
   type: state_machine
   initial: node_01
