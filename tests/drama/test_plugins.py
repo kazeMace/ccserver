@@ -1,9 +1,9 @@
 """Script DSL 插件注册表测试。"""
 
-from drama_engine.core.dsl.components.conditions import ConditionEvaluator
-from drama_engine.core.dsl.components.effects import EffectExecutor
+from drama_engine.core.components.conditions import ConditionEvaluator
+from drama_engine.core.components.effects import EffectExecutor
 from drama_engine.core.engine import SetAttr, State, StateWriter, Vocabulary
-from drama_engine.core.dsl.plugins import EffectContext, PluginApi, PluginRegistry, ViewContext
+from drama_engine.core.plugins import EffectContext, PluginApi, PluginRegistry, ViewContext
 
 
 def _state() -> State:
@@ -72,7 +72,7 @@ def test_plugin_condition_and_value_resolver_are_registered_interfaces():
 def test_core_views_inline_projector_resolves_only_explicit_refs():
     """core.views.inline 只解析显式 ref，不误吞普通 value 字段。"""
     registry = PluginRegistry()
-    from drama_engine.core.dsl.plugins import CoreViewsPlugin
+    from drama_engine.core.plugins import CoreViewsPlugin
 
     CoreViewsPlugin().register(PluginApi(registry))
     state = _state()

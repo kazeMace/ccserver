@@ -1,7 +1,7 @@
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 from drama_engine.core.engine import State, StateWriter, SetAttr, Vocabulary
-from drama_engine.core.dsl.components.inventory import InventoryManager
+from drama_engine.core.components.inventory import InventoryManager
 
 _EMPTY_VOCAB = Vocabulary(roles=frozenset(), factions=frozenset(), scopes=frozenset(), abilities=frozenset())
 manager = InventoryManager()

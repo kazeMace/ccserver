@@ -1,8 +1,8 @@
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 from drama_engine.core.engine import State, StateWriter, SetAttr, Vocabulary
-from drama_engine.core.dsl.components.candidates import CandidateResolver
-from drama_engine.core.dsl.components.conditions import ConditionEvaluator
+from drama_engine.core.components.candidates import CandidateResolver
+from drama_engine.core.components.conditions import ConditionEvaluator
 
 _EMPTY_VOCAB = Vocabulary(roles=frozenset(), factions=frozenset(), scopes=frozenset(), abilities=frozenset())
 evaluator = ConditionEvaluator()

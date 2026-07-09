@@ -86,10 +86,21 @@
 
 ### 1.3 编译入口
 
-当前编译入口：
+当前推荐通过 ScriptLoader 加载脚本（全 async 协程）：
 
 ```python
-# interactive_session runtime
+from drama_engine.core.script_loader import ScriptLoader
+from pathlib import Path
+
+loader = ScriptLoader()
+bundle = await loader.load(Path("my_game/"))   # 从包目录或单文件加载
+script = bundle.compiled                        # 惰性编译，首次访问触发
+bundles = await loader.discover_and_load_all(Path("scripts/"))  # 批量发现加载
+```
+
+直接编译（仍可用）：
+
+```python
 from drama_engine.core.runtime.interactive_session.compiler import InteractiveSessionCompiler
 
 compiler = InteractiveSessionCompiler()
@@ -97,6 +108,38 @@ script = compiler.compile(path)          # 从 YAML 文件编译
 script = compiler.compile_doc(doc)       # 从 YAML dict 编译
 issues = compiler.validate(doc)          # 校验但不编译
 ```
+
+### 1.4 包目录结构
+
+脚本支持两种组织形式：
+
+**单文件模式**：一个 `.yaml` 文件包含所有内容。
+
+**包目录模式**（推荐）：
+
+```text
+my_game/
+├── manifest.yaml          # 必填：meta + runtime + game_pack 声明
+├── script.yaml            # 必填：players, state, flow, scenes
+├── roles.yaml             # 可选：角色定义列表
+├── plugins/               # 可选：脚本级 Python 插件（自动扫描）
+│   ├── vote_counter.py    # 有 register(api) 函数的文件自动注册
+│   └── story_judge.py
+└── hooks/                 # 可选：生命周期 hook 脚本
+    ├── on_session_start.py
+    ├── on_scene_enter.py
+    └── on_round_end.py
+```
+
+**plugins/ 自动扫描规则**：
+- 扫描 `.py` 文件（非递归，跳过 `_` 开头的文件）
+- 通过 AST 检测顶层是否有 `register` 函数
+- 有则自动调用 `register(api: PluginApi)`
+
+**hooks/ 事件约定**：
+- 文件名即事件名（如 `on_session_start.py`）
+- 每个文件必须定义 `async def handle(ctx: HookContext) -> None`
+- 合法事件名：`on_session_start`, `on_session_end`, `on_player_join`, `on_game_over`, `on_scene_enter`, `on_scene_exit`, `on_round_start`, `on_round_end`, `on_before_action`, `on_after_action`, `on_message`, `on_referee_check`
 
 ---
 

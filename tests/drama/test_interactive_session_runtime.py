@@ -8,9 +8,9 @@ import urllib.request
 import pytest
 import yaml
 
-from drama_engine.core.dsl.components import CandidateResolver, EffectExecutor, ValueResolver
-from drama_engine.core.dsl.components.conditions import ConditionEvaluator
-from drama_engine.core.dsl.plugins import build_default_plugin_registry
+from drama_engine.core.components import CandidateResolver, EffectExecutor, ValueResolver
+from drama_engine.core.components.conditions import ConditionEvaluator
+from drama_engine.core.plugins import build_default_plugin_registry
 from drama_engine.core.dsl.validator import DslValidator
 from drama_engine.core.engine import Cast, SetAttr, State, StateWriter, Vocabulary
 from drama_engine.core.executor import build_executor_registry

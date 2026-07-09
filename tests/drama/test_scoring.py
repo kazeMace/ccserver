@@ -5,7 +5,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from drama_engine.core.engine import State, StateWriter, SetAttr, Vocabulary
-from drama_engine.core.dsl.components.scoring import ScoreTracker
+from drama_engine.core.components.scoring import ScoreTracker
 
 # 测试用最小词汇表，不做任何词汇校验（空集合）
 _EMPTY_VOCAB = Vocabulary(

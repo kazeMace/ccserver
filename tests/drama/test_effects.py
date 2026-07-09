@@ -6,8 +6,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 import pytest
 
 from drama_engine.core.engine import State, StateWriter, SetAttr, Vocabulary
-from drama_engine.core.dsl.components.effects import EffectExecutor
-from drama_engine.core.dsl.components.conditions import ConditionEvaluator
+from drama_engine.core.components.effects import EffectExecutor
+from drama_engine.core.components.conditions import ConditionEvaluator
 
 _EMPTY_VOCAB = Vocabulary(
     roles=frozenset(),
