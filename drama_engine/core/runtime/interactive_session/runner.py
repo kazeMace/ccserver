@@ -14,7 +14,11 @@ from drama_engine.core.engine import SetAttr, State, StateWriter, Vocabulary
 from drama_engine.core.executor import build_executor_registry
 from drama_engine.core.ports.memory import configure_runtime_memory_backend
 from drama_engine.core.runner.base import BasicGameRunner
-from drama_engine.core.runtime.interactive_session.context import InteractiveExecutionContext
+from drama_engine.core.runtime.interactive_session.context import (
+    InteractiveExecutionContext,
+    RuntimeEmitters,
+    RuntimeServices,
+)
 from drama_engine.core.runtime.interactive_session.flow.executor import FlowExecutor
 from drama_engine.core.runtime.interactive_session.patch.applier import FlowPatchApplier
 from drama_engine.core.runtime.interactive_session.patch.journal import PatchJournal
@@ -96,22 +100,30 @@ class InteractiveSessionRunner(BasicGameRunner):
             hook_runner = HookRunner()
             hook_runner.load_from_specs(bundle.hook_specs)
 
-        ctx = InteractiveExecutionContext(
-            script=script,
-            state=state,
-            writer=StateWriter(state),
-            cast=self.context.actor_runtime.cast,
+        # 构建分层服务依赖
+        services = RuntimeServices(
             condition_evaluator=evaluator,
             effect_executor=EffectExecutor(evaluator, plugins),
             candidate_resolver=CandidateResolver(evaluator),
             value_resolver=ValueResolver(plugins),
-            plugin_registry=plugins,
             executor_registry=build_executor_registry(session_state.metadata, plugins),
-            patch_journal=PatchJournal(),
+            plugin_registry=plugins,
+        )
+        emitters = RuntimeEmitters(
             emit_public=self._emit_public,
             emit_host=self._emit_host,
-            session_metadata=session_state.metadata,
             emit_private=self._emit_private,
+        )
+
+        ctx = InteractiveExecutionContext(
+            script=script,
+            services=services,
+            emitters=emitters,
+            state=state,
+            writer=StateWriter(state),
+            cast=self.context.actor_runtime.cast,
+            patch_journal=PatchJournal(),
+            session_metadata=session_state.metadata,
             disclosure_ledger=DisclosureLedger(),
             base_raw=deepcopy(script.raw),
             on_progress=ProgressTracker(session_state).record_progress,

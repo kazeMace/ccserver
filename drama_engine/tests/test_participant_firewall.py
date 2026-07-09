@@ -36,20 +36,24 @@ def _build_ctx(secret_attrs: list[str]) -> InteractiveExecutionContext:
         visibility=VisibilityPolicy(secret_attrs=secret_attrs),
     )
     # ctx 只需要 state / script / disclosure_ledger 三者即可测投影，其余依赖用 None 占位。
-    return InteractiveExecutionContext(
-        script=script,
-        state=state,
-        writer=None,
-        cast=None,
+    from drama_engine.core.runtime.interactive_session.context import RuntimeServices, RuntimeEmitters
+    services = RuntimeServices(
         condition_evaluator=None,
         effect_executor=None,
         candidate_resolver=None,
         value_resolver=None,
-        plugin_registry=None,
         executor_registry=None,
+        plugin_registry=None,
+    )
+    emitters = RuntimeEmitters(emit_public=None, emit_host=None, emit_private=None)
+    return InteractiveExecutionContext(
+        script=script,
+        services=services,
+        emitters=emitters,
+        state=state,
+        writer=None,
+        cast=None,
         patch_journal=None,
-        emit_public=None,
-        emit_host=None,
         session_metadata={},
         disclosure_ledger=DisclosureLedger(),
     )
