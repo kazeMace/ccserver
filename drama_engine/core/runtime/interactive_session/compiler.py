@@ -12,7 +12,7 @@ import yaml
 logger = logging.getLogger(__name__)
 
 from drama_engine.core.dsl.registry import build_default_dsl_registry
-from drama_engine.core.dsl.components.effects import EffectExecutor
+from drama_engine.core.components.effects import EffectExecutor
 from drama_engine.core.moderation.models import GuardRailSpec
 from drama_engine.core.runtime.interactive_session.models import (
     ControllerActionSpec,

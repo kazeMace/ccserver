@@ -8,7 +8,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from drama_engine.core.dsl.plugins import PluginApi, PluginRegistry
+from drama_engine.core.plugins import PluginApi, PluginRegistry
 from drama_engine.core.script_loader.models import PluginSpec
 
 logger = logging.getLogger(__name__)

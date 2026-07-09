@@ -24,7 +24,6 @@ from drama_engine.core.engine import State, StateWriter, SetAttr, Link, Unlink
 from drama_engine.core.components.conditions import ConditionEvaluator
 from drama_engine.core.components.conditions.operators import compare_operator
 from drama_engine.core.components.value_resolver import ValueResolver, parse_state_path
-from drama_engine.core.plugins import EffectContext, RuleSetContext
 
 
 class EffectExecutor:
@@ -114,6 +113,7 @@ class EffectExecutor:
         assert effect_type, f"效果缺少 type 字段: {effect}"
 
         if self._plugins is not None and self._plugins.has_effect(effect_type):
+            from drama_engine.core.plugins import EffectContext
             context = EffectContext(
                 state=state,
                 writer=writer,
@@ -292,6 +292,7 @@ class EffectExecutor:
         if not isinstance(rule_set, dict) or not rule_set.get("plugin"):
             raise ValueError("rule_set_apply 需要脚本顶层 rule_set.plugin 声明")
 
+        from drama_engine.core.plugins import RuleSetContext
         context = RuleSetContext(
             state=state,
             writer=writer,

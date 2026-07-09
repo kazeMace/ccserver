@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from drama_engine.core.dsl.plugins import ViewContext
+from drama_engine.core.plugins import ViewContext
 from drama_engine.core.engine import SetAttr
 from drama_engine.core.runtime.interactive_session.context import InteractiveExecutionContext
 from drama_engine.core.runtime.interactive_session.models import SceneSpec
@@ -26,26 +26,48 @@ class PublicationEmitter:
         self._render_cue = render_cue
 
     def drain_pending_broadcasts(self, ctx: InteractiveExecutionContext, scene: SceneSpec) -> None:
-        """发布并清空 effects.broadcast 累积的待发消息（走同一套 audience 路由）。"""
+        """发布并清空 effects.broadcast 和 effects.emit_media 累积的待发内容。"""
+        # 文本广播
         pending = ctx.state.get_attr("GAME", "__pending_broadcasts") or []
-        if not pending:
-            return
-        ctx.writer.apply(SetAttr("GAME", "__pending_broadcasts", []))
-        for item in pending:
-            if not isinstance(item, dict):
-                continue
-            audience = item.get("scope") or scene.scope.id
-            text = str(item.get("template") or item.get("text") or "")
-            if not text:
-                continue
-            event = {
-                "kind": "interactive_broadcast",
-                "runtime_type": "interactive_session",
-                "scene": scene.id,
-                "audience": self._audience_label(audience, scene.scope.id),
-                "text": self._render_cue(ctx, text),
-            }
-            self._emit_to_audience(ctx, event, audience, scene.scope.id, private_default=False)
+        if pending:
+            ctx.writer.apply(SetAttr("GAME", "__pending_broadcasts", []))
+            for item in pending:
+                if not isinstance(item, dict):
+                    continue
+                audience = item.get("scope") or scene.scope.id
+                text = str(item.get("template") or item.get("text") or "")
+                if not text:
+                    continue
+                event = {
+                    "kind": "interactive_broadcast",
+                    "runtime_type": "interactive_session",
+                    "scene": scene.id,
+                    "audience": self._audience_label(audience, scene.scope.id),
+                    "text": self._render_cue(ctx, text),
+                }
+                self._emit_to_audience(ctx, event, audience, scene.scope.id, private_default=False)
+        # 多媒体投递
+        media_pending = ctx.state.get_attr("GAME", "__pending_media") or []
+        if media_pending:
+            ctx.writer.apply(SetAttr("GAME", "__pending_media", []))
+            for item in media_pending:
+                if not isinstance(item, dict):
+                    continue
+                audience = item.get("scope") or scene.scope.id
+                event = {
+                    "kind": item.get("kind") or "video",
+                    "runtime_type": "interactive_session",
+                    "scene": scene.id,
+                    "audience": self._audience_label(audience, scene.scope.id),
+                    "data": {
+                        "url": item.get("url") or "",
+                        "title": item.get("title") or "",
+                        "poster": item.get("poster") or "",
+                        "subtitle_url": item.get("subtitle_url") or "",
+                        "autoplay": bool(item.get("autoplay", False)),
+                    },
+                }
+                self._emit_to_audience(ctx, event, audience, scene.scope.id, private_default=False)
 
     def publish(self, ctx: InteractiveExecutionContext, scene: SceneSpec) -> None:
         """Publish scene messages and disclosures."""

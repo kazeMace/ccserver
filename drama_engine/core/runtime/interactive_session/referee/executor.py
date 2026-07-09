@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from drama_engine.core.dsl.components.value_resolver import parse_state_path
+from drama_engine.core.components.value_resolver import parse_state_path
 from drama_engine.core.engine import SetAttr
 from drama_engine.core.runtime.interactive_session.context import InteractiveExecutionContext
 from drama_engine.core.runtime.interactive_session.models import RefereeSpec, SceneSpec

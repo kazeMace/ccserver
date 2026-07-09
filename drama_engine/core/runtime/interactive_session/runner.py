@@ -8,8 +8,8 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-from drama_engine.core.dsl.components import CandidateResolver, ConditionEvaluator, EffectExecutor, ValueResolver
-from drama_engine.core.dsl.plugins import build_default_plugin_registry
+from drama_engine.core.components import CandidateResolver, ConditionEvaluator, EffectExecutor, ValueResolver
+from drama_engine.core.plugins import build_default_plugin_registry
 from drama_engine.core.engine import SetAttr, State, StateWriter, Vocabulary
 from drama_engine.core.executor import build_executor_registry
 from drama_engine.core.ports.memory import configure_runtime_memory_backend
@@ -366,7 +366,7 @@ class InteractiveSessionRunner(BasicGameRunner):
         - 把 manifest 默认 config 与 DSL config 合并后写入 GAME.<key>，供机制读取。
         无声明时直接返回（纯剧情/社交推理脚本零关联）。
         """
-        from drama_engine.core.dsl.plugins import PluginApi
+        from drama_engine.core.plugins import PluginApi
         from drama_engine.core.game_packs import build_default_game_pack_runtime_registry
 
         # game_pack / rule_set 都可能声明机制集合，且各自都支持单个或列表形式，

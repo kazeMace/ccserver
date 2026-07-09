@@ -5,7 +5,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
-from drama_engine.core.dsl.components.value_resolver import parse_state_path
+from drama_engine.core.components.value_resolver import parse_state_path
 from drama_engine.core.engine import SetAttr
 from drama_engine.core.runtime.interactive_session.compiler import InteractiveSessionCompiler
 from drama_engine.core.runtime.interactive_session.context import InteractiveExecutionContext

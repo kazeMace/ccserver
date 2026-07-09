@@ -11,8 +11,8 @@ import logging
 from difflib import SequenceMatcher
 from typing import Any
 
-from drama_engine.core.dsl.components.interaction_protocol import InteractionProtocolBuilder
-from drama_engine.core.dsl.components.service_input import ServiceInputBuilder
+from drama_engine.core.components.interaction_protocol import InteractionProtocolBuilder
+from drama_engine.core.components.service_input import ServiceInputBuilder
 from drama_engine.core.executor import ExecutorRequest
 from drama_engine.core.executor.registry import EXECUTOR_BUILTIN, TRANSPORT_EXECUTORS
 from drama_engine.core.runtime.interactive_session.context import InteractiveExecutionContext

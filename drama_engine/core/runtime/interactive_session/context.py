@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 import json
 from typing import Any
 
-from drama_engine.core.dsl.components import CandidateResolver, ConditionEvaluator, EffectExecutor, ValueResolver
+from drama_engine.core.components import CandidateResolver, ConditionEvaluator, EffectExecutor, ValueResolver
 from drama_engine.core.engine import Cast, State, StateWriter
 from drama_engine.core.executor import ExecutorRegistry
 from drama_engine.core.runtime.interactive_session.models import InteractiveScript

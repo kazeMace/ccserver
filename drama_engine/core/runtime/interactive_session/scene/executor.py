@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from drama_engine.core.dsl.components.value_resolver import parse_state_path
+from drama_engine.core.components.value_resolver import parse_state_path
 from drama_engine.core.engine import SetAttr
 from drama_engine.core.runtime.interactive_session.actions.controller import ControllerActionExecutor
 from drama_engine.core.runtime.interactive_session.context import InteractiveExecutionContext
@@ -42,6 +42,24 @@ class SceneExecutor:
             return None
 
         await self._run_hooks(ctx, scene, "on_enter")
+        # on_enter 中的 emit_media 写入了 __pending_media，立即投递（不等 drain）
+        had_video = self._drain_media_now(ctx, scene)
+        # 标记是否有视频，供 cinematic controller 判断是否跳过对话逐条播放
+        from drama_engine.core.engine import SetAttr as _SA
+        ctx.writer.apply(_SA("GAME", "__last_scene_had_video", had_video))
+        # 记录当前 flow node + 已访问节点（供剧情树面板）
+        current_flow_node = ctx.current_state_id or ""
+        if current_flow_node:
+            ctx.writer.apply(_SA("GAME", "__current_flow_node", current_flow_node))
+            visited = list(ctx.state.get_attr("GAME", "visited_nodes") or [])
+            if current_flow_node not in visited:
+                ctx.writer.apply(_SA("GAME", "visited_nodes", visited + [current_flow_node]))
+        # 场景地点写入 State（供 view 端点返回，前端用于背景图切换，不进消息流）
+        locations = scene.context.get("locations") if scene.context else None
+        if locations:
+            from drama_engine.core.engine import SetAttr as _SetAttr
+            ctx.writer.apply(_SetAttr("SCENE", "locations", locations))
+            ctx.writer.apply(_SetAttr("SCENE", "current_location", locations[0].get("name", "")))
         participants = await self._participants.resolve(ctx, scene)
         ctx.session_metadata["interactive_current_participants"] = list(participants)
         cue = self._render_cue(ctx, scene.participant_action.cue)
@@ -80,14 +98,21 @@ class SceneExecutor:
         if result is not None:
             return await self._finish_scene(ctx, scene, responses, result)
         await self._run_hooks(ctx, scene, "on_after_action")
+        # publication 按 phase 分发：
+        #   before_action（默认）= 在 controller 之前发布（玩家先看到内容再选择）
+        #   after_action = 在 controller 之后发布（选择完成后展示结果）
+        self._publication.drain_pending_broadcasts(ctx, scene)
+        self._publish_by_phase(ctx, scene, "before_action")
+        # 把 scene context 注入 metadata 供 cinematic controller 读取
+        if scene.context:
+            ctx.session_metadata["__cinematic_scene_context"] = scene.context
         controller_result = await self._controller.execute(ctx, scene.controller_action)
         if isinstance(controller_result, dict) and controller_result.get("beat"):
             result = await self._publish_generated_beats_until_referee(ctx, scene, controller_result)
             if result is not None:
                 return await self._finish_scene(ctx, scene, responses, result, controller_result=controller_result)
+        self._publish_by_phase(ctx, scene, "after_action")
         self._apply_resolution(ctx, scene, responses, controller_result)
-        self._publication.drain_pending_broadcasts(ctx, scene)
-        self._publication.publish(ctx, scene)
         result = await self._check_referee_events(
             ctx,
             scene,
@@ -95,6 +120,62 @@ class SceneExecutor:
             [{"kind": "after_scene", "scene": scene.id, "responses": list(responses)}],
         )
         return await self._finish_scene(ctx, scene, responses, result, controller_result=controller_result)
+
+    def _drain_media_now(self, ctx: InteractiveExecutionContext, scene: SceneSpec) -> bool:
+        """立即投递 __pending_media 队列中的多媒体事件。返回是否有视频被投递。"""
+        from drama_engine.core.engine import SetAttr
+        media_pending = ctx.state.get_attr("GAME", "__pending_media") or []
+        if not media_pending:
+            return False
+        ctx.writer.apply(SetAttr("GAME", "__pending_media", []))
+        for item in media_pending:
+            if not isinstance(item, dict):
+                continue
+            ctx.emit_public({
+                "kind": item.get("kind") or "video",
+                "runtime_type": "interactive_session",
+                "scene": scene.id,
+                "data": {
+                    "url": item.get("url") or "",
+                    "title": item.get("title") or "",
+                    "poster": item.get("poster") or "",
+                    "subtitle_url": item.get("subtitle_url") or "",
+                    "autoplay": bool(item.get("autoplay", False)),
+                },
+            })
+        return True
+
+    def _publish_by_phase(self, ctx: InteractiveExecutionContext, scene: SceneSpec, current_phase: str) -> None:
+        """按 phase 过滤发布 publication 内容。
+
+        DSL 中 publication 的 messages/views 可指定 phase 字段：
+          - "before_action"（默认）：在 controller 之前发布，玩家先看到内容
+          - "after_action"：在 controller 之后发布，展示选择结果
+
+        未指定 phase 的项默认为 "before_action"。
+        """
+        publication = scene.publication or {}
+        # 按 phase 过滤 messages 和 views
+        filtered_pub = {}
+        for key in ("messages", "views", "disclosures"):
+            items = publication.get(key) or []
+            filtered = []
+            for item in items:
+                if isinstance(item, dict):
+                    item_phase = item.get("phase", "before_action")
+                else:
+                    item_phase = "before_action"
+                if item_phase == current_phase:
+                    filtered.append(item)
+            if filtered:
+                filtered_pub[key] = filtered
+        if not filtered_pub:
+            return
+        # 临时替换 scene.publication 来复用 emitter
+        original = scene.publication
+        scene.publication = filtered_pub
+        self._publication.publish(ctx, scene)
+        scene.publication = original
 
     async def _handle_message_event(
         self,

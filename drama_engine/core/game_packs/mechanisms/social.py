@@ -15,8 +15,8 @@ import re
 from collections import Counter
 from typing import Any
 
-from drama_engine.core.dsl.components.conditions import ConditionEvaluator
-from drama_engine.core.dsl.components.value_resolver import ValueResolver, parse_state_path
+from drama_engine.core.components.conditions import ConditionEvaluator
+from drama_engine.core.components.value_resolver import ValueResolver, parse_state_path
 from drama_engine.core.engine import SetAttr
 
 logger = logging.getLogger(__name__)

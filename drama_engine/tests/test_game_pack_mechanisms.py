@@ -7,8 +7,8 @@
 from __future__ import annotations
 
 from drama_engine.core.engine import SetAttr, State, StateWriter, Vocabulary
-from drama_engine.core.dsl.components import EffectExecutor  # noqa: F401 - 先加载组件，避免循环导入
-from drama_engine.core.dsl.plugins import EffectContext, PluginApi, PluginRegistry
+from drama_engine.core.components import EffectExecutor  # noqa: F401 - 先加载组件，避免循环导入
+from drama_engine.core.plugins import EffectContext, PluginApi, PluginRegistry
 from drama_engine.core.game_packs import build_default_game_pack_runtime_registry
 from drama_engine.core.game_packs.mechanisms import (
     board,

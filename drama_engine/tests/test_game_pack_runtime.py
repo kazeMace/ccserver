@@ -9,8 +9,8 @@ from __future__ import annotations
 import pytest
 
 from drama_engine.core.engine import SetAttr, StateWriter
-from drama_engine.core.dsl.components import EffectExecutor  # noqa: F401 - 先加载组件，避免循环导入
-from drama_engine.core.dsl.plugins import EffectContext
+from drama_engine.core.components import EffectExecutor  # noqa: F401 - 先加载组件，避免循环导入
+from drama_engine.core.plugins import EffectContext
 from drama_engine.core.game_instance.factory import GameInstanceRegistry
 
 _GOMOKU = "drama_engine/scripts/interactive_session/board/gomoku.yaml"
