@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from copy import deepcopy
+from pathlib import Path
 from typing import Any
 
 from drama_engine.core.dsl.components import CandidateResolver, ConditionEvaluator, EffectExecutor, ValueResolver
@@ -13,7 +14,6 @@ from drama_engine.core.engine import SetAttr, State, StateWriter, Vocabulary
 from drama_engine.core.executor import build_executor_registry
 from drama_engine.core.ports.memory import configure_runtime_memory_backend
 from drama_engine.core.runner.base import BasicGameRunner
-from drama_engine.core.runtime.interactive_session.compiler import InteractiveSessionCompiler
 from drama_engine.core.runtime.interactive_session.context import InteractiveExecutionContext
 from drama_engine.core.runtime.interactive_session.flow.executor import FlowExecutor
 from drama_engine.core.runtime.interactive_session.patch.applier import FlowPatchApplier
@@ -24,6 +24,7 @@ from drama_engine.core.runtime.interactive_session.services.plugin_loader import
 from drama_engine.core.runtime_spec.registry import RuntimeSpec
 from drama_engine.core.game_instance.progress import ProgressTracker
 from drama_engine.core.game_instance.state import SESSION_ASSIGNED, SESSION_ENDED, SESSION_RUNNING
+from drama_engine.core.script_loader import ScriptBundle, ScriptLoader
 from drama_engine.core.visibility.disclosure_ledger import DisclosureLedger
 
 logger = logging.getLogger(__name__)
@@ -42,7 +43,8 @@ class InteractiveSessionRunner(BasicGameRunner):
         assert runtime is not None, "runtime 不能为空"
         assert declaration is not None, "declaration 不能为空"
         super().__init__(runtime=runtime, declaration=declaration, dry_run=dry_run)
-        self._compiler = InteractiveSessionCompiler()
+        self._loader = ScriptLoader()
+        self._bundle: ScriptBundle | None = None
         self._script = None
         self._ctx: InteractiveExecutionContext | None = None
         self._flow_executor = FlowExecutor()
@@ -58,7 +60,14 @@ class InteractiveSessionRunner(BasicGameRunner):
             declaration=self.declaration,
         )
         configure_runtime_memory_backend(self.context.memory_store, config)
-        script = self._compiler.compile(session_state.script_path, params=session_state.params)
+
+        # 通过 ScriptLoader 加载 ScriptBundle，再取编译产物
+        bundle = await self._loader.load(
+            Path(session_state.script_path),
+            params=session_state.params,
+        )
+        self._bundle = bundle
+        script = bundle.compiled
         self._script = script
         player_names = self._resolve_player_names(script)
         self.input_bridge.create_cast(
@@ -141,6 +150,7 @@ class InteractiveSessionRunner(BasicGameRunner):
     async def reset_runtime_state(self) -> None:
         """Cancel current task and clear transient runtime state."""
         await self.cancel_task()
+        self._bundle = None
         self._script = None
         self._ctx = None
 
@@ -279,7 +289,7 @@ class InteractiveSessionRunner(BasicGameRunner):
                             "tts_config": role_spec.get("tts_config", {}),
                             "faction": role_spec.get("faction", ""),
                         }
-                state.set_attr("GAME", "roles", roles_data)
+                StateWriter(state).apply(SetAttr("GAME", "roles", roles_data))
 
         for entity, attrs in (script.state or {}).items():
             if not state.has_entity(str(entity)):
@@ -358,9 +368,8 @@ class InteractiveSessionRunner(BasicGameRunner):
             )
 
     def _emit_public(self, event: dict[str, Any]) -> None:
-        """Publish event to public and host streams."""
+        """Publish event to public stream (host timeline 由 append_public 自动包含)."""
         self.event_publisher.public(dict(event))
-        self.event_publisher.host(dict(event))
 
     def _emit_host(self, event: dict[str, Any]) -> None:
         """Publish host-only event."""

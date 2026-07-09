@@ -115,14 +115,14 @@ def create_app(
     @app.get("/api/games")
     async def list_games() -> list[dict[str, Any]]:
         """列出可创建的游戏。"""
-        games = app.state.catalog.list_games()
+        games = await app.state.catalog.list_games_async()
         return [
             {
                 "game_id": game.game_id,
                 "script_path": game.script_path,
                 "title": game.title,
-                "roles": game.roles,  # 新增：角色定义 {role_id: role_data}
-                "recommended_player_role": game.recommended_player_role,  # 新增：推荐角色
+                "roles": game.roles,
+                "recommended_player_role": game.recommended_player_role,
             }
             for game in games
         ]
@@ -133,7 +133,8 @@ def create_app(
         script_path = payload.script_path
         if script_path is None:
             try:
-                script_path = app.state.catalog.get_game(payload.game_id).script_path
+                game = await app.state.catalog.get_game_async(payload.game_id)
+                script_path = game.script_path
             except KeyError as exc:
                 raise HTTPException(status_code=404, detail=str(exc)) from exc
         seat_ids = payload.seat_ids or _default_seat_ids(payload.params)
@@ -287,7 +288,9 @@ def create_app(
         if not seat_id:
             raise HTTPException(status_code=400, detail="reply 缺少 seat_id")
         instance = await _instance(session_id)
-        return await instance.reply(f"player:{seat_id}", body)
+        # seat_id 可能已带 "player:" 前缀（前端传入），避免双重前缀
+        seat = seat_id if seat_id.startswith("player:") else f"player:{seat_id}"
+        return await instance.reply(seat, body)
 
     @app.get("/api/sessions/{session_id}/view")
     async def get_state_view(session_id: str, seat: str = "public") -> dict[str, Any]:

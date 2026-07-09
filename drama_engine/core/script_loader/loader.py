@@ -61,11 +61,11 @@ class ScriptLoader(BaseScriptLoader):
         self._plugin_scanner = plugin_scanner or DirectoryPluginScanner()
         self._hook_scanner = hook_scanner or DirectoryHookScanner()
 
-    async def load(self, path: Path) -> ScriptBundle:
+    async def load(self, path: Path, params: dict[str, Any] | None = None) -> ScriptBundle:
         """完整加载脚本包，返回统一 ScriptBundle。
 
         流程：
-          1. reader.read(path) → RawScriptDoc
+          1. reader.read(path, params) → RawScriptDoc
           2. 提取 meta / roles / game_packs
           3. plugin_scanner.scan(plugins/) → list[PluginSpec]
           4. hook_scanner.scan(hooks/) → list[HookSpec]
@@ -73,12 +73,13 @@ class ScriptLoader(BaseScriptLoader):
 
         参数:
             path: 脚本路径（目录或单文件）
+            params: 模板参数（用于 {{param}} 展开）
 
         返回:
             ScriptBundle
         """
         # 1. 读取原始文档
-        raw_doc_obj = await self._reader.read(path)
+        raw_doc_obj = await self._reader.read(path, params)
         doc = raw_doc_obj.doc
         logger.debug("[ScriptLoader] 读取完成: %s", path)
 

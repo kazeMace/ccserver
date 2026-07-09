@@ -35,11 +35,12 @@ class BasePackageReader(ABC):
     """包读取器基类 — 从路径读取原始文档。"""
 
     @abstractmethod
-    async def read(self, path: Path) -> RawScriptDoc:
+    async def read(self, path: Path, params: dict | None = None) -> RawScriptDoc:
         """读取路径（目录或单文件），返回统一的原始文档。
 
         参数:
             path: 脚本路径（目录或 .yaml 文件）
+            params: 模板参数（用于 {{param}} 展开）
 
         返回:
             RawScriptDoc（合并后的完整 dict + 元信息）
@@ -95,11 +96,12 @@ class BaseScriptLoader(ABC):
     """脚本加载器基类 — 统一入口，产出 ScriptBundle。"""
 
     @abstractmethod
-    async def load(self, path: Path) -> ScriptBundle:
+    async def load(self, path: Path, params: dict | None = None) -> ScriptBundle:
         """完整加载脚本包，返回统一 ScriptBundle。
 
         参数:
             path: 脚本路径（目录或单文件）
+            params: 模板参数
 
         返回:
             ScriptBundle

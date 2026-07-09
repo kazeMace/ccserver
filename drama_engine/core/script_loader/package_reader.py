@@ -1,13 +1,14 @@
 """YAML 包读取器 — 从路径读取并合并脚本文档。
 
 支持两种形式：
-  - 单文件 .yaml：直接读取
+  - 单文件 .yaml：直接读取（支持 {{param}} 模板展开）
   - 包目录：合并 manifest.yaml + roles.yaml + script.yaml
 """
 
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 from typing import Any
 
@@ -22,11 +23,12 @@ logger = logging.getLogger(__name__)
 class YamlPackageReader(BasePackageReader):
     """YAML 包读取器：支持单文件和目录两种形式。"""
 
-    async def read(self, path: Path) -> RawScriptDoc:
+    async def read(self, path: Path, params: dict[str, Any] | None = None) -> RawScriptDoc:
         """读取路径，返回统一的原始文档。
 
         参数:
             path: 脚本路径（目录或 .yaml 文件）
+            params: 模板参数（用于 {{param}} 展开，仅单文件生效）
 
         返回:
             RawScriptDoc
@@ -35,7 +37,7 @@ class YamlPackageReader(BasePackageReader):
             doc = self._read_package_dir(path)
             return RawScriptDoc(doc=doc, source_path=path, is_package=True)
         else:
-            doc = self._read_single_file(path)
+            doc = self._read_single_file(path, params or {})
             return RawScriptDoc(doc=doc, source_path=path, is_package=False)
 
     async def read_meta(self, path: Path) -> ScriptMeta:
@@ -87,14 +89,39 @@ class YamlPackageReader(BasePackageReader):
 
         return doc
 
-    def _read_single_file(self, path: Path) -> dict[str, Any]:
-        """读取单文件脚本。"""
+    def _read_single_file(self, path: Path, params: dict[str, Any] | None = None) -> dict[str, Any]:
+        """读取单文件脚本（支持 {{param}} 模板展开）。"""
         assert path.exists(), f"脚本文件不存在: {path}"
         text = path.read_text(encoding="utf-8")
+
+        # 模板参数展开
+        if params:
+            preliminary = yaml.safe_load(text) or {}
+            resolved = self._resolve_params(preliminary, params)
+            text = self._expand_params(text, resolved)
+
         doc = yaml.safe_load(text) or {}
         assert isinstance(doc, dict), f"脚本文件顶层必须是 dict: {path}"
         logger.debug("[YamlPackageReader] 读取单文件: %s", path)
         return doc
+
+    def _resolve_params(self, doc: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+        """解析 params 块的默认值，并与 override 合并。"""
+        result: dict[str, Any] = {}
+        for param_def in doc.get("params", []) if isinstance(doc, dict) else []:
+            if isinstance(param_def, dict) and param_def.get("name"):
+                result[str(param_def["name"])] = param_def.get("default")
+        result.update(override)
+        return result
+
+    def _expand_params(self, raw_text: str, params: dict[str, Any]) -> str:
+        """替换 {{param}} 占位符。"""
+        def replace(match: re.Match) -> str:
+            name = match.group(1).strip()
+            if name not in params:
+                return match.group(0)
+            return str(params[name])
+        return re.sub(r"\{\{\s*([^}]+)\s*\}\}", replace, raw_text)
 
     def _extract_meta_from_dir(self, pkg_dir: Path) -> ScriptMeta:
         """从包目录提取元数据（只读 manifest.yaml）。"""
