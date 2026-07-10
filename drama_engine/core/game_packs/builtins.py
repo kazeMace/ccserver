@@ -7,12 +7,14 @@
 from __future__ import annotations
 
 from drama_engine.core.game_packs.mechanisms import (
+    affinity,
     board,
     cards,
     cinematic,
     dice,
     economy,
     inventory,
+    narrative,
     social,
     stats,
 )
@@ -90,6 +92,30 @@ def register_builtin_game_packs(registry: GamePackRuntimeRegistry) -> None:
         default_config={"mode": "visual_novel", "auto_advance_on_video": True},
         required_extensions=(),
         projection_profile=cinematic.build_cinematic_projection_profile(),
+    ))
+    registry.register(GamePackManifest(
+        plugin_id="builtin.narrative",
+        description="叙事机制集合：记录分支选择、搜集线索、按进度选定结局。适用文字冒险/分支剧情/剧本杀叙事。",
+        register=narrative.register,
+        mechanisms=(
+            "record_choice", "collect_clue", "set_ending",
+            "narrative.clue_collected", "narrative.reached_ending",
+        ),
+        default_config={},
+        required_extensions=(),
+        projection_profile=narrative.build_narrative_projection_profile(),
+    ))
+    registry.register(GamePackManifest(
+        plugin_id="builtin.affinity",
+        description="好感/关系机制集合：设置好感、按好感配对、淘汰最低分、互选判定。适用综艺 AI/恋综/约会。",
+        register=affinity.register,
+        mechanisms=(
+            "set_affinity", "pair_by_affinity", "eliminate_lowest",
+            "affinity.mutual_at_least",
+        ),
+        default_config={},
+        required_extensions=(),
+        projection_profile=affinity.build_affinity_projection_profile(),
     ))
 
 
