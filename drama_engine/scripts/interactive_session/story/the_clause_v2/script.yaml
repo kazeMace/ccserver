@@ -4,6 +4,9 @@ players:
   - Player_1
   initial_attrs:
     alive: true
+assets:
+  source: assets.json
+  type: json
 state:
   STORY:
     started: true

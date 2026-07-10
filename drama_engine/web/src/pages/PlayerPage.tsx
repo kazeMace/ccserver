@@ -132,6 +132,9 @@ export function PlayerPage() {
 
   // 文字冒险 / galgame：全屏沉浸式舞台（逐句揭示 + 场景/立绘 + 底部 dock）。两侧 rail/sidebar 不变。
   if (isImmersiveNarrative(genre)) {
+    // 从 view.panels.scene_bg 提取背景图 URL
+    const sceneBg = view?.panels?.scene_bg as { locations?: { image_url?: string }[] } | undefined;
+    const bgUrl = sceneBg?.locations?.[0]?.image_url;
     return (
       <ImmersiveShell genre={themeGenreForKind(genre)} railItems={railItems}>
         <ImmersiveStage
@@ -146,6 +149,7 @@ export function PlayerPage() {
           title={`玩家 · ${seat}`}
           topRight={topRight}
           submitError={submitError}
+          backgroundUrl={bgUrl}
         />
         <Sidebar view={view} open={sideOpen} onClose={() => setSideOpen(false)} />
       </ImmersiveShell>

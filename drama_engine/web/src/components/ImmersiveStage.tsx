@@ -101,10 +101,11 @@ export interface ImmersiveStageProps {
   title?: string;
   topRight?: ReactNode; // 顶部悬浮控件（视角切换 / 连接状态 / 侧栏按钮）
   submitError?: string;
+  backgroundUrl?: string; // 场景背景图 URL（来自 SCENE.locations[0].image_url）
 }
 
 export function ImmersiveStage(props: ImmersiveStageProps) {
-  const { messages, pending, status, submitting, onSubmit, roles, selfSeat, phase, title, topRight, submitError } = props;
+  const { messages, pending, status, submitting, onSubmit, roles, selfSeat, phase, title, topRight, submitError, backgroundUrl } = props;
   const roleIdx = buildRoleIndex(roles);
 
   // 已揭示到第几条消息（含）。玩家点击「继续」推进；新消息到达默认停在上一次进度，等待点击。
@@ -188,7 +189,7 @@ export function ImmersiveStage(props: ImmersiveStageProps) {
           // 已翻过去（视频退居背景）后不再响应结束事件。
           <MediaLayer beat={bgMedia} onEnded={mediaIsCurrent ? finishMedia : undefined} />
         ) : (
-          <SceneBg portrait={figurePortrait} />
+          <SceneBg portrait={figurePortrait} backgroundUrl={backgroundUrl} />
         )}
         <div className="imm-vignette" />
       </div>
@@ -234,8 +235,10 @@ export function ImmersiveStage(props: ImmersiveStageProps) {
 }
 
 // —— 背景层：立绘模糊底（对话时）或主题渐变底 ——
-function SceneBg({ portrait }: { portrait?: string }) {
-  if (portrait) return <div className="imm-bg" style={{ backgroundImage: `url(${portrait})` }} />;
+function SceneBg({ portrait, backgroundUrl }: { portrait?: string; backgroundUrl?: string }) {
+  // 优先使用场景背景图（来自素材库），其次立绘模糊底，最后渐变底
+  const bgImage = backgroundUrl || portrait;
+  if (bgImage) return <div className="imm-bg" style={{ backgroundImage: `url(${bgImage})` }} />;
   return <div className="imm-bg imm-bg-flat" />;
 }
 

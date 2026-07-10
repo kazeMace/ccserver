@@ -151,7 +151,7 @@ function PlayersSection({ players }: { players: PlayerCard[] }) {
 
 // ═══ 剧情分支树（树形层级布局）═══
 
-interface StoryTreeNode { id: string; title: string; terminal?: boolean }
+interface StoryTreeNode { id: string; title: string; terminal?: boolean; synopsis?: string }
 interface StoryTreeEdge { from: string; to: string; choice_id?: string; choice_text?: string }
 interface StoryTreeData {
   current_node: string;
@@ -241,6 +241,7 @@ function StoryTreeSection({ data }: { data: StoryTreeData }) {
                           <div
                             key={id}
                             className={`st-card${isCurrent ? " now" : ""}${isVisited ? " visited" : ""}${isLocked ? " locked" : ""}${node.terminal ? " terminal" : ""}`}
+                            title={!isLocked && node.synopsis ? node.synopsis : undefined}
                           >
                             {isCurrent ? <span className="st-now-tag">Now</span> : null}
                             <span className="st-card-icon">
@@ -249,6 +250,9 @@ function StoryTreeSection({ data }: { data: StoryTreeData }) {
                             <span className="st-card-title">
                               {isLocked ? "Undiscovered" : node.title}
                             </span>
+                            {!isLocked && node.synopsis ? (
+                              <span className="st-card-synopsis">{node.synopsis}</span>
+                            ) : null}
                           </div>
                         );
                       })}
