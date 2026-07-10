@@ -52,7 +52,7 @@ class TagMatcherAssetResolver(AssetResolver):
             first = asset_pool[0]
             return [AssetMatch(
                 asset_id=str(first.get("id", "")),
-                path=str(first.get("path", "")),
+                path=str(first.get("uri") or first.get("path", "")),
                 role=str(first.get("role", "background")),
                 score=0.1,
                 metadata={"reason": "no_tags_fallback"},
@@ -79,7 +79,7 @@ class TagMatcherAssetResolver(AssetResolver):
         for score, asset in scored[:max_results]:
             results.append(AssetMatch(
                 asset_id=str(asset.get("id", "")),
-                path=str(asset.get("path", "")),
+                path=str(asset.get("uri") or asset.get("path", "")),
                 role=str(asset.get("role", "background")),
                 score=score,
                 metadata={"matched_tags": list(content_tags & set(str(t).lower() for t in (asset.get("tags") or [])))},

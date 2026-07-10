@@ -8,8 +8,8 @@ from drama_engine.core.ports.views import BaseViewProjector
 from drama_engine.core.session.runtime import GameRuntime
 from drama_engine.core.session.view_contract import ViewSnapshot, ViewerPrincipal
 
-class SocialViewProjector(BaseViewProjector):
-    """Project SocialDeduction runtime state into frontend snapshots."""
+class RuntimeViewProjector(BaseViewProjector):
+    """把 GameRuntime 状态投影为前端快照（游戏无关，仅按状态/profile 取数）。"""
 
     def project(
         self,
@@ -105,22 +105,22 @@ class SocialViewProjector(BaseViewProjector):
         )
 
 
-_SOCIAL_VIEW_PROJECTOR = SocialViewProjector()
+_RUNTIME_VIEW_PROJECTOR = RuntimeViewProjector()
 
 
 def build_host_snapshot(runtime: GameRuntime) -> ViewSnapshot:
     """构建主持人视图。"""
-    return _SOCIAL_VIEW_PROJECTOR.host_snapshot(runtime)
+    return _RUNTIME_VIEW_PROJECTOR.host_snapshot(runtime)
 
 
 def build_public_snapshot(runtime: GameRuntime) -> ViewSnapshot:
     """构建公开观众视图。"""
-    return _SOCIAL_VIEW_PROJECTOR.public_snapshot(runtime)
+    return _RUNTIME_VIEW_PROJECTOR.public_snapshot(runtime)
 
 
 def build_player_snapshot(runtime: GameRuntime, seat_id: str, user_id: str | None = None) -> ViewSnapshot:
     """构建玩家视图。"""
-    return _SOCIAL_VIEW_PROJECTOR.player_snapshot(runtime, seat_id=seat_id, user_id=user_id)
+    return _RUNTIME_VIEW_PROJECTOR.player_snapshot(runtime, seat_id=seat_id, user_id=user_id)
 
 
 def _game_attr(runtime: GameRuntime, entity: str, key: str) -> Any:

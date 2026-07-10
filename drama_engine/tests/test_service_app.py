@@ -212,42 +212,6 @@ def test_player_reconnect_backlog_is_token_scoped() -> None:
         assert second["backlog"][0]["session_id"] == session_id
 
 
-def test_frontend_assets_and_host_page_are_served() -> None:
-    """创建页和 Host 游戏页应拆成两个页面并提供前端资源。"""
-    app = create_app(registry=SessionRegistry(), catalog=GameCatalog(scripts_root="missing"))
-    client = TestClient(app)
-
-    create_resp = client.get("/")
-    assert create_resp.status_code == 200
-    assert "创建狼人杀房间" in create_resp.text
-    assert "scriptSelect" in create_resp.text
-    assert "humanCountInput" in create_resp.text
-    assert "humanCountSelect" not in create_resp.text
-    assert "观战模式" in create_resp.text
-    assert "真实 Agent" in create_resp.text
-    assert "预女猎守局12人" in create_resp.text
-    assert "live_viewer.js" not in create_resp.text
-    assert "create.js" in create_resp.text
-    assert "进入 Dashboard" in create_resp.text
-    assert "进入导演页" not in create_resp.text
-
-    host_resp = client.get("/host/sessions/example-session")
-    assert host_resp.status_code == 200
-    assert "drama engine dashboard" in host_resp.text
-    assert "createRoomBtn" not in host_resp.text
-    assert "创建狼人杀房间" not in host_resp.text
-    assert "live_viewer.js" in host_resp.text
-
-    js_resp = client.get("/frontend/live_viewer.js")
-    assert js_resp.status_code == 200
-    assert "serviceContext" in js_resp.text
-    assert client.get("/frontend/create.js").status_code == 200
-    css_resp = client.get("/frontend/live_viewer.css")
-    assert css_resp.status_code == 200
-    config = client.get("/api/frontend/config").json()
-    assert config["title"]
-
-
 def test_create_page_can_create_guard_preset_room_and_return_player_links() -> None:
     """首页创建页使用当前唯一 preset 时，应返回真人玩家链接。"""
     app = create_app(registry=SessionRegistry(), catalog=GameCatalog(scripts_root="missing"))
@@ -339,8 +303,8 @@ def test_public_urls_respect_forwarded_headers() -> None:
     assert seats[0]["join_link"].startswith("https://demo.ngrok-free.app/player?token=")
 
 
-def test_view_snapshot_apis_and_player_pages() -> None:
-    """player/public/host view API 与页面资源应该可用。"""
+def test_view_snapshot_apis() -> None:
+    """player/public/host view API 应该可用。"""
     app = create_app(registry=SessionRegistry(), catalog=GameCatalog(scripts_root="missing"))
     client = TestClient(app)
 
@@ -363,46 +327,6 @@ def test_view_snapshot_apis_and_player_pages() -> None:
     player_view = client.get(f"/api/player/view?token={token}")
     assert player_view.status_code == 200
     assert player_view.json()["seat_id"] == "Player_1"
-    assert client.get(f"/player?token={token}").status_code == 200
-    assert client.get(f"/viewer/sessions/{session_id}").status_code == 200
-    assert client.get("/frontend/player.js").status_code == 200
-    assert client.get("/frontend/viewer.js").status_code == 200
-    assert client.get("/frontend/simple.css").status_code == 200
-
-
-def test_player_frontend_action_panel_below_timeline_and_sheriff_options() -> None:
-    """玩家页当前操作应在我的消息下方；上警操作应显示语义选项而不是候选玩家。"""
-    html_path = "drama_engine/service/frontend/player.html"
-    js_path = "drama_engine/service/frontend/player.js"
-    css_path = "drama_engine/service/frontend/simple.css"
-    html = __import__("pathlib").Path(html_path).read_text(encoding="utf-8")
-    js = __import__("pathlib").Path(js_path).read_text(encoding="utf-8")
-    css = __import__("pathlib").Path(css_path).read_text(encoding="utf-8")
-
-    assert html.index("我的消息") < html.index("当前操作")
-    assert "我选择上警" in js
-    assert "我选择不上警" in js
-    assert js.index('cue.includes("上警")') < js.index("candidates.length")
-    assert "使用自定义输入" in js
-    assert "customActionValue" in js
-    assert "补充发言" in js
-    assert "actionReason" in js
-    assert "custom-action-value" in css
-
-
-
-def test_player_frontend_keeps_action_form_while_polling_same_request() -> None:
-    """玩家页轮询到同一 pending request 时不能重建输入表单，否则输入会被清空。"""
-    js_path = "drama_engine/service/frontend/player.js"
-    js = __import__("pathlib").Path(js_path).read_text(encoding="utf-8")
-
-    assert "let renderedActionKey" in js
-    assert "function actionRenderKey" in js
-    assert "request:${requestId}" in js
-    assert 'renderedActionKey === nextActionKey && el("actionForm")' in js
-    assert "不要重建表单" in js
-    assert 'renderedActionKey = ""' in js
-
 
 
 @pytest.mark.asyncio
@@ -539,94 +463,6 @@ async def test_moderator_submit_api_clears_pending_action() -> None:
     assert response.status_code == 200
     assert response.json()["request_id"] == request.request_id
     assert runtime.action_service.get_current_request("Player_1") is None
-
-
-def test_host_frontend_uses_supported_moderator_routes() -> None:
-    """Host 前端不能再调用 unsupported moderator 占位接口。"""
-    js_path = "drama_engine/service/frontend/live_viewer.js"
-    text = __import__("pathlib").Path(js_path).read_text(encoding="utf-8")
-    assert "unsupported" not in text
-    assert "/moderator/submit" in text
-    assert "/moderator/set-controller" in text
-    assert "/moderator/set-human-count" in text
-
-
-def test_host_frontend_keeps_role_whispers_as_speech_bubbles() -> None:
-    """Host 前端不能因“查验 / 守护”等词隐藏角色低声发言气泡。"""
-    js_path = "drama_engine/service/frontend/live_viewer.js"
-    text = __import__("pathlib").Path(js_path).read_text(encoding="utf-8")
-
-    assert "function shouldHideMechanicalActionBubble" in text
-    assert "blockedKeywords.some((keyword) => value.includes(keyword))" not in text
-    assert "mechanicalPrefixes.some((prefix) => value.startsWith(prefix))" not in text
-    assert "value.startsWith('{') && value.includes('\"action\"')" in text
-    assert "formatObjectValue" in text
-    assert "formatStringValue" in text
-    assert "JSON.parse(text)" in text
-    assert "我选择${choice}" in text
-    assert "JSON.stringify(value)" not in text
-    assert "该玩家" in text
-    assert "玩家第一人称" in text
-    assert "event.sender !== event.actor" not in text
-    assert "isPlayerActorName(event.sender)" in text
-    assert "sender == actor" in text
-
-
-def test_host_frontend_queues_bubbles_instead_of_overwriting() -> None:
-    """Host 前端应按队列展示连续发言，避免后一条气泡直接覆盖前一条。"""
-    js_path = "drama_engine/service/frontend/live_viewer.js"
-    text = __import__("pathlib").Path(js_path).read_text(encoding="utf-8")
-
-    assert "bubbleQueue" in text
-    assert "bubbleActive" in text
-    assert "function activateNextBubble" in text
-    assert "player.bubbleQueue.push" in text
-    assert "activateNextBubble(actor);" in text
-    assert "seenSpeechKeys: new Map()" in text
-    assert "duplicateWindow" in text
-    assert "initialReplaySeqMax" in text
-    assert "latestSpeechText" not in text
-    assert "latestSpeechSeq" not in text
-    assert "falling back to historical speech" in text
-    assert "bubbleQueueGapMs" in text
-    assert "renderRoundTable();" in text
-
-
-def test_host_frontend_excludes_moderator_from_players() -> None:
-    """Host 前端不应把主持人/系统事件渲染成 9999 号玩家。"""
-    js_path = "drama_engine/service/frontend/live_viewer.js"
-    text = __import__("pathlib").Path(js_path).read_text(encoding="utf-8")
-
-    assert "if (!isPlayerActorName(actor)) return null" in text
-    assert "state.playerOrder.filter(isPlayerActorName)" in text
-    assert "fake seats" in text
-
-
-def test_host_frontend_updates_speaker_from_player_perceive_events() -> None:
-    """Host 右侧当前发言卡应跟随玩家自听/私聊事件，而不只依赖 act 事件。"""
-    js_path = "drama_engine/service/frontend/live_viewer.js"
-    text = __import__("pathlib").Path(js_path).read_text(encoding="utf-8")
-
-    perceive_block = text.split('if (event.type === "perceive")', 1)[1].split('if (event.type === "act")', 1)[0]
-    assert "isPlayerActorName(event.sender)" in perceive_block
-    assert "showBubble(event.sender" in perceive_block
-    assert "shouldShowSpeechBubble(event.text)" in perceive_block
-    assert "updateSpeaker(event.sender, displayValue(event.text))" in perceive_block
-
-
-def test_host_dashboard_removes_pending_moderator_panel() -> None:
-    """Host Dashboard 不再显示待处理动作/主持人操作面板。"""
-    host_path = "drama_engine/service/frontend/host.html"
-    js_path = "drama_engine/service/frontend/live_viewer.js"
-    host = __import__("pathlib").Path(host_path).read_text(encoding="utf-8")
-    text = __import__("pathlib").Path(js_path).read_text(encoding="utf-8")
-
-    assert "pendingPanel" not in host
-    assert "待处理动作 / 主持人操作" not in host
-    assert "pendingList" not in host
-    assert "seatsList" not in host
-    assert 'const pendingPanel = el("pendingPanel")' in text
-    assert 'if (el("pendingPanel"))' in text
 
 
 def test_step_gate_api_controls_session_gate() -> None:

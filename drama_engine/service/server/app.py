@@ -3,15 +3,12 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from typing import Any
 
 import asyncio
 import json
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import StreamingResponse
 
 from drama_engine.application.catalog import GameCatalog
@@ -33,10 +30,6 @@ def create_app(
 ) -> FastAPI:
     """创建 Drama Engine FastAPI app。"""
     app = FastAPI(title="Drama Engine", version="0.1.0")
-    frontend_dir = Path(__file__).resolve().parents[1] / "frontend"
-    if frontend_dir.exists():
-        app.mount("/frontend", StaticFiles(directory=str(frontend_dir)), name="drama_frontend")
-    app.state.frontend_dir = frontend_dir
     app.state.registry = registry or SessionRegistry(store=JsonSessionStore())
     app.state.catalog = catalog or GameCatalog()
 
@@ -62,55 +55,6 @@ def create_app(
     async def health() -> dict[str, str]:
         """服务健康检查。"""
         return {"status": "ok"}
-
-    @app.get("/")
-    async def frontend_index() -> FileResponse:
-        """返回创建狼人杀房间页面。"""
-        return FileResponse(str(app.state.frontend_dir / "index.html"))
-
-    @app.get("/create")
-    async def create_page() -> FileResponse:
-        """返回创建狼人杀房间页面。"""
-        return FileResponse(str(app.state.frontend_dir / "index.html"))
-
-    @app.get("/host/sessions/{session_id}")
-    async def host_page(session_id: str) -> FileResponse:
-        """返回 Host 游戏页面。"""
-        return FileResponse(str(app.state.frontend_dir / "host.html"))
-
-    @app.get("/player")
-    async def player_page() -> FileResponse:
-        """返回玩家页面。"""
-        return FileResponse(str(app.state.frontend_dir / "player.html"))
-
-    @app.get("/viewer/sessions/{session_id}")
-    async def viewer_page(session_id: str) -> FileResponse:
-        """返回公开观众页面。"""
-        return FileResponse(str(app.state.frontend_dir / "viewer.html"))
-
-    @app.get("/api/frontend/config")
-    async def frontend_config() -> dict[str, Any]:
-        """返回前端运行配置。"""
-        return {
-            "title": "Drama Engine 狼人杀",
-            "moderatorKey": "__moderator__",
-            "roleBadges": {
-                "werewolf": "狼人",
-                "seer": "预言家",
-                "witch": "女巫",
-                "hunter": "猎人",
-                "guard": "守卫",
-                "villager": "村民",
-            },
-            "scopeStyles": {
-                "public": ["#f3f4f6", "#9ca3af", "公开"],
-                "town": ["#ecfdf5", "#10b981", "城镇"],
-                "wolf-den": ["#fef2f2", "#ef4444", "狼队"],
-                "whisper:seer": ["#eef2ff", "#6366f1", "预言家"],
-                "whisper:witch": ["#f5f3ff", "#8b5cf6", "女巫"],
-                "whisper:guard": ["#eff6ff", "#3b82f6", "守卫"],
-            },
-        }
 
     @app.get("/api/games")
     async def list_games() -> list[dict[str, Any]]:

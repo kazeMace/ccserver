@@ -136,6 +136,9 @@ class InteractiveSessionRunner(BasicGameRunner):
         session_state.metadata["runtime_type"] = "interactive_session"
         session_state.metadata["dry_run"] = self.dry_run
         session_state.metadata["project_root"] = str(getattr(self.context, "project_root", "") or "")
+        # 素材库灌入 session_metadata，供 AssetResolver 读取
+        if bundle.assets:
+            session_state.metadata["asset_pool"] = bundle.assets
         session_state.metadata["interactive_session"] = {
             "flow_type": script.flow.type,
             "scene_count": len(script.scenes),

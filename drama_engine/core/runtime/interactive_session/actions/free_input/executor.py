@@ -148,14 +148,29 @@ class FreeInputExecutor:
             )
 
         # ═══ Phase 5: ChoiceDesigner (可选) ═══
+        # grow_flow 模式下若未显式配置 choice_designer，默认使用 llm_fallback 确保分支不断
         designer_spec = generation_spec.get("choice_designer") or spec.get("choice_designer")
+        if not designer_spec and mode == "grow_flow":
+            designer_spec = {"name": "llm_fallback", "config": {"count": 3}}
         if designer_spec and self._is_generation_mode(mode):
             result = await self._run_choice_designer(result, ctx, plan, designer_spec)
 
         # ═══ Phase 6: AssetResolver (可选) ═══
+        # grow_flow 模式下若有素材池但未显式配置 resolver，默认使用 tag_matcher
         resolver_spec = generation_spec.get("asset_resolver") or spec.get("asset_resolver")
+        if not resolver_spec and mode == "grow_flow":
+            metadata = getattr(ctx, "session_metadata", {})
+            if metadata.get("asset_pool"):
+                resolver_spec = {"name": "tag_matcher", "config": {"max_results": 1}}
         if resolver_spec and self._is_generation_mode(mode):
             result = await self._run_asset_resolver(result, ctx, plan, resolver_spec)
+
+        # ═══ Phase 7: 后置同步 ═══
+        # Phase 5/6 修改了 flow_patch 中的 scene（choices/assets），
+        # 但 grow_flow 在 Phase 3 已经 apply 过 patch（此时 materializer 做了 deepcopy）。
+        # 需要用修改后的 patch 重新同步到运行时 script。
+        if mode == "grow_flow" and result.get("flow_patch"):
+            self._sync_patch_to_runtime(ctx, result["flow_patch"])
 
         return result
 
@@ -354,6 +369,8 @@ class FreeInputExecutor:
             from dataclasses import asdict
             result["resolved_assets"] = [asdict(m) for m in matches]
             logger.debug("[FreeInputExecutor] AssetResolver 匹配 %d 个资产", len(matches))
+            # 将最佳匹配的背景图写入 patch scene context.locations
+            self._inject_asset_to_patch(result, matches)
 
         return result
 
@@ -397,6 +414,71 @@ class FreeInputExecutor:
                     for i, c in enumerate(choices)
                 ]
         return result
+
+    def _inject_asset_to_patch(self, result: dict[str, Any], matches: list[Any]) -> None:
+        """将 AssetResolver 匹配的背景图写入 patch scene context.locations。
+
+        前端通过 SCENE.current_location 读取背景图 URI 来渲染背景。
+        只取 role=background 的第一个匹配项。
+        """
+        # 找第一个 background 类型的匹配
+        bg_match = None
+        for m in matches:
+            if getattr(m, "role", "") == "background":
+                bg_match = m
+                break
+        if bg_match is None and matches:
+            bg_match = matches[0]
+        if bg_match is None:
+            return
+
+        patch = result.get("flow_patch")
+        if not isinstance(patch, dict):
+            return
+        scene = patch.get("scene")
+        if not isinstance(scene, dict):
+            return
+
+        context = scene.setdefault("context", {})
+        locations = context.setdefault("locations", [])
+        # 写入 location 信息（含 image_url 供前端渲染）
+        locations.clear()
+        locations.append({
+            "name": getattr(bg_match, "asset_id", ""),
+            "image_url": getattr(bg_match, "path", ""),
+        })
+
+    def _sync_patch_to_runtime(self, ctx: InteractiveExecutionContext, patch: dict[str, Any]) -> None:
+        """将 Phase 5/6 修改后的 patch 重新同步到运行时 script。
+
+        grow_flow 在 Phase 3 apply 时 materializer 做了 deepcopy，
+        后续 Phase 5（choices）和 Phase 6（assets）对 patch scene 的修改
+        不会反映到 ctx.script.scenes 中。此方法直接更新编译后的 scene 属性。
+        """
+        scene = patch.get("scene")
+        if not isinstance(scene, dict):
+            return
+        scene_id = str(scene.get("id") or "")
+        if not scene_id:
+            return
+        if not hasattr(ctx.script, "scenes") or not isinstance(ctx.script.scenes, dict):
+            return
+        compiled_scene = ctx.script.scenes.get(scene_id)
+        if compiled_scene is None:
+            return
+
+        # 同步 choices（Phase 5 注入）
+        ca = scene.get("controller_action") or {}
+        new_choices = ca.get("choices")
+        if isinstance(new_choices, list) and hasattr(compiled_scene, "controller_action"):
+            compiled_scene.controller_action.choices = list(new_choices)
+
+        # 同步 context（Phase 6 注入了 locations）
+        new_context = scene.get("context")
+        if isinstance(new_context, dict):
+            compiled_scene.context = dict(new_context)
+
+        logger.debug("[FreeInputExecutor] 同步 patch 到运行时: scene=%s", scene_id)
 
 
 __all__ = ["FreeInputExecutor"]

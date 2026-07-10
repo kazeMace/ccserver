@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from pathlib import Path
@@ -104,23 +105,28 @@ class ScriptLoader(BaseScriptLoader):
             hooks_dir = path / "hooks"
             hook_specs = await self._hook_scanner.scan(hooks_dir)
 
-        # 7. 组装 ScriptBundle
+        # 7. 加载素材库（assets 声明指向外部 JSON）
+        assets = self._load_assets(doc, path)
+
+        # 8. 组装 ScriptBundle
         bundle = ScriptBundle(
             bundle_id=str(uuid.uuid4()),
             source_path=path,
             meta=meta,
             raw_doc=doc,
             roles=roles,
+            assets=assets,
             game_packs=game_packs,
             plugin_specs=plugin_specs,
             hook_specs=hook_specs,
         )
         logger.info(
-            "[ScriptLoader] 加载完成: %s (id=%s, plugins=%d, hooks=%d)",
+            "[ScriptLoader] 加载完成: %s (id=%s, plugins=%d, hooks=%d, assets=%d)",
             meta.name,
             bundle.bundle_id[:8],
             len(plugin_specs),
             len(hook_specs),
+            len(assets),
         )
         return bundle
 
@@ -218,6 +224,63 @@ class ScriptLoader(BaseScriptLoader):
                     ))
 
         return refs
+
+    def _load_assets(self, doc: dict[str, Any], path: Path) -> list[dict[str, Any]]:
+        """从外部 JSON 文件加载素材库。
+
+        DSL 写法：assets: {source: assets.json, type: json}
+        source 路径相对于脚本包目录。
+
+        参数:
+            doc: 原始文档 dict
+            path: 脚本路径（目录或单文件）
+
+        返回:
+            素材列表，每项含 id/name/tags/uri/mimetype 等
+        """
+        assets_spec = doc.get("assets")
+        if not assets_spec:
+            return []
+
+        # 支持 {source, type} 结构
+        if not isinstance(assets_spec, dict):
+            return []
+
+        source_file = assets_spec.get("source")
+        file_type = str(assets_spec.get("type") or "json")
+        if not source_file:
+            return []
+
+        # 确定包目录
+        base_dir = path if path.is_dir() else path.parent
+        asset_path = base_dir / str(source_file)
+
+        if not asset_path.exists():
+            logger.warning("[ScriptLoader] 素材文件不存在: %s", asset_path)
+            return []
+
+        if file_type != "json":
+            logger.warning("[ScriptLoader] 暂不支持素材文件类型: %s", file_type)
+            return []
+
+        try:
+            with open(asset_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (json.JSONDecodeError, OSError) as e:
+            logger.error("[ScriptLoader] 素材文件加载失败: %s, 错误: %s", asset_path, e)
+            return []
+
+        # 支持顶层为列表或 {"assets": [...]} 结构
+        if isinstance(data, list):
+            assets = data
+        elif isinstance(data, dict) and isinstance(data.get("assets"), list):
+            assets = data["assets"]
+        else:
+            logger.warning("[ScriptLoader] 素材文件格式不正确: %s", asset_path)
+            return []
+
+        logger.info("[ScriptLoader] 加载素材 %d 条 from %s", len(assets), asset_path.name)
+        return assets
 
 
 __all__ = ["ScriptLoader"]

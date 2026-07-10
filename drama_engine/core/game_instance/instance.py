@@ -533,12 +533,22 @@ class GameInstance:
                 total = int(state.get_attr("GAME", "total_days") or state.get_attr("GAME", "total_rounds") or 0)
             prog = {"label": phase or "", "current": int(progress_state.round or 0), "total": total}
         seat_id = None if seat in {"host", "public", "audience"} else seat
+        panels = self._extract_panels(seat_id)
+        # 始终注入 SCENE 背景信息（供前端渲染背景图，不依赖 game_pack 声明）
+        state = self._current_game_state()
+        if state is not None:
+            locations = state.get_attr("SCENE", "locations")
+            if locations:
+                panels["scene_bg"] = {
+                    "locations": locations,
+                    "current_location": state.get_attr("SCENE", "current_location") or "",
+                }
         return {
             "seat_id": seat,
             "phase": phase,
             "progress": prog,
             "players": snap.get("seats") or [],
-            "panels": self._extract_panels(seat_id),
+            "panels": panels,
             "self": snap.get("role_card") or {},
         }
 
@@ -591,31 +601,59 @@ class GameInstance:
         current_node = state.get_attr("GAME", "__current_flow_node") or ""
 
         # 从脚本 metadata 提取 flow 树结构
+        # 使用 materialized flow（含 grow_flow 生成的场景），实时计算
         script_data = self.runtime.session.metadata.get("interactive_session", {})
         base_flow = script_data.get("base_flow") or {}
-        flow_def = base_flow.get("flow") or {}
+
+        # 尝试从 runner 实时 materialize（含最新 patches）
+        runner = getattr(self.runtime, "runner", None)
+        journal = getattr(runner, "patch_journal", None) if runner else None
+        if journal and base_flow:
+            from drama_engine.core.runtime.interactive_session.patch.materializer import FlowMaterializer
+            script = getattr(runner, "_script", None)
+            if script:
+                materialized = FlowMaterializer().materialize(script, journal, base_flow)
+                flow_def = materialized.get("flow") or {}
+                scenes_def = materialized.get("scenes") or {}
+            else:
+                flow_def = base_flow.get("flow") or {}
+                scenes_def = base_flow.get("scenes") or {}
+        else:
+            flow_def = base_flow.get("flow") or {}
+            scenes_def = base_flow.get("scenes") or {}
         states_def = flow_def.get("states") or {}
-        scenes_def = base_flow.get("scenes") or {}
 
         # 构建 nodes 列表
         nodes = []
         for state_id, state_spec in states_def.items():
             scene_ids = state_spec.get("scenes") or []
-            # 从 scene 的 publication 或 context 取标题
+            # 从 scene 的 context.title 优先取标题，fallback 到 publication 文本前 30 字
             title = state_id
+            synopsis = ""
             if scene_ids and scene_ids[0] in scenes_def:
                 scene_spec = scenes_def[scene_ids[0]]
-                pub = scene_spec.get("publication", {})
-                msgs = pub.get("messages") or []
-                if msgs and isinstance(msgs[0], dict):
-                    content = msgs[0].get("content") or {}
-                    if isinstance(content, dict):
-                        title = (content.get("text") or state_id)[:30]
-            nodes.append({
+                ctx = scene_spec.get("context") or {}
+                # 优先使用 context.title（生成场景或预设场景设置的剧情名）
+                if ctx.get("title"):
+                    title = str(ctx["title"])
+                else:
+                    pub = scene_spec.get("publication", {})
+                    msgs = pub.get("messages") or []
+                    if msgs and isinstance(msgs[0], dict):
+                        content = msgs[0].get("content") or {}
+                        if isinstance(content, dict):
+                            title = (content.get("text") or state_id)[:30]
+                # 大纲
+                if ctx.get("synopsis"):
+                    synopsis = str(ctx["synopsis"])
+            node_data: dict[str, Any] = {
                 "id": state_id,
                 "title": title,
                 "terminal": bool(state_spec.get("terminal")),
-            })
+            }
+            if synopsis:
+                node_data["synopsis"] = synopsis
+            nodes.append(node_data)
 
         # 构建 edges 列表（从 choices.to 和 transitions）
         edges = []

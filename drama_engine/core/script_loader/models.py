@@ -106,6 +106,9 @@ class ScriptBundle:
     raw_doc: dict[str, Any]
     roles: list[dict[str, Any]] = field(default_factory=list)
 
+    # 素材库（从外部 JSON 加载，供 AssetResolver 匹配）
+    assets: list[dict[str, Any]] = field(default_factory=list)
+
     # 扩展声明
     game_packs: list[GamePackRef] = field(default_factory=list)
     plugin_specs: list[PluginSpec] = field(default_factory=list)
