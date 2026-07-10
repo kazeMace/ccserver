@@ -35,7 +35,6 @@ class ViewContext:
     scene_name: str
     audience: str
     mutation_log: list
-    script_extensions: dict = field(default_factory=dict)
 
 
 @dataclass

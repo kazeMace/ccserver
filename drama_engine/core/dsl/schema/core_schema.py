@@ -10,10 +10,6 @@ from typing import Any
 
 from drama_engine.core.dsl import DslRegistry, build_default_dsl_registry
 from drama_engine.core.runtime_spec import RuntimeRegistry, build_default_runtime_registry
-from drama_engine.core.dsl.extensions import (
-    DomainExtensionRegistry,
-    build_default_domain_extension_registry,
-)
 from drama_engine.core.dsl.game_packs import (
     GamePackRegistry,
     build_default_game_pack_registry,
@@ -186,17 +182,6 @@ REFEREE_FIELD_SCHEMA = DslSchema(
     ),
 )
 
-EXTENSIONS_FIELD_SCHEMA = DslSchema(
-    name="extensions",
-    description="领域扩展声明，例如 board、cards、dice、story、economy、avalon。",
-    fields=(
-        DslField("<extension_name>", "object", False, "扩展配置对象，名称必须来自 DomainExtensionRegistry。"),
-        DslField("enabled", "boolean", False, "扩展是否启用。"),
-        DslField("version", "string", False, "扩展版本约束。"),
-        DslField("config", "object", False, "扩展私有配置。"),
-    ),
-)
-
 GAME_PACK_FIELD_SCHEMA = DslSchema(
     name="game_pack",
     description="Game Pack 元数据声明，表示脚本依赖的游戏包。",
@@ -234,7 +219,6 @@ def build_core_dsl_schema() -> dict[str, Any]:
             "scene": SCENE_FIELD_SCHEMA.to_dict(),
             "publication": PUBLICATION_FIELD_SCHEMA.to_dict(),
             "referee": REFEREE_FIELD_SCHEMA.to_dict(),
-            "extensions": EXTENSIONS_FIELD_SCHEMA.to_dict(),
             "game_pack": GAME_PACK_FIELD_SCHEMA.to_dict(),
             "publish": PUBLISH_FIELD_SCHEMA.to_dict(),
         }
@@ -244,7 +228,6 @@ def build_core_dsl_schema() -> dict[str, Any]:
 def build_core_dsl_capabilities(
     dsl_registry: DslRegistry | None = None,
     runtime_registry: RuntimeRegistry | None = None,
-    extension_registry: DomainExtensionRegistry | None = None,
     game_pack_registry: GamePackRegistry | None = None,
 ) -> dict[str, Any]:
     """Return machine-readable capabilities from current registries.
@@ -258,7 +241,6 @@ def build_core_dsl_capabilities(
     """
     dsl_registry = dsl_registry or build_default_dsl_registry()
     runtime_registry = runtime_registry or build_default_runtime_registry()
-    extension_registry = extension_registry or build_default_domain_extension_registry()
     game_pack_registry = game_pack_registry or build_default_game_pack_registry()
 
     scene_types = []
@@ -300,7 +282,6 @@ def build_core_dsl_capabilities(
             "response_schemas": dsl_registry.response_schema_names(),
             "input_widgets": dsl_registry.input_widget_names(),
             "view_kinds": dsl_registry.view_kind_names(),
-            "domain_extensions": extension_registry.describe_all(),
             "game_packs": game_pack_registry.describe_all(),
             # 【M7.2 修复】authoring_templates 移至 application 层负责添加，
             # core 层不应该依赖 application 层（违反分层原则）。

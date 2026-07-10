@@ -26,6 +26,7 @@ def build_add_scene_patch(
     controller_action: dict[str, Any],
     publication: dict[str, Any],
     context: dict[str, Any] | None = None,
+    state: str | None = None,
 ) -> dict[str, Any]:
     """构造 add_scene patch。
 
@@ -40,6 +41,7 @@ def build_add_scene_patch(
         controller_action: 交互结构
         publication: 发布消息结构
         context: 可选的 scene context（如 cinematic 的 dialogue_history）
+        state: 目标 state id（state_machine 模式下必须指定，否则场景成为游离节点）
 
     返回:
         add_scene patch dict
@@ -56,11 +58,16 @@ def build_add_scene_patch(
     }
     if context is not None:
         scene["context"] = context
-    return {
+
+    patch: dict[str, Any] = {
         "type": "add_scene",
         "after": getattr(ctx, "current_scene_id", ""),
         "scene": scene,
     }
+    # state_machine 模式下指定目标 state，确保新场景归入正确的 state 节点
+    if state:
+        patch["state"] = state
+    return patch
 
 
 class GrowFlowComponent:

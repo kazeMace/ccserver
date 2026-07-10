@@ -11,12 +11,6 @@ game_pack:
   - plugin: builtin.dice
   - plugin: builtin.economy
 
-extensions:
-  dice:
-    enabled: true
-  economy:
-    enabled: true
-
 players:
   count: 2
   ids: [Player_1, Player_2]

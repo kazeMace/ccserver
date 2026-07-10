@@ -280,6 +280,7 @@ def build_default_free_input_component_registry() -> FreeInputComponentRegistry:
         TheClausePlanner,
     )
     from drama_engine.core.runtime.interactive_session.actions.free_input.cross_cutting.choice_designers import (
+        LLMFallbackChoiceDesigner,
         PassthroughChoiceDesigner,
     )
     from drama_engine.core.runtime.interactive_session.actions.free_input.cross_cutting.asset_resolvers import (
@@ -302,6 +303,7 @@ def build_default_free_input_component_registry() -> FreeInputComponentRegistry:
 
     # 内置 ChoiceDesigner
     registry.register_choice_designer("passthrough", PassthroughChoiceDesigner)
+    registry.register_choice_designer("llm_fallback", LLMFallbackChoiceDesigner)
 
     # 内置 AssetResolver
     registry.register_asset_resolver("tag_matcher", TagMatcherAssetResolver)

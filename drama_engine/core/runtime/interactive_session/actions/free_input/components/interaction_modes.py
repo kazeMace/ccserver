@@ -33,11 +33,14 @@ class BranchChoiceMode(InteractionModeComponent):
         parsed_content: dict[str, Any],
         generator_spec: dict[str, Any],
     ) -> dict[str, Any]:
-        return self._human_action(
+        action = self._human_action(
             kind="choice",
             choices=self._format_choices(parsed_content),
             free_input=self._recursive_free_input(generator_spec),
         )
+        # 生成场景继承 auto_advance，确保 cinematic 逐句播放
+        action["controller"] = {"type": "human", "auto_advance": True}
+        return action
 
 
 class FreeInputOnlyMode(InteractionModeComponent):

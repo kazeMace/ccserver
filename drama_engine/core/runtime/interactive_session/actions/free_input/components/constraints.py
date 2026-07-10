@@ -58,6 +58,7 @@ class MaxRoundsConstraint(PlotConstraintComponent):
                     "content": {"text": "剧情在此告一段落。"},
                 }]
             },
+            state=getattr(ctx, "current_state_id", None),
         )
 
     def hint_text(self, grow_state: GrowFlowState) -> str | None:
@@ -96,6 +97,7 @@ class EndingBoundConstraint(PlotConstraintComponent):
                     "content": {"text": "命运的齿轮已经转动，故事即将迎来结局……"},
                 }]
             },
+            state=getattr(ctx, "current_state_id", None),
         )
 
     def hint_text(self, grow_state: GrowFlowState) -> str | None:

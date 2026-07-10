@@ -61,6 +61,7 @@ class CinematicPresentation(PresentationComponent):
             controller_action=ca,
             publication={"messages": []},
             context=scene_context,
+            state=getattr(ctx, "current_state_id", None),
         )
 
 
@@ -112,6 +113,7 @@ class ChatFlowPresentation(PresentationComponent):
             scope=scope,
             controller_action=controller_action,
             publication={"messages": messages},
+            state=getattr(ctx, "current_state_id", None),
         )
 
 
@@ -146,6 +148,7 @@ class VisualNovelPresentation(PresentationComponent):
                     "content": {"text": narration_text},
                 }]
             },
+            state=getattr(ctx, "current_state_id", None),
         )
 
 

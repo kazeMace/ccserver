@@ -230,7 +230,6 @@ class Script:
     concepts: Any = None
     triggers: Any = None
     plugins: Any = None
-    extensions: Any = None
     plugin_registry: Any = None
     runtime: Any = None  # RuntimeSpec；默认由 compiler 填 game_session
     game_pack: Any = None

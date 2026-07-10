@@ -127,7 +127,6 @@ class PublicationEmitter:
                         scene_name=scene.id,
                         audience=str(audience_label),
                         mutation_log=ctx.state.mutation_log(),
-                        script_extensions={},
                     ),
                 )
             except Exception as exc:  # noqa: BLE001 - publication failure should be visible.

@@ -14,10 +14,6 @@ game_pack:
   - plugin: builtin.inventory
   - plugin: builtin.stats
 
-extensions:
-  dice:
-    enabled: true
-
 players:
   count: 1
   ids: [Hero]

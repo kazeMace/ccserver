@@ -13,10 +13,6 @@ game_pack:
     board_size: 15
     win_length: 5
 
-extensions:
-  board:
-    enabled: true
-
 players:
   count: 2
   ids: [Player_1, Player_2]

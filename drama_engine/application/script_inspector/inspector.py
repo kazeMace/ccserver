@@ -8,7 +8,6 @@ from typing import Any
 
 import yaml
 
-from drama_engine.core.dsl.extensions import build_default_domain_extension_registry
 from drama_engine.core.dsl.validator import DslValidator, ValidationReport
 from drama_engine.core.dsl.game_packs import (
     build_default_game_pack_registry,
@@ -59,7 +58,6 @@ class ScriptInspector:
             "factions": self._factions(doc),
             "players": self._players(doc),
             "scopes": self._scopes(doc),
-            "extensions": self._extensions(doc),
             "game_pack": self._game_pack(doc),
             "publish": self._publish(doc),
             "publish_inspection": self._publish_inspection(doc, report),
@@ -81,7 +79,6 @@ class ScriptInspector:
             "title": meta.get("title") or meta.get("name") or "Untitled Script",
             "description": meta.get("description", ""),
             "runtime_type": self._runtime(doc)["type"],
-            "extension_count": len(self._extensions(doc)),
             "has_game_pack": bool(self._game_pack(doc)),
             "min_players": meta.get("min_players"),
             "max_players": meta.get("max_players"),
@@ -150,31 +147,6 @@ class ScriptInspector:
             "assignment": casting.get("assignment") or {},
         }
 
-    def _extensions(self, doc: dict[str, Any]) -> list[dict[str, Any]]:
-        """Return declared domain extensions and registry status."""
-        registry = build_default_domain_extension_registry()
-        spec = doc.get("extensions") or {}
-        if not isinstance(spec, dict):
-            return []
-        result = []
-        for name, config in sorted(spec.items()):
-            item = {
-                "name": name,
-                "registered": registry.has(name),
-                "enabled": True,
-                "version": "",
-                "config": {},
-                "capabilities": [],
-            }
-            if isinstance(config, dict):
-                item["enabled"] = bool(config.get("enabled", True))
-                item["version"] = str(config.get("version", ""))
-                item["config"] = dict(config.get("config") or {})
-            if registry.has(name):
-                item["capabilities"] = registry.describe(name).get("capabilities", [])
-            result.append(item)
-        return result
-
     def _game_pack(self, doc: dict[str, Any]) -> dict[str, Any]:
         """Return declared game pack inspection data."""
         registry = build_default_game_pack_registry()
@@ -223,17 +195,11 @@ class ScriptInspector:
             for item in issue_dict.get("issues", [])
             if item.get("level") in blocking_levels
         ]
-        publish = self._publish(doc)
-        declared_extensions = {item["name"] for item in self._extensions(doc)}
-        required_extensions = set(publish.get("required_extensions") or [])
-        missing_required = sorted(name for name in required_extensions if name not in declared_extensions)
         return {
-            "ready": not blocking and not missing_required,
+            "ready": not blocking,
             "blocking_issue_count": len(blocking),
             "blocking_issue_codes": [item.get("code", "") for item in blocking],
-            "missing_required_extensions": sorted(missing_required),
             "runtime_registered": self._runtime(doc)["registered"],
-            "all_extensions_registered": all(item["registered"] for item in self._extensions(doc)),
             "game_pack_registered": self._game_pack(doc).get("registered", True),
         }
 
