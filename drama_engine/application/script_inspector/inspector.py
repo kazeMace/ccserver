@@ -12,7 +12,6 @@ from drama_engine.core.dsl.extensions import build_default_domain_extension_regi
 from drama_engine.core.dsl.validator import DslValidator, ValidationReport
 from drama_engine.core.dsl.game_packs import (
     build_default_game_pack_registry,
-    build_default_rule_set_registry,
 )
 from drama_engine.core.runtime_spec import build_default_runtime_registry
 
@@ -62,7 +61,6 @@ class ScriptInspector:
             "scopes": self._scopes(doc),
             "extensions": self._extensions(doc),
             "game_pack": self._game_pack(doc),
-            "rule_set": self._rule_set(doc),
             "publish": self._publish(doc),
             "publish_inspection": self._publish_inspection(doc, report),
             "scenes": self._scenes(doc),
@@ -85,7 +83,6 @@ class ScriptInspector:
             "runtime_type": self._runtime(doc)["type"],
             "extension_count": len(self._extensions(doc)),
             "has_game_pack": bool(self._game_pack(doc)),
-            "has_rule_set": bool(self._rule_set(doc)),
             "min_players": meta.get("min_players"),
             "max_players": meta.get("max_players"),
             "role_count": len(roles),
@@ -199,31 +196,6 @@ class ScriptInspector:
             item["supported_runtimes"] = metadata.get("supported_runtimes", [])
         return item
 
-    def _rule_set(self, doc: dict[str, Any]) -> dict[str, Any]:
-        """Return declared rule set inspection data."""
-        registry = build_default_rule_set_registry()
-        spec = doc.get("rule_set") or {}
-        if not isinstance(spec, dict) or not spec:
-            return {}
-        plugin = spec.get("plugin", "")
-        declared_extensions = set((doc.get("extensions") or {}).keys()) if isinstance(doc.get("extensions"), dict) else set()
-        item = {
-            "plugin": plugin,
-            "registered": registry.has(plugin),
-            "version": spec.get("version", ""),
-            "config": spec.get("config") if isinstance(spec.get("config"), dict) else {},
-            "domain": "",
-            "required_extensions": [],
-            "missing_extensions": [],
-        }
-        if registry.has(plugin):
-            metadata = registry.describe(plugin)
-            required = list(metadata.get("required_extensions", []))
-            item["domain"] = metadata.get("domain", "")
-            item["required_extensions"] = required
-            item["missing_extensions"] = sorted(name for name in required if name not in declared_extensions)
-        return item
-
     def _publish(self, doc: dict[str, Any]) -> dict[str, Any]:
         """Return top-level publish metadata."""
         spec = doc.get("publish") or {}
@@ -255,13 +227,6 @@ class ScriptInspector:
         declared_extensions = {item["name"] for item in self._extensions(doc)}
         required_extensions = set(publish.get("required_extensions") or [])
         missing_required = sorted(name for name in required_extensions if name not in declared_extensions)
-        rule_set = self._rule_set(doc)
-        if rule_set:
-            missing_required.extend(
-                name
-                for name in rule_set.get("missing_extensions", [])
-                if name not in missing_required
-            )
         return {
             "ready": not blocking and not missing_required,
             "blocking_issue_count": len(blocking),
@@ -270,7 +235,6 @@ class ScriptInspector:
             "runtime_registered": self._runtime(doc)["registered"],
             "all_extensions_registered": all(item["registered"] for item in self._extensions(doc)),
             "game_pack_registered": self._game_pack(doc).get("registered", True),
-            "rule_set_registered": rule_set.get("registered", True) if rule_set else True,
         }
 
     def _scopes(self, doc: dict[str, Any]) -> list[dict[str, Any]]:

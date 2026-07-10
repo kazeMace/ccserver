@@ -35,7 +35,6 @@ class EffectExecutor:
     # 【H3 修复】内置 effect 类型集合，用于编译期静态校验。
     # 所有 _handle_* 方法对应的 effect.type 都应在此声明。
     BUILTIN_EFFECT_TYPES = frozenset({
-        "rule_set_apply",
         "set_state",
         "add",
         "remove",
@@ -276,39 +275,6 @@ class EffectExecutor:
 
     # ──────────────────────────────────────────────
     # 各类型效果 handler
-    def _handle_rule_set_apply(self, effect: dict, state: State, writer: StateWriter,
-                               responses: list, actor: str | None, extra: dict):
-        """调用当前脚本声明的 rule_set handler。
-
-        effect 字段：
-          result_path — 可选，写入结果的 State 路径，如 GAME.last_rule_result。
-
-        注意：该 effect 只建立通用调用链路；具体规则由 rule_set plugin 实现。
-        """
-        if self._plugins is None:
-            raise ValueError("rule_set_apply 需要 plugin registry")
-
-        rule_set = extra.get("script_rule_set") or {}
-        if not isinstance(rule_set, dict) or not rule_set.get("plugin"):
-            raise ValueError("rule_set_apply 需要脚本顶层 rule_set.plugin 声明")
-
-        from drama_engine.core.plugins import RuleSetContext
-        context = RuleSetContext(
-            state=state,
-            writer=writer,
-            responses=responses,
-            rule_set=rule_set,
-            effect=effect,
-            extra=extra,
-        )
-        result = self._plugins.apply_rule_set(context)
-        result_path = effect.get("result_path")
-        if result_path:
-            target_effect = {"path": result_path}
-            entity, attr = self._resolve_path_target(target_effect, state, responses, actor, extra)
-            writer.apply(SetAttr(entity, attr, result))
-
-
     # 命名约定：_handle_<effect_type>
     # ──────────────────────────────────────────────
 

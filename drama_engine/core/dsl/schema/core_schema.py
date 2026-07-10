@@ -16,9 +16,7 @@ from drama_engine.core.dsl.extensions import (
 )
 from drama_engine.core.dsl.game_packs import (
     GamePackRegistry,
-    RuleSetRegistry,
     build_default_game_pack_registry,
-    build_default_rule_set_registry,
 )
 from drama_engine.core.dsl.schema.types import DslCapability, DslField, DslSchema
 
@@ -209,16 +207,6 @@ GAME_PACK_FIELD_SCHEMA = DslSchema(
     ),
 )
 
-RULE_SET_FIELD_SCHEMA = DslSchema(
-    name="rule_set",
-    description="规则集声明，rule_set_apply effect 通过它找到领域规则处理器。",
-    fields=(
-        DslField("plugin", "string", True, "rule set 插件 ID，必须来自 RuleSetRegistry。"),
-        DslField("version", "string", False, "rule set 版本。"),
-        DslField("config", "object", False, "rule set 私有配置。"),
-    ),
-)
-
 PUBLICATION_FIELD_SCHEMA = DslSchema(
     name="publication",
     description="scene 内发布声明，控制公告、结构化视图和披露时机。",
@@ -248,7 +236,6 @@ def build_core_dsl_schema() -> dict[str, Any]:
             "referee": REFEREE_FIELD_SCHEMA.to_dict(),
             "extensions": EXTENSIONS_FIELD_SCHEMA.to_dict(),
             "game_pack": GAME_PACK_FIELD_SCHEMA.to_dict(),
-            "rule_set": RULE_SET_FIELD_SCHEMA.to_dict(),
             "publish": PUBLISH_FIELD_SCHEMA.to_dict(),
         }
     }
@@ -259,7 +246,6 @@ def build_core_dsl_capabilities(
     runtime_registry: RuntimeRegistry | None = None,
     extension_registry: DomainExtensionRegistry | None = None,
     game_pack_registry: GamePackRegistry | None = None,
-    rule_set_registry: RuleSetRegistry | None = None,
 ) -> dict[str, Any]:
     """Return machine-readable capabilities from current registries.
 
@@ -274,7 +260,6 @@ def build_core_dsl_capabilities(
     runtime_registry = runtime_registry or build_default_runtime_registry()
     extension_registry = extension_registry or build_default_domain_extension_registry()
     game_pack_registry = game_pack_registry or build_default_game_pack_registry()
-    rule_set_registry = rule_set_registry or build_default_rule_set_registry()
 
     scene_types = []
     for name in dsl_registry.scene_type_names():
@@ -317,7 +302,6 @@ def build_core_dsl_capabilities(
             "view_kinds": dsl_registry.view_kind_names(),
             "domain_extensions": extension_registry.describe_all(),
             "game_packs": game_pack_registry.describe_all(),
-            "rule_sets": rule_set_registry.describe_all(),
             # 【M7.2 修复】authoring_templates 移至 application 层负责添加，
             # core 层不应该依赖 application 层（违反分层原则）。
             # 调用方可以在返回后自行补充 ["capabilities"]["authoring_templates"]。

@@ -26,7 +26,7 @@ class AuthoringTemplate:
     script_name: str
     runtime_type: str
     extensions: tuple[str, ...]
-    rule_set: str
+    game_pack: str
     keywords: tuple[str, ...]
     required_questions: tuple[str, ...]
     optional_questions: tuple[str, ...] = field(default_factory=tuple)
@@ -156,7 +156,7 @@ class PartyGameAuthor:
             "defaults": dict(template.defaults),
             "risk_warnings": list(template.risk_warnings),
             "extensions": list(template.extensions),
-            "rule_set": template.rule_set,
+            "game_pack": template.game_pack,
         }
 
     def _load_template_doc(self, template: AuthoringTemplate) -> dict[str, Any]:
@@ -195,7 +195,7 @@ def build_default_authoring_templates() -> list[AuthoringTemplate]:
             script_name="deduction/werewolf.yaml",
             runtime_type="interactive_session",
             extensions=(),
-            rule_set="builtin.social",
+            game_pack="builtin.social",
             keywords=("狼人", "身份", "推理", "social", "deduction", "夜晚", "投票"),
             required_questions=("几人游戏？", "有哪些隐藏身份？", "每轮有哪些白天/夜晚阶段？", "胜利条件是什么？"),
             optional_questions=("是否需要警长？", "是否允许遗言？", "是否有人类玩家参与？"),
@@ -206,7 +206,7 @@ def build_default_authoring_templates() -> list[AuthoringTemplate]:
             script_name="deduction/who_is_undercover.yaml",
             runtime_type="interactive_session",
             extensions=(),
-            rule_set="builtin.social",
+            game_pack="builtin.social",
             keywords=("谁是卧底", "词语", "猜词", "卧底", "word", "guess"),
             required_questions=("平民词和卧底词如何生成？", "每轮发言几次？", "卧底是否有猜词机会？"),
             defaults={"players": 6, "runtime": "interactive_session"},
@@ -216,7 +216,7 @@ def build_default_authoring_templates() -> list[AuthoringTemplate]:
             script_name="cards/uno.yaml",
             runtime_type="interactive_session",
             extensions=("cards",),
-            rule_set="builtin.cards",
+            game_pack="builtin.cards",
             keywords=("卡牌", "UNO", "uno", "出牌", "摸牌", "deck", "card"),
             required_questions=("有哪些牌？", "初始手牌几张？", "摸牌和出牌规则是什么？", "胜利条件是什么？"),
             defaults={"players": 4, "runtime": "interactive_session"},
@@ -226,7 +226,7 @@ def build_default_authoring_templates() -> list[AuthoringTemplate]:
             script_name="board/gomoku.yaml",
             runtime_type="interactive_session",
             extensions=("board",),
-            rule_set="builtin.board",
+            game_pack="builtin.board",
             keywords=("棋盘", "五子棋", "象棋", "围棋", "跳棋", "落子", "board"),
             required_questions=("棋盘尺寸是多少？", "玩家如何移动或落子？", "合法动作和胜利条件是什么？"),
             defaults={"players": 2, "runtime": "interactive_session"},
@@ -236,7 +236,7 @@ def build_default_authoring_templates() -> list[AuthoringTemplate]:
             script_name="economy/monopoly.yaml",
             runtime_type="interactive_session",
             extensions=("board", "dice", "economy"),
-            rule_set="builtin.economy",
+            game_pack="builtin.economy",
             keywords=("大富翁", "地图", "经济", "资产", "交易", "骰子", "map", "economy"),
             required_questions=("地图有哪些格子？", "货币和资产规则是什么？", "交易/破产/胜利条件是什么？"),
             defaults={"players": 2, "runtime": "interactive_session"},
@@ -246,7 +246,7 @@ def build_default_authoring_templates() -> list[AuthoringTemplate]:
             script_name="story/text_adventure_interactive.yaml",
             runtime_type="interactive_session",
             extensions=(),
-            rule_set="",
+            game_pack="",
             keywords=("剧情", "冒险", "文字冒险", "galgame", "分支", "story", "adventure", "DND", "dnd", "跑团"),
             required_questions=("世界设定是什么？", "有哪些关键选择分支？", "有哪些结局？"),
             defaults={"players": 1, "runtime": "interactive_session"},
@@ -256,7 +256,7 @@ def build_default_authoring_templates() -> list[AuthoringTemplate]:
             script_name="deduction/dynamic_schedule_discussion.yaml",
             runtime_type="interactive_session",
             extensions=(),
-            rule_set="",
+            game_pack="",
             keywords=("群聊", "多 Agent", "多agent", "圆桌", "讨论", "group_chat", "chat"),
             required_questions=("群聊主题是什么？", "有哪些参与者角色？", "最多讨论几轮？"),
             defaults={"players": 4, "runtime": "interactive_session"},
