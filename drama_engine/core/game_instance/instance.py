@@ -283,6 +283,12 @@ class GameInstance:
 
     async def start(self) -> None:
         """启动本局。"""
+        # 注入 snapshot_fn 到 runner 的 ctx（非序列化路径）
+        runner = getattr(self.runtime, "runner", None)
+        if runner is not None:
+            ctx = getattr(runner, "_ctx", None)
+            if ctx is not None and hasattr(ctx, "on_checkpoint"):
+                ctx.on_checkpoint = self._auto_checkpoint_fn
         await self.runtime.start()
 
     async def pause(self) -> None:
@@ -751,6 +757,13 @@ class GameInstance:
         return self.runtime.seat_summary()
 
     # ---- 回滚（Checkpoint + append-only timeline）----
+
+    def _auto_checkpoint_fn(self, reason: str) -> None:
+        """自动 checkpoint 回调 — 供 runner 在进入新 state 时调用。"""
+        try:
+            self.snapshots.create_checkpoint(reason)
+        except Exception:  # noqa: BLE001
+            pass  # 自动 checkpoint 失败不应阻塞流程
 
     def checkpoint(self, reason: str) -> dict[str, Any]:
         """在当前时刻创建一个 checkpoint，返回其摘要。"""

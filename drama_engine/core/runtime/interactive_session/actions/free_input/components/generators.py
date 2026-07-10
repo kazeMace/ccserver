@@ -70,15 +70,38 @@ class LLMGrowFlowGenerator(GrowFlowGenerator):
 
         # 响应中已经是解析好的 dict（LLMExecutor 负责 JSON 解析）
         data = response.data
+        if not isinstance(data, dict):
+            logger.warning("[LLMGrowFlowGenerator] LLM 返回非 dict: %s，fallback", type(data))
+            return self._template_fallback()
+
         # 如果返回的是 {"text": "..."} 格式，把 text 当 narration
         if "text" in data and "narration" not in data:
             data["narration"] = data.pop("text")
+
+        # 内容为空时记录原始响应并 fallback，避免下游 guard 拒绝
+        has_narration = bool(data.get("narration") and str(data.get("narration")).strip())
+        has_dialogue = bool(data.get("dialogue_history"))
+        if not has_narration and not has_dialogue:
+            logger.warning(
+                "[LLMGrowFlowGenerator] LLM 返回内容为空，keys=%s raw=%r，fallback",
+                list(data.keys()), response.raw,
+            )
+            return self._template_fallback()
+
         return data
 
     def _template_fallback(self) -> dict[str, Any]:
-        """LLM 不可用时的 fallback（返回固定结构）。"""
+        """LLM 不可用时的 fallback（返回固定结构）。
+
+        同时提供 narration 和 dialogue_history，兼容各 narration_style，
+        避免因缺字段被 SchemaConformanceGuard 拒绝。
+        """
+        text = "剧情继续向前推进。"
         return {
-            "narration": "剧情继续向前推进。",
+            "narration": text,
+            "dialogue_history": [
+                {"speaker": "narrator", "text": text},
+            ],
             "choices": [
                 {"id": "continue", "text": "继续"},
             ],

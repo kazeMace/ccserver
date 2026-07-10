@@ -75,11 +75,13 @@ class ControllerActionExecutor:
         ctx: InteractiveExecutionContext,
         action: ControllerActionSpec,
     ) -> dict[str, Any]:
-        """播片式对话：逐条推送 dialogue_history，每条等玩家点击继续，最后出选项。
+        """播片式对话：逐条推送 dialogue_history，最后出选项。
 
         流程：
         1. 有视频时跳过对话推送（视频已包含这些内容）
-        2. 无视频时：逐条推送对话，每条创建 confirm pending 等玩家点击
+        2. 无视频时：逐条推送对话
+           - auto_advance=true: 一次性推送所有对话行，前端自行逐句揭示
+           - auto_advance=false（默认）: 每条创建 confirm pending 等玩家点击
         3. 对话播完 → 出 choices 选项等玩家选择
         """
         scene_id = ctx.current_scene_id
@@ -87,6 +89,11 @@ class ControllerActionExecutor:
 
         has_video = bool(ctx.state.get_attr("GAME", "__last_scene_had_video"))
         dialogue_history = scene_context.get("dialogue_history") or []
+        # auto_advance: 前端自行控制逐句揭示节奏，后端不阻塞
+        auto_advance = bool(
+            (action.controller or {}).get("auto_advance")
+            or scene_context.get("auto_advance")
+        )
 
         if not has_video and dialogue_history:
             # 找到 human actor
@@ -121,21 +128,21 @@ class ControllerActionExecutor:
                     event["target"] = target
                 ctx.emit_public(event)
 
-                # 每条对话后等玩家点击"下一句"（最后一条不等，直接出选项）
-                is_last = (i == len(dialogue_history) - 1)
-                if not is_last and actor is not None:
-                    # 清除残留的 candidates，设置 confirm 类型请求
-                    if hasattr(actor, "set_candidates"):
-                        actor.set_candidates([])
-                    if hasattr(actor, "set_action_request_hints"):
-                        actor.set_action_request_hints(
-                            kind="choose",
-                            metadata={
-                                "confirm": True,
-                                "options": [{"id": "continue", "text": "继续"}],
-                            },
-                        )
-                    await actor.act("继续", None)
+                # auto_advance 模式不阻塞，前端通过 tap 逐句揭示
+                if not auto_advance:
+                    is_last = (i == len(dialogue_history) - 1)
+                    if not is_last and actor is not None:
+                        if hasattr(actor, "set_candidates"):
+                            actor.set_candidates([])
+                        if hasattr(actor, "set_action_request_hints"):
+                            actor.set_action_request_hints(
+                                kind="choose",
+                                metadata={
+                                    "confirm": True,
+                                    "options": [{"id": "continue", "text": "继续"}],
+                                },
+                            )
+                        await actor.act("继续", None)
 
         # 对话播完（或有视频跳过了对话）→ 出选项
         choices = list(action.choices or [])
@@ -143,14 +150,27 @@ class ControllerActionExecutor:
             response = await self._controller_response(ctx, action, "请选择一个选项。")
             free_input = dict(action.free_input or {})
             if free_input.get("enabled"):
-                free_input["choices"] = choices
-                breakpoint()
-                result = await self._free_input.execute(
-                    ctx,
-                    _infer_free_input_mode(free_input),
-                    free_input,
-                    response,
-                )
+                mode = _infer_free_input_mode(free_input)
+                # grow_flow 模式：先检查用户是否选了带 to: 的预设 choice
+                if mode == "grow_flow":
+                    selected = self._match_predefined_choice(choices, response)
+                    if selected:
+                        result = {
+                            "kind": "choice",
+                            "selected_choice": selected.get("id"),
+                            "to": selected.get("to"),
+                            "text": response.get("text", ""),
+                        }
+                    else:
+                        free_input["choices"] = choices
+                        result = await self._free_input.execute(
+                            ctx, mode, free_input, response,
+                        )
+                else:
+                    free_input["choices"] = choices
+                    result = await self._free_input.execute(
+                        ctx, mode, free_input, response,
+                    )
             else:
                 selected = self._selected_choice_from_response(choices, response)
                 result = {
@@ -182,13 +202,28 @@ class ControllerActionExecutor:
         response = await self._controller_response(ctx, action, "请选择一个选项。")
         free_input = dict(action.free_input or {})
         if free_input.get("enabled"):
-            free_input["choices"] = action.choices
-            result = await self._free_input.execute(
-                ctx,
-                str(free_input.get("mode") or "choose_mapping"),
-                free_input,
-                response,
-            )
+            choices = list(action.choices or [])
+            mode = _infer_free_input_mode(free_input)
+            # grow_flow 模式：先检查用户是否选了带 to: 的预设 choice
+            if mode == "grow_flow":
+                selected = self._match_predefined_choice(choices, response)
+                if selected:
+                    result = {
+                        "kind": "choice",
+                        "selected_choice": selected.get("id"),
+                        "to": selected.get("to"),
+                        "text": response.get("text", ""),
+                    }
+                else:
+                    free_input["choices"] = choices
+                    result = await self._free_input.execute(
+                        ctx, mode, free_input, response,
+                    )
+            else:
+                free_input["choices"] = choices
+                result = await self._free_input.execute(
+                    ctx, mode, free_input, response,
+                )
         else:
             selected = self._selected_choice_from_response(action.choices, response)
             result = {
@@ -350,6 +385,32 @@ class ControllerActionExecutor:
             "to": target,
         })
         ctx.writer.apply(SetAttr("GAME", "choice_history", history))
+
+    def _match_predefined_choice(
+        self,
+        choices: list[dict[str, Any]],
+        response: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """从 response 中精确匹配带 to: 的预设 choice。
+
+        仅当用户通过前端按钮选择了一个预设选项（data 中含 choice/choose ID），
+        且该选项有 to 跳转目标时返回。自由文本输入不匹配。
+
+        返回:
+            匹配的 choice dict（含 to），或 None（进入生成流程）
+        """
+        if not choices:
+            return None
+        data = response.get("data")
+        if not isinstance(data, dict):
+            return None
+        selected_id = data.get("choose") or data.get("choice") or data.get("choice_id")
+        if selected_id is None:
+            return None
+        for choice in choices:
+            if str(choice.get("id")) == str(selected_id) and choice.get("to"):
+                return choice
+        return None
 
     def _selected_choice_from_response(
         self,

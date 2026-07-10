@@ -75,6 +75,8 @@ class InteractiveExecutionContext:
     _firewall: Any = None
     on_progress: Any = None
     hook_runner: Any = None
+    on_persist: Any = None  # 持久化回调：grow 后即时保存 patch journal
+    on_checkpoint: Any = None  # 自动 checkpoint 回调：每次进入新 state 时调用
 
     # ─── 向后兼容属性（逐步废弃直接访问） ──────────────────
 

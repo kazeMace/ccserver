@@ -26,6 +26,9 @@ class FlowExecutor:
             steps += 1
             ctx.current_state_id = current_state_id
             ctx.notify_progress()
+            # 自动 checkpoint：每次进入新 state 时保存快照
+            if ctx.on_checkpoint is not None:
+                ctx.on_checkpoint(f"state:{current_state_id}")
             state_spec = ctx.script.flow.states[current_state_id]
             self._apply_state_effects(ctx, state_spec.entry_effects)
             index = 0

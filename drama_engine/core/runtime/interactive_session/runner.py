@@ -129,6 +129,7 @@ class InteractiveSessionRunner(BasicGameRunner):
             base_raw=deepcopy(script.raw),
             on_progress=ProgressTracker(session_state).record_progress,
             hook_runner=hook_runner,
+            on_persist=self._persist_patches,
         )
         self._ctx = ctx
         session_state.metadata["human_seat_ids"] = list(getattr(session_state, "human_seat_ids", set()))
@@ -265,6 +266,17 @@ class InteractiveSessionRunner(BasicGameRunner):
             self.session_state.set_status("failed")
             self._emit_host({"kind": "session_failed", "runtime_type": "interactive_session", "error": str(exc)})
             logger.exception("[InteractiveSessionRunner] run_flow 失败")
+
+    def _persist_patches(self) -> None:
+        """即时持久化 patch journal 到 session metadata。
+
+        由 FlowGrower.grow() 成功后调用，确保生成的场景不因进程崩溃丢失。
+        """
+        if self._ctx is None:
+            return
+        self.session_state.metadata.setdefault("interactive_session", {})
+        self.session_state.metadata["interactive_session"]["patches"] = self._ctx.patch_journal.snapshot()
+        logger.debug("[InteractiveSessionRunner] patches 已持久化, count=%d", len(self._ctx.patch_journal.snapshot()))
 
     def _resolve_player_names(self, script: Any) -> list[str]:
         """Resolve player/agent seat names."""

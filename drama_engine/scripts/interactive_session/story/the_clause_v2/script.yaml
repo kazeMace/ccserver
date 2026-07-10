@@ -6,11 +6,9 @@ players:
     alive: true
 state:
   STORY:
-    affection_marco: 0
     started: true
   GAME:
     round: 0
-    ended: false
 visibility:
   secret_attrs: []
 guardrail:
@@ -131,18 +129,6 @@ flow:
       scenes:
       - s_27_now_what_b
       transitions: []
-    node_28_end_reason:
-      scenes:
-      - s_28_end_reason
-      terminal: true
-    node_29_end_heart:
-      scenes:
-      - s_29_end_heart
-      terminal: true
-    node_30_end_winner:
-      scenes:
-      - s_30_end_winner
-      terminal: true
 scenes:
   s_01_first_meet:
     type: scene
@@ -162,6 +148,7 @@ scenes:
       enabled: true
       controller:
         type: human
+        auto_advance: true
       kind: cinematic
       choices:
       - id: get_in_car
@@ -186,19 +173,9 @@ scenes:
         generation:
           narration_style: dialogue_sequence
           interaction_mode: branch_choice
+          choices_count: [3, 3]
           constraint:
             type: free
-            ending:
-              candidates:
-              - id: good_ending
-                to: node_29_end_heart
-                when: {left: "STORY.affection_marco", op: "gte", right: 60}
-              - id: neutral_ending
-                to: node_30_end_winner
-                when: null
-              - id: bad_ending
-                to: node_28_end_reason
-                when: {left: "STORY.affection_marco", op: "lt", right: 30}
           presentation: cinematic
     publication:
       messages:
@@ -368,6 +345,7 @@ scenes:
       enabled: true
       controller:
         type: human
+        auto_advance: true
       kind: cinematic
       choices:
       - id: next_day_at_the_office
@@ -389,19 +367,9 @@ scenes:
         generation:
           narration_style: dialogue_sequence
           interaction_mode: branch_choice
+          choices_count: [3, 3]
           constraint:
             type: free
-            ending:
-              candidates:
-              - id: good_ending
-                to: node_29_end_heart
-                when: {left: "STORY.affection_marco", op: "gte", right: 60}
-              - id: neutral_ending
-                to: node_30_end_winner
-                when: null
-              - id: bad_ending
-                to: node_28_end_reason
-                when: {left: "STORY.affection_marco", op: "lt", right: 30}
           presentation: cinematic
     context:
       synopsis: 'Nora is already in the car when the offer lands.
@@ -597,6 +565,7 @@ scenes:
       enabled: true
       controller:
         type: human
+        auto_advance: true
       kind: cinematic
       choices:
       - id: next_day_at_the_office
@@ -618,19 +587,9 @@ scenes:
         generation:
           narration_style: dialogue_sequence
           interaction_mode: branch_choice
+          choices_count: [3, 3]
           constraint:
             type: free
-            ending:
-              candidates:
-              - id: good_ending
-                to: node_29_end_heart
-                when: {left: "STORY.affection_marco", op: "gte", right: 60}
-              - id: neutral_ending
-                to: node_30_end_winner
-                when: null
-              - id: bad_ending
-                to: node_28_end_reason
-                when: {left: "STORY.affection_marco", op: "lt", right: 30}
           presentation: cinematic
     publication:
       messages:
@@ -640,10 +599,6 @@ scenes:
           text: 你没有理会他，继续往前走。但他的话追了上来——一份你无法拒绝的合约提案。
     resolution:
       effects:
-      - type: adjust_attr
-        target: STORY
-        attr: affection_marco
-        delta: 1
       - type: increment_state
         path: GAME.round
         amount: 1
@@ -857,6 +812,7 @@ scenes:
       enabled: true
       controller:
         type: human
+        auto_advance: true
       kind: cinematic
       choices:
       - id: dont_say
@@ -881,19 +837,9 @@ scenes:
         generation:
           narration_style: dialogue_sequence
           interaction_mode: branch_choice
+          choices_count: [3, 3]
           constraint:
             type: free
-            ending:
-              candidates:
-              - id: good_ending
-                to: node_29_end_heart
-                when: {left: "STORY.affection_marco", op: "gte", right: 60}
-              - id: neutral_ending
-                to: node_30_end_winner
-                when: null
-              - id: bad_ending
-                to: node_28_end_reason
-                when: {left: "STORY.affection_marco", op: "lt", right: 30}
           presentation: cinematic
     publication:
       messages:
@@ -1099,6 +1045,7 @@ scenes:
       enabled: true
       controller:
         type: human
+        auto_advance: true
       kind: cinematic
       choices:
       - id: get_ready_for_the_event
@@ -1120,19 +1067,9 @@ scenes:
         generation:
           narration_style: dialogue_sequence
           interaction_mode: branch_choice
+          choices_count: [3, 3]
           constraint:
             type: free
-            ending:
-              candidates:
-              - id: good_ending
-                to: node_29_end_heart
-                when: {left: "STORY.affection_marco", op: "gte", right: 60}
-              - id: neutral_ending
-                to: node_30_end_winner
-                when: null
-              - id: bad_ending
-                to: node_28_end_reason
-                when: {left: "STORY.affection_marco", op: "lt", right: 30}
           presentation: cinematic
     publication:
       messages:
@@ -1142,10 +1079,6 @@ scenes:
           text: 你什么都没说，独自留在会议室，握着他留下的合约副本。随后在他的顶层公寓试装，Marco 给了你一只纯金手镯。
     resolution:
       effects:
-      - type: adjust_attr
-        target: STORY
-        attr: affection_marco
-        delta: 1
       - type: increment_state
         path: GAME.round
         amount: 1
@@ -1309,6 +1242,7 @@ scenes:
       enabled: true
       controller:
         type: human
+        auto_advance: true
       kind: cinematic
       choices:
       - id: get_ready_for_the_event
@@ -1330,19 +1264,9 @@ scenes:
         generation:
           narration_style: dialogue_sequence
           interaction_mode: branch_choice
+          choices_count: [3, 3]
           constraint:
             type: free
-            ending:
-              candidates:
-              - id: good_ending
-                to: node_29_end_heart
-                when: {left: "STORY.affection_marco", op: "gte", right: 60}
-              - id: neutral_ending
-                to: node_30_end_winner
-                when: null
-              - id: bad_ending
-                to: node_28_end_reason
-                when: {left: "STORY.affection_marco", op: "lt", right: 30}
           presentation: cinematic
     publication:
       messages:
@@ -1352,10 +1276,6 @@ scenes:
           text: 你争取了新条款。Marco 意外地欣赏你的强硬。在顶层公寓试装，他为你戴上纯金手镯。
     resolution:
       effects:
-      - type: adjust_attr
-        target: STORY
-        attr: affection_marco
-        delta: 5
       - type: increment_state
         path: GAME.round
         amount: 1
@@ -1527,6 +1447,7 @@ scenes:
       enabled: true
       controller:
         type: human
+        auto_advance: true
       kind: cinematic
       choices:
       - id: refuse_answer
@@ -1551,19 +1472,9 @@ scenes:
         generation:
           narration_style: dialogue_sequence
           interaction_mode: branch_choice
+          choices_count: [3, 3]
           constraint:
             type: free
-            ending:
-              candidates:
-              - id: good_ending
-                to: node_29_end_heart
-                when: {left: "STORY.affection_marco", op: "gte", right: 60}
-              - id: neutral_ending
-                to: node_30_end_winner
-                when: null
-              - id: bad_ending
-                to: node_28_end_reason
-                when: {left: "STORY.affection_marco", op: "lt", right: 30}
           presentation: cinematic
     publication:
       messages:
@@ -1780,6 +1691,7 @@ scenes:
       enabled: true
       controller:
         type: human
+        auto_advance: true
       kind: cinematic
       choices:
       - id: take_off_the_bracelet
@@ -1801,19 +1713,9 @@ scenes:
         generation:
           narration_style: dialogue_sequence
           interaction_mode: branch_choice
+          choices_count: [3, 3]
           constraint:
             type: free
-            ending:
-              candidates:
-              - id: good_ending
-                to: node_29_end_heart
-                when: {left: "STORY.affection_marco", op: "gte", right: 60}
-              - id: neutral_ending
-                to: node_30_end_winner
-                when: null
-              - id: bad_ending
-                to: node_28_end_reason
-                when: {left: "STORY.affection_marco", op: "lt", right: 30}
           presentation: cinematic
     publication:
       messages:
@@ -1823,10 +1725,6 @@ scenes:
           text: 你保持了距离。回到公寓，合约仍在继续，但你们之间多了一层沉默的张力。
     resolution:
       effects:
-      - type: adjust_attr
-        target: STORY
-        attr: affection_marco
-        delta: 1
       - type: increment_state
         path: GAME.round
         amount: 1
@@ -2106,6 +2004,7 @@ scenes:
       enabled: true
       controller:
         type: human
+        auto_advance: true
       kind: cinematic
       choices:
       - id: take_off_the_bracelet
@@ -2127,19 +2026,9 @@ scenes:
         generation:
           narration_style: dialogue_sequence
           interaction_mode: branch_choice
+          choices_count: [3, 3]
           constraint:
             type: free
-            ending:
-              candidates:
-              - id: good_ending
-                to: node_29_end_heart
-                when: {left: "STORY.affection_marco", op: "gte", right: 60}
-              - id: neutral_ending
-                to: node_30_end_winner
-                when: null
-              - id: bad_ending
-                to: node_28_end_reason
-                when: {left: "STORY.affection_marco", op: "lt", right: 30}
           presentation: cinematic
     publication:
       messages:
@@ -2149,10 +2038,6 @@ scenes:
           text: 你向他坦诚解释。Marco 沉默地听着，某种东西在你们之间悄悄松动。
     resolution:
       effects:
-      - type: adjust_attr
-        target: STORY
-        attr: affection_marco
-        delta: 5
       - type: increment_state
         path: GAME.round
         amount: 1
@@ -2435,6 +2320,7 @@ scenes:
       enabled: true
       controller:
         type: human
+        auto_advance: true
       kind: cinematic
       choices:
       - id: stay_for_the_party
@@ -2456,19 +2342,9 @@ scenes:
         generation:
           narration_style: dialogue_sequence
           interaction_mode: branch_choice
+          choices_count: [3, 3]
           constraint:
             type: free
-            ending:
-              candidates:
-              - id: good_ending
-                to: node_29_end_heart
-                when: {left: "STORY.affection_marco", op: "gte", right: 60}
-              - id: neutral_ending
-                to: node_30_end_winner
-                when: null
-              - id: bad_ending
-                to: node_28_end_reason
-                when: {left: "STORY.affection_marco", op: "lt", right: 30}
           presentation: cinematic
     publication:
       messages:
@@ -2658,6 +2534,7 @@ scenes:
       enabled: true
       controller:
         type: human
+        auto_advance: true
       kind: cinematic
       choices:
       - id: blame_marco
@@ -2682,19 +2559,9 @@ scenes:
         generation:
           narration_style: dialogue_sequence
           interaction_mode: branch_choice
+          choices_count: [3, 3]
           constraint:
             type: free
-            ending:
-              candidates:
-              - id: good_ending
-                to: node_29_end_heart
-                when: {left: "STORY.affection_marco", op: "gte", right: 60}
-              - id: neutral_ending
-                to: node_30_end_winner
-                when: null
-              - id: bad_ending
-                to: node_28_end_reason
-                when: {left: "STORY.affection_marco", op: "lt", right: 30}
           presentation: cinematic
     publication:
       messages:
@@ -2860,6 +2727,7 @@ scenes:
       enabled: true
       controller:
         type: human
+        auto_advance: true
       kind: cinematic
       choices:
       - id: _we_ll_see_then__
@@ -2881,19 +2749,9 @@ scenes:
         generation:
           narration_style: dialogue_sequence
           interaction_mode: branch_choice
+          choices_count: [3, 3]
           constraint:
             type: free
-            ending:
-              candidates:
-              - id: good_ending
-                to: node_29_end_heart
-                when: {left: "STORY.affection_marco", op: "gte", right: 60}
-              - id: neutral_ending
-                to: node_30_end_winner
-                when: null
-              - id: bad_ending
-                to: node_28_end_reason
-                when: {left: "STORY.affection_marco", op: "lt", right: 30}
           presentation: cinematic
     publication:
       messages:
@@ -2903,10 +2761,6 @@ scenes:
           text: 你把风波归咎于 Marco。压力之下，你们的关系出现裂痕。
     resolution:
       effects:
-      - type: adjust_attr
-        target: STORY
-        attr: affection_marco
-        delta: 1
       - type: increment_state
         path: GAME.round
         amount: 1
@@ -3093,6 +2947,7 @@ scenes:
       enabled: true
       controller:
         type: human
+        auto_advance: true
       kind: cinematic
       choices:
       - id: _we_ll_see_then__
@@ -3114,19 +2969,9 @@ scenes:
         generation:
           narration_style: dialogue_sequence
           interaction_mode: branch_choice
+          choices_count: [3, 3]
           constraint:
             type: free
-            ending:
-              candidates:
-              - id: good_ending
-                to: node_29_end_heart
-                when: {left: "STORY.affection_marco", op: "gte", right: 60}
-              - id: neutral_ending
-                to: node_30_end_winner
-                when: null
-              - id: bad_ending
-                to: node_28_end_reason
-                when: {left: "STORY.affection_marco", op: "lt", right: 30}
           presentation: cinematic
     publication:
       messages:
@@ -3136,10 +2981,6 @@ scenes:
           text: 你坦白了，也说了不后悔。Marco 看着你，眼神里有你读不懂的东西。
     resolution:
       effects:
-      - type: adjust_attr
-        target: STORY
-        attr: affection_marco
-        delta: 5
       - type: increment_state
         path: GAME.round
         amount: 1
@@ -3339,6 +3180,7 @@ scenes:
       enabled: true
       controller:
         type: human
+        auto_advance: true
       kind: cinematic
       choices:
       - id: cant_trust
@@ -3363,19 +3205,9 @@ scenes:
         generation:
           narration_style: dialogue_sequence
           interaction_mode: branch_choice
+          choices_count: [3, 3]
           constraint:
             type: free
-            ending:
-              candidates:
-              - id: good_ending
-                to: node_29_end_heart
-                when: {left: "STORY.affection_marco", op: "gte", right: 60}
-              - id: neutral_ending
-                to: node_30_end_winner
-                when: null
-              - id: bad_ending
-                to: node_28_end_reason
-                when: {left: "STORY.affection_marco", op: "lt", right: 30}
           presentation: cinematic
     publication:
       messages:
@@ -3588,6 +3420,7 @@ scenes:
       enabled: true
       controller:
         type: human
+        auto_advance: true
       kind: cinematic
       choices:
       - id: get_back_to_work
@@ -3609,19 +3442,9 @@ scenes:
         generation:
           narration_style: dialogue_sequence
           interaction_mode: branch_choice
+          choices_count: [3, 3]
           constraint:
             type: free
-            ending:
-              candidates:
-              - id: good_ending
-                to: node_29_end_heart
-                when: {left: "STORY.affection_marco", op: "gte", right: 60}
-              - id: neutral_ending
-                to: node_30_end_winner
-                when: null
-              - id: bad_ending
-                to: node_28_end_reason
-                when: {left: "STORY.affection_marco", op: "lt", right: 30}
           presentation: cinematic
     publication:
       messages:
@@ -3631,10 +3454,6 @@ scenes:
           text: 争吵。你划下了信任的底线。Marco 没有反驳，只是沉默。
     resolution:
       effects:
-      - type: adjust_attr
-        target: STORY
-        attr: affection_marco
-        delta: 1
       - type: increment_state
         path: GAME.round
         amount: 1
@@ -3814,6 +3633,7 @@ scenes:
       enabled: true
       controller:
         type: human
+        auto_advance: true
       kind: cinematic
       choices:
       - id: get_back_to_work
@@ -3835,19 +3655,9 @@ scenes:
         generation:
           narration_style: dialogue_sequence
           interaction_mode: branch_choice
+          choices_count: [3, 3]
           constraint:
             type: free
-            ending:
-              candidates:
-              - id: good_ending
-                to: node_29_end_heart
-                when: {left: "STORY.affection_marco", op: "gte", right: 60}
-              - id: neutral_ending
-                to: node_30_end_winner
-                when: null
-              - id: bad_ending
-                to: node_28_end_reason
-                when: {left: "STORY.affection_marco", op: "lt", right: 30}
           presentation: cinematic
     publication:
       messages:
@@ -3857,10 +3667,6 @@ scenes:
           text: 你选择站在他这边。'我们是一个团队。'这句话让 Marco 第一次真正卸下防备。
     resolution:
       effects:
-      - type: adjust_attr
-        target: STORY
-        attr: affection_marco
-        delta: 5
       - type: increment_state
         path: GAME.round
         amount: 1
@@ -4076,6 +3882,7 @@ scenes:
       enabled: true
       controller:
         type: human
+        auto_advance: true
       kind: cinematic
       choices:
       - id: refuse_help
@@ -4100,19 +3907,9 @@ scenes:
         generation:
           narration_style: dialogue_sequence
           interaction_mode: branch_choice
+          choices_count: [3, 3]
           constraint:
             type: free
-            ending:
-              candidates:
-              - id: good_ending
-                to: node_29_end_heart
-                when: {left: "STORY.affection_marco", op: "gte", right: 60}
-              - id: neutral_ending
-                to: node_30_end_winner
-                when: null
-              - id: bad_ending
-                to: node_28_end_reason
-                when: {left: "STORY.affection_marco", op: "lt", right: 30}
           presentation: cinematic
     publication:
       messages:
@@ -4312,6 +4109,7 @@ scenes:
       enabled: true
       controller:
         type: human
+        auto_advance: true
       kind: cinematic
       choices:
       - id: leave_his_place
@@ -4333,19 +4131,9 @@ scenes:
         generation:
           narration_style: dialogue_sequence
           interaction_mode: branch_choice
+          choices_count: [3, 3]
           constraint:
             type: free
-            ending:
-              candidates:
-              - id: good_ending
-                to: node_29_end_heart
-                when: {left: "STORY.affection_marco", op: "gte", right: 60}
-              - id: neutral_ending
-                to: node_30_end_winner
-                when: null
-              - id: bad_ending
-                to: node_28_end_reason
-                when: {left: "STORY.affection_marco", op: "lt", right: 30}
           presentation: cinematic
     publication:
       messages:
@@ -4355,10 +4143,6 @@ scenes:
           text: 你拒绝了他，独自扛下一切。走在纽约的街头，你把秘密藏得更深。
     resolution:
       effects:
-      - type: adjust_attr
-        target: STORY
-        attr: affection_marco
-        delta: 1
       - type: increment_state
         path: GAME.round
         amount: 1
@@ -4624,6 +4408,7 @@ scenes:
       enabled: true
       controller:
         type: human
+        auto_advance: true
       kind: cinematic
       choices:
       - id: leave_the_office
@@ -4645,19 +4430,9 @@ scenes:
         generation:
           narration_style: dialogue_sequence
           interaction_mode: branch_choice
+          choices_count: [3, 3]
           constraint:
             type: free
-            ending:
-              candidates:
-              - id: good_ending
-                to: node_29_end_heart
-                when: {left: "STORY.affection_marco", op: "gte", right: 60}
-              - id: neutral_ending
-                to: node_30_end_winner
-                when: null
-              - id: bad_ending
-                to: node_28_end_reason
-                when: {left: "STORY.affection_marco", op: "lt", right: 30}
           presentation: cinematic
     publication:
       messages:
@@ -4667,10 +4442,6 @@ scenes:
           text: 你开口请他来。Marco 放下一切赶到，那一刻你们分享了彼此最深的秘密。
     resolution:
       effects:
-      - type: adjust_attr
-        target: STORY
-        attr: affection_marco
-        delta: 5
       - type: increment_state
         path: GAME.round
         amount: 1
@@ -5000,6 +4771,7 @@ scenes:
       enabled: true
       controller:
         type: human
+        auto_advance: true
       kind: cinematic
       choices:
       - id: go_home
@@ -5021,19 +4793,9 @@ scenes:
         generation:
           narration_style: dialogue_sequence
           interaction_mode: branch_choice
+          choices_count: [3, 3]
           constraint:
             type: free
-            ending:
-              candidates:
-              - id: good_ending
-                to: node_29_end_heart
-                when: {left: "STORY.affection_marco", op: "gte", right: 60}
-              - id: neutral_ending
-                to: node_30_end_winner
-                when: null
-              - id: bad_ending
-                to: node_28_end_reason
-                when: {left: "STORY.affection_marco", op: "lt", right: 30}
           presentation: cinematic
     publication:
       messages:
@@ -5360,6 +5122,7 @@ scenes:
       enabled: true
       controller:
         type: human
+        auto_advance: true
       kind: cinematic
       choices:
       - id: dont_do_that
@@ -5384,19 +5147,9 @@ scenes:
         generation:
           narration_style: dialogue_sequence
           interaction_mode: branch_choice
+          choices_count: [3, 3]
           constraint:
             type: free
-            ending:
-              candidates:
-              - id: good_ending
-                to: node_29_end_heart
-                when: {left: "STORY.affection_marco", op: "gte", right: 60}
-              - id: neutral_ending
-                to: node_30_end_winner
-                when: null
-              - id: bad_ending
-                to: node_28_end_reason
-                when: {left: "STORY.affection_marco", op: "lt", right: 30}
           presentation: cinematic
     publication:
       messages:
@@ -5669,6 +5422,7 @@ scenes:
       enabled: true
       controller:
         type: human
+        auto_advance: true
       kind: cinematic
       choices:
       - id: leave_marco_s_penthouse
@@ -5690,19 +5444,9 @@ scenes:
         generation:
           narration_style: dialogue_sequence
           interaction_mode: branch_choice
+          choices_count: [3, 3]
           constraint:
             type: free
-            ending:
-              candidates:
-              - id: good_ending
-                to: node_29_end_heart
-                when: {left: "STORY.affection_marco", op: "gte", right: 60}
-              - id: neutral_ending
-                to: node_30_end_winner
-                when: null
-              - id: bad_ending
-                to: node_28_end_reason
-                when: {left: "STORY.affection_marco", op: "lt", right: 30}
           presentation: cinematic
     publication:
       messages:
@@ -5712,10 +5456,6 @@ scenes:
           text: 你划清界限。那个几乎发生的吻，最终没有落下。你离开了他的顶层公寓。
     resolution:
       effects:
-      - type: adjust_attr
-        target: STORY
-        attr: affection_marco
-        delta: 1
       - type: increment_state
         path: GAME.round
         amount: 1
@@ -6004,6 +5744,7 @@ scenes:
       enabled: true
       controller:
         type: human
+        auto_advance: true
       kind: cinematic
       choices:
       - id: leave_marco_s_penthouse
@@ -6025,19 +5766,9 @@ scenes:
         generation:
           narration_style: dialogue_sequence
           interaction_mode: branch_choice
+          choices_count: [3, 3]
           constraint:
             type: free
-            ending:
-              candidates:
-              - id: good_ending
-                to: node_29_end_heart
-                when: {left: "STORY.affection_marco", op: "gte", right: 60}
-              - id: neutral_ending
-                to: node_30_end_winner
-                when: null
-              - id: bad_ending
-                to: node_28_end_reason
-                when: {left: "STORY.affection_marco", op: "lt", right: 30}
           presentation: cinematic
     publication:
       messages:
@@ -6047,10 +5778,6 @@ scenes:
           text: '''我们一起碾碎他。''你和 Marco 并肩作战，那个几乎发生的时刻让空气都在燃烧。'
     resolution:
       effects:
-      - type: adjust_attr
-        target: STORY
-        attr: affection_marco
-        delta: 5
       - type: increment_state
         path: GAME.round
         amount: 1
@@ -6330,6 +6057,7 @@ scenes:
       enabled: true
       controller:
         type: human
+        auto_advance: true
       kind: cinematic
       choices:
       - id: get_ready_for_the_ipo_day
@@ -6351,19 +6079,9 @@ scenes:
         generation:
           narration_style: dialogue_sequence
           interaction_mode: branch_choice
+          choices_count: [3, 3]
           constraint:
             type: free
-            ending:
-              candidates:
-              - id: good_ending
-                to: node_29_end_heart
-                when: {left: "STORY.affection_marco", op: "gte", right: 60}
-              - id: neutral_ending
-                to: node_30_end_winner
-                when: null
-              - id: bad_ending
-                to: node_28_end_reason
-                when: {left: "STORY.affection_marco", op: "lt", right: 30}
           presentation: cinematic
     publication:
       messages:
@@ -6690,6 +6408,7 @@ scenes:
       enabled: true
       controller:
         type: human
+        auto_advance: true
       kind: cinematic
       choices:
       - id: panic_silence
@@ -6714,19 +6433,9 @@ scenes:
         generation:
           narration_style: dialogue_sequence
           interaction_mode: branch_choice
+          choices_count: [3, 3]
           constraint:
             type: free
-            ending:
-              candidates:
-              - id: good_ending
-                to: node_29_end_heart
-                when: {left: "STORY.affection_marco", op: "gte", right: 60}
-              - id: neutral_ending
-                to: node_30_end_winner
-                when: null
-              - id: bad_ending
-                to: node_28_end_reason
-                when: {left: "STORY.affection_marco", op: "lt", right: 30}
           presentation: cinematic
     publication:
       messages:
@@ -6964,17 +6673,9 @@ scenes:
       enabled: true
       controller:
         type: human
+        auto_advance: true
       kind: cinematic
       choices:
-      - id: ending_reason
-        text: 几周之后……（理性）
-        to: node_28_end_reason
-      - id: ending_heart
-        text: 几周之后……（随心）
-        to: node_29_end_heart
-      - id: ending_winner
-        text: 几周之后……（双赢）
-        to: node_30_end_winner
       free_input:
         enabled: true
         guards:
@@ -6991,19 +6692,9 @@ scenes:
         generation:
           narration_style: dialogue_sequence
           interaction_mode: branch_choice
+          choices_count: [3, 3]
           constraint:
             type: free
-            ending:
-              candidates:
-              - id: good_ending
-                to: node_29_end_heart
-                when: {left: "STORY.affection_marco", op: "gte", right: 60}
-              - id: neutral_ending
-                to: node_30_end_winner
-                when: null
-              - id: bad_ending
-                to: node_28_end_reason
-                when: {left: "STORY.affection_marco", op: "lt", right: 30}
           presentation: cinematic
     publication:
       messages:
@@ -7169,17 +6860,9 @@ scenes:
       enabled: true
       controller:
         type: human
+        auto_advance: true
       kind: cinematic
       choices:
-      - id: ending_reason
-        text: 几周之后……（理性）
-        to: node_28_end_reason
-      - id: ending_heart
-        text: 几周之后……（随心）
-        to: node_29_end_heart
-      - id: ending_winner
-        text: 几周之后……（双赢）
-        to: node_30_end_winner
       free_input:
         enabled: true
         guards:
@@ -7196,19 +6879,9 @@ scenes:
         generation:
           narration_style: dialogue_sequence
           interaction_mode: branch_choice
+          choices_count: [3, 3]
           constraint:
             type: free
-            ending:
-              candidates:
-              - id: good_ending
-                to: node_29_end_heart
-                when: {left: "STORY.affection_marco", op: "gte", right: 60}
-              - id: neutral_ending
-                to: node_30_end_winner
-                when: null
-              - id: bad_ending
-                to: node_28_end_reason
-                when: {left: "STORY.affection_marco", op: "lt", right: 30}
           presentation: cinematic
     publication:
       messages:
@@ -7396,581 +7069,6 @@ scenes:
         location: Event Space (Day)
       locations:
       - name: Event Space (Day)
-  s_28_end_reason:
-    type: scene
-    scope:
-      id: story
-      visibility: public
-    participants:
-      static:
-      - Player_1
-    schedule:
-      mode: none
-    participant_action:
-      kind: none
-      response:
-        mode: none
-    controller_action:
-      enabled: true
-      controller:
-        type: system
-      kind: narration
-    publication:
-      messages:
-      - audience:
-          scope: story
-        content:
-          text: 结局·理性的选择。律所办公室。你选择了事业与独立，把感情留在了合约结束的那一天。你终于只属于你自己。
-    resolution:
-      effects:
-      - type: set_state
-        path: GAME.ended
-        value: true
-    hooks:
-      on_enter:
-      - type: emit_media
-        kind: video
-        url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/video/dialogue/72842/upload_3858a7cc-32af-47bd-b4b9-9508cf8b34bd.mp4
-        title: 结局·理性的选择。律所办公室。你选择了事...
-        scope: public
-        subtitle_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/subtitles/node_28.srt
-    context:
-      synopsis: Nora made partner. Seth's company is her biggest client. Marco's out of the picture. She has everything she came for. Nick appears in her doorway and leaves without speaking.
-      dialogue_history:
-      - speaker: narrator
-        text: Your name on the door. NORA HAMPTON, PARTNER.
-        location: Law Firm Office
-      - speaker: narrator
-        text: You're at your desk when Harwick comes in. You stand.
-        location: Law Firm Office
-      - speaker: narrator
-        text: He crosses to you. You shake hands.
-        location: Law Firm Office
-      - speaker: Harwick
-        text: Good morning, Nora. How are you doing in your new office?
-        target: Nora
-        location: Law Firm Office
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/13397/d3f4c49d-5e0c-4032-9c03-98ab328ab943.mp3
-      - speaker: Nora
-        text: I'm feeling great here. I love the view.
-        location: Law Firm Office
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/72965/86f9f56b-7da9-470b-ad29-8c8ab4b03331.mp3
-      - speaker: Harwick
-        text: I'm glad you made the right choice. And that you landed Vela as a client. That was well done.
-        target: Nora
-        location: Law Firm Office
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/13397/1d6ed655-7a10-4bb3-832d-3c116603891e.mp3
-      - speaker: Nora
-        text: Thank you. I can't wait to get started.
-        location: Law Firm Office
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/72965/ade06655-6abf-4dae-89f9-f9d0a2513b05.mp3
-      - speaker: Harwick
-        text: We're glad to have you as one of our new partners.
-        target: Nora
-        location: Law Firm Office
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/13397/7c5319be-1fe7-4205-b6a8-c82c026f471b.mp3
-      - speaker: narrator
-        text: He pats your shoulder. Turns. Leaves.
-        location: Law Firm Office
-      - speaker: narrator
-        text: You watch him go. Sit back down.
-        location: Law Firm Office
-      - speaker: narrator
-        text: The brief is already in front of you. You pick up the phone.
-        location: Law Firm Office
-      - speaker: Nora
-        text: Yes, I have the filing in front of me. We're on track for the fifteenth.
-        location: Law Firm Office
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/72965/1a50c5f0-027e-437d-9c19-b2df04a7997b.mp3
-      - speaker: Nora
-        text: The indemnity clause is standard — I'll have the revised draft to you by end of day.
-        location: Law Firm Office
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/72965/96d47c3e-eff9-46ee-9157-d7fc4b601670.mp3
-      - speaker: Nora
-        text: I'll handle this with Mr. Carver later. Yes. He's in charge now.
-        location: Law Firm Office
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/72965/1d48f7b1-a9b4-4677-9199-7a63bdf9399e.mp3
-      - speaker: Nora
-        text: Leave that with me. I'm handling Vela's legal affairs from now on.
-        location: Law Firm Office
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/72965/2159d15d-d0ee-49e1-96ff-3c7d51db79f0.mp3
-      - speaker: narrator
-        text: You end the call. Set the phone down.
-        location: Law Firm Office
-      - speaker: narrator
-        text: The letterhead. Seth's name where Marco's used to be.
-        location: Law Firm Office
-      - speaker: narrator
-        text: You pick up the pen. Sign. Set it down.
-        location: Law Firm Office
-      - speaker: narrator
-        text: You look up.
-        location: Law Firm Office
-      - speaker: narrator
-        text: Nick is in the doorway. He doesn't speak. Neither do you.
-        location: Law Firm Office
-      - speaker: narrator
-        text: You never saw him so quiet.
-        location: Law Firm Office
-      - speaker: narrator
-        text: He looks at you for a long moment. Then he's gone.
-        location: Law Firm Office
-      - speaker: narrator
-        text: You stare at the empty doorway.
-        location: Law Firm Office
-      - speaker: narrator
-        text: You pick up your phone. Scroll until you find it.
-        location: Law Firm Office
-      - speaker: narrator
-        text: The photograph from the party. Neither of you seeing the camera.
-        location: Law Firm Office
-      - speaker: narrator
-        text: You set the phone face down on the desk.
-        location: Law Firm Office
-      - speaker: narrator
-        text: You stand. Cross to the window.
-        location: Law Firm Office
-      - speaker: narrator
-        text: The city below. The brief on your desk behind you. The phone face down beside it.
-        location: Law Firm Office
-      - speaker: narrator
-        text: You got what you came for.
-        location: Law Firm Office
-      locations:
-      - name: Law Firm Office
-  s_29_end_heart:
-    type: scene
-    scope:
-      id: story
-      visibility: public
-    participants:
-      static:
-      - Player_1
-    schedule:
-      mode: none
-    participant_action:
-      kind: none
-      response:
-        mode: none
-    controller_action:
-      enabled: true
-      controller:
-        type: system
-      kind: narration
-    publication:
-      messages:
-      - audience:
-          scope: story
-        content:
-          text: 结局·心的选择。你的公寓，夜晚。你放下所有防备，选择了 Marco。合约早已作废，剩下的只有真心。
-    resolution:
-      effects:
-      - type: set_state
-        path: GAME.ended
-        value: true
-    hooks:
-      on_enter:
-      - type: emit_media
-        kind: video
-        url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/video/dialogue/37723/upload_f6859406-8601-4d68-a661-ec4802e87d46.mp4
-        title: 结局·心的选择。你的公寓，夜晚。你放下所...
-        scope: public
-        subtitle_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/subtitles/node_29.srt
-    context:
-      synopsis: Several weeks after the contract ends, Nora is building her own business on her own terms — she left the firm, she chose Marco, and she has no regrets about either. Marco offers her a position
-        at Vela but she refuses. They are a couple.
-      dialogue_history:
-      - speaker: narrator
-        text: Your apartment. Daytime. Natural light through the windows.
-        location: Nora's Apartment (Night)
-      - speaker: narrator
-        text: 'Coffee table: takeaway containers, a notebook with handwritten pages, a pen, laptop open.'
-        location: Nora's Apartment (Night)
-      - speaker: narrator
-        text: You sit on the couch, phone to your ear. One finger tracking the laptop screen.
-        location: Nora's Apartment (Night)
-      - speaker: Nora
-        text: No, not a restaurant. Private events. You design the whole evening — the food, the space, the atmosphere.
-        target: Marco
-        location: Nora's Apartment (Night)
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/72965/e15d2160-35d2-4b45-b2e7-a57e020fe320.mp3
-      - speaker: Nora
-        text: Different every time.
-        target: Marco
-        location: Nora's Apartment (Night)
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/72965/200157cc-e614-49cb-84a1-c9c21a93e8d4.mp3
-      - speaker: Nora
-        text: Leila, I have seventeen tabs open. I know what I'm doing.
-        target: Marco
-        location: Nora's Apartment (Night)
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/72965/cd8dc572-1c5d-41f7-b7d6-c8d7fd901f3a.mp3
-      - speaker: narrator
-        text: A knock at the door. You look up.
-        location: Nora's Apartment (Night)
-      - speaker: Nora
-        text: I'll call you back.
-        target: Marco
-        location: Nora's Apartment (Night)
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/72965/b1a2552b-9a77-4f66-a7b1-0807a45715be.mp3
-      - speaker: narrator
-        text: You set the phone on the coffee table. Cross to the door.
-        location: Nora's Apartment (Night)
-      - speaker: narrator
-        text: You open it. Marco is there. White bakery box — chocolate donuts — in one hand.
-        location: Nora's Apartment (Night)
-      - speaker: Nora
-        text: Hello you.
-        target: Marco
-        location: Nora's Apartment (Night)
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/72965/f74920dd-409b-462f-9e13-086f2536263b.mp3
-      - speaker: Marco
-        text: Hello handsome.
-        target: Nora
-        location: Nora's Apartment (Night)
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/28296/ecf8bc76-916e-4c07-afd5-25babc4fdb68.mp3
-      - speaker: narrator
-        text: You laugh. Step back. He comes in.
-        location: Nora's Apartment (Night)
-      - speaker: narrator
-        text: You kiss — brief, easy, practiced. He moves past you. Sets the donut box on the coffee table.
-        location: Nora's Apartment (Night)
-      - speaker: Nora
-        text: How are things going?
-        target: Marco
-        location: Nora's Apartment (Night)
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/72965/3b71f07c-cf0d-45f4-a52a-a03f62b4d992.mp3
-      - speaker: Marco
-        text: Pretty good. With Seth out of the picture, I have the full support of the board.
-        target: Nora
-        location: Nora's Apartment (Night)
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/28296/bd5cbcc1-48db-493d-baec-deb8875ca61a.mp3
-      - speaker: Marco
-        text: We can prepare the next phase of the company.
-        target: Nora
-        location: Nora's Apartment (Night)
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/28296/079fbe3e-3d40-4ffc-b7b3-561de388bb18.mp3
-      - speaker: narrator
-        text: He looks at the coffee table. The laptop, the notebook, the chaos.
-        location: Nora's Apartment (Night)
-      - speaker: Marco
-        text: What is all this?
-        target: Nora
-        location: Nora's Apartment (Night)
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/28296/c462a846-99ba-4956-a6be-697df39ba178.mp3
-      - speaker: narrator
-        text: You cross back to the couch. Sit. Pull the laptop toward you.
-        location: Nora's Apartment (Night)
-      - speaker: Nora
-        text: Venues. Formats. I want to do private suppers — curated evenings, different every time.
-        target: Marco
-        location: Nora's Apartment (Night)
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/72965/96def3d8-7002-4fa7-9d17-5b0aa6bb245e.mp3
-      - speaker: narrator
-        text: You turn the screen toward him.
-        location: Nora's Apartment (Night)
-      - speaker: Nora
-        text: The food, the space, the atmosphere all designed around one idea. Still figuring out the first one.
-        target: Marco
-        location: Nora's Apartment (Night)
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/72965/85067660-fedf-4e32-94dd-1c0bdc4cd754.mp3
-      - speaker: narrator
-        text: He looks at you.
-        location: Nora's Apartment (Night)
-      - speaker: Marco
-        text: No regrets? Leaving the law?
-        target: Nora
-        location: Nora's Apartment (Night)
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/28296/22902ce6-169a-4937-acb3-adc8468b8d82.mp3
-      - speaker: narrator
-        text: You look up from the screen. Look at him directly.
-        location: Nora's Apartment (Night)
-      - speaker: Nora
-        text: None. I made a choice. I chose you. And I don't regret that for a second.
-        target: Marco
-        location: Nora's Apartment (Night)
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/72965/d5469104-7cfb-4038-9c8b-5fc81ccae97f.mp3
-      - speaker: narrator
-        text: He crosses to the couch. Sits beside you. Takes your hand. Looks at you.
-        location: Nora's Apartment (Night)
-      - speaker: Marco
-        text: Good. Because I'm not going anywhere.
-        target: Nora
-        location: Nora's Apartment (Night)
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/28296/34fdffe8-62a3-426f-b242-9232d7050683.mp3
-      - speaker: narrator
-        text: You hold his look. Nod once. Turn back to the laptop.
-        location: Nora's Apartment (Night)
-      - speaker: narrator
-        text: He looks at your screen.
-        location: Nora's Apartment (Night)
-      - speaker: Marco
-        text: Vela could still use someone with your—
-        target: Nora
-        location: Nora's Apartment (Night)
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/28296/7a62ef9d-6b7d-409c-9fd2-5336c7c930bd.mp3
-      - speaker: Nora
-        text: I know. But no thank you. For the first time, I'm ready to do something of my own.
-        target: Marco
-        location: Nora's Apartment (Night)
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/72965/3525fbeb-b4f1-42e7-b972-46eb68bd2a81.mp3
-      - speaker: narrator
-        text: He nods. Accepts it. Looks back at the screen.
-        location: Nora's Apartment (Night)
-      - speaker: narrator
-        text: A beat. You look at him. Slight smile.
-        location: Nora's Apartment (Night)
-      - speaker: Nora
-        text: Although. When I need someone to fund the first real location —
-        target: Marco
-        location: Nora's Apartment (Night)
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/72965/ba6415e0-221f-49f7-813c-3cf6014874e3.mp3
-      - speaker: Nora
-        text: I'm hoping I know a handsome billionaire who might consider it.
-        target: Marco
-        location: Nora's Apartment (Night)
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/72965/bc7a6417-a496-4a85-bf91-43a4dc36ba82.mp3
-      - speaker: Marco
-        text: I'll see if I can help on that.
-        target: Nora
-        location: Nora's Apartment (Night)
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/28296/5eb07b85-9a92-4f46-b10a-21ed25d53c23.mp3
-      - speaker: narrator
-        text: You look at him. He means it. You smile.
-        location: Nora's Apartment (Night)
-      - speaker: narrator
-        text: You turn back to the laptop. He settles beside you on the couch.
-        location: Nora's Apartment (Night)
-      - speaker: narrator
-        text: His arm comes around your shoulder — automatic, unthought.
-        location: Nora's Apartment (Night)
-      - speaker: narrator
-        text: You point at something on the screen. He looks where you point.
-        location: Nora's Apartment (Night)
-      - speaker: narrator
-        text: He reaches for a donut. You reach into a takeaway container without looking away from the screen.
-        location: Nora's Apartment (Night)
-      - speaker: narrator
-        text: Both eating. Both looking at the laptop. Neither speaking.
-        location: Nora's Apartment (Night)
-      locations:
-      - name: Nora's Apartment (Night)
-  s_30_end_winner:
-    type: scene
-    scope:
-      id: story
-      visibility: public
-    participants:
-      static:
-      - Player_1
-    schedule:
-      mode: none
-    participant_action:
-      kind: none
-      response:
-        mode: none
-    controller_action:
-      enabled: true
-      controller:
-        type: system
-      kind: narration
-    publication:
-      messages:
-      - audience:
-          scope: story
-        content:
-          text: 结局·赢家通吃。天台之上，城市在脚下。你既赢得了事业，也赢得了他。Nora Hampton 什么都没有放弃。
-    resolution:
-      effects:
-      - type: set_state
-        path: GAME.ended
-        value: true
-    hooks:
-      on_enter:
-      - type: emit_media
-        kind: video
-        url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/video/dialogue/19952/upload_2bc52232-348f-4341-b8b5-71d88fd33967.mp4
-        title: 结局·赢家通吃。天台之上，城市在脚下。你...
-        scope: public
-        subtitle_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/subtitles/node_30.srt
-    context:
-      synopsis: The IPO closed. Seth is gone. She made partner. He kept Vela. On the rooftop, they acknowledge everything the contract became — They have they carreer, they have each other. They kiss.
-      dialogue_history:
-      - speaker: narrator
-        text: Rooftop. Evening. The city below, lit up across every building.
-        location: Rooftop
-      - speaker: narrator
-        text: You stand at the railing. Wine glass in your right hand. Looking out at the city.
-        location: Rooftop
-      - speaker: narrator
-        text: You do not check your phone.
-        location: Rooftop
-      - speaker: narrator
-        text: Marco appears at the rooftop entrance. Pizza box in one hand.
-        location: Rooftop
-      - speaker: narrator
-        text: He crosses to you. Sets the pizza box on the ledge to your right. Stands beside you. Looks out at the city.
-        location: Rooftop
-      - speaker: Nora
-        text: You're late.
-        location: Rooftop
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/72965/839c0971-0f1c-44cc-8363-155fd0891b28.mp3
-      - speaker: Marco
-        text: I brought food.
-        target: Nora
-        location: Rooftop
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/28296/7f4c24b1-dfd0-4272-ba88-3fc47bb642e6.mp3
-      - speaker: narrator
-        text: You look at the pizza box. Look back at the city.
-        location: Rooftop
-      - speaker: Nora
-        text: You're excused then.
-        location: Rooftop
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/72965/a1690173-f840-4ecd-ba90-7b0d135bf9d2.mp3
-      - speaker: narrator
-        text: Both at the railing. A beat of quiet.
-        location: Rooftop
-      - speaker: narrator
-        text: Both looking at the city. You speak first.
-        location: Rooftop
-      - speaker: Nora
-        text: The IPO numbers came in this morning. Final close. We're on a good track.
-        location: Rooftop
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/72965/d1b1f94a-d63b-4ddd-8c2a-c84841be2f02.mp3
-      - speaker: Marco
-        text: I know. Nick called me before my CFO did.
-        target: Nora
-        location: Rooftop
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/28296/abc25093-dd76-4485-bc01-d2ca984fa583.mp3
-      - speaker: Nora
-        text: That sounds like him.
-        location: Rooftop
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/72965/07b2846f-5c1b-4466-adfa-2d644b1f9e02.mp3
-      - speaker: Marco
-        text: With Seth out of the picture, I have the full support of the board.
-        target: Nora
-        location: Rooftop
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/28296/e90186cc-0a2e-4818-ab7d-b44e023b259e.mp3
-      - speaker: Marco
-        text: We can prepare the next phase of the company.
-        target: Nora
-        location: Rooftop
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/28296/906a6d57-6ef8-419b-aa26-26a9fb4feb80.mp3
-      - speaker: Nora
-        text: Good.
-        location: Rooftop
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/72965/a9100eea-51c6-4d20-9916-e34851325e3b.mp3
-      - speaker: narrator
-        text: A beat. You look at your wine glass.
-        location: Rooftop
-      - speaker: Nora
-        text: Harwick called me into his office this morning.
-        location: Rooftop
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/72965/4327e073-d734-489b-ac00-1d8448696321.mp3
-      - speaker: Nora
-        text: He said the firm had decided to offer me partner. Effective immediately.
-        location: Rooftop
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/72965/86d26f6a-afd6-4cb8-ad8b-d17546f1dd50.mp3
-      - speaker: Marco
-        text: You earned it.
-        target: Nora
-        location: Rooftop
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/28296/1ef36ebf-a89d-4cb6-bb62-b895c69b3741.mp3
-      - speaker: narrator
-        text: You nod. Look back at the city.
-        location: Rooftop
-      - speaker: Nora
-        text: I wasn't sure I was going to. For a while I thought I was going to have to choose.
-        location: Rooftop
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/72965/be748315-5373-422e-b4c1-270c9f1d34c0.mp3
-      - speaker: Marco
-        text: Between what?
-        target: Nora
-        location: Rooftop
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/28296/86ee05c8-f1e8-4fda-8b7a-51bf7b012f4b.mp3
-      - speaker: narrator
-        text: You turn to look at him directly.
-        location: Rooftop
-      - speaker: Nora
-        text: You know exactly what.
-        location: Rooftop
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/72965/ac7ccbec-72b3-4aac-9d6e-a52ec98d1275.mp3
-      - speaker: narrator
-        text: He holds your look. Says nothing. You turn back to the city.
-        location: Rooftop
-      - speaker: narrator
-        text: A beat. Both looking out.
-        location: Rooftop
-      - speaker: Nora
-        text: I keep thinking about the contract. The day I drafted it. I thought I had accounted for everything.
-        location: Rooftop
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/72965/f1d850af-7ce6-4f4d-9419-9898631f0285.mp3
-      - speaker: Marco
-        text: You had.
-        target: Nora
-        location: Rooftop
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/28296/70562c59-43cc-4ff8-b7c2-24a381da7786.mp3
-      - speaker: Nora
-        text: Not everything.
-        location: Rooftop
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/72965/3fa0d0ed-c3d9-4564-a213-661131748684.mp3
-      - speaker: Marco
-        text: Neither did I.
-        target: Nora
-        location: Rooftop
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/28296/dcf7aa3a-fc9c-49c5-b704-2374d9b03f38.mp3
-      - speaker: Nora
-        text: We didn't know what we were getting into. But I am glad it happened.
-        location: Rooftop
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/72965/a924b6c5-b446-4467-985d-699621535efc.mp3
-      - speaker: narrator
-        text: He turns to look at you. You are still looking at the city.
-        location: Rooftop
-      - speaker: narrator
-        text: He smiles — small, unguarded. Takes your hand.
-        location: Rooftop
-      - speaker: narrator
-        text: You look at your hands. Look up at him.
-        location: Rooftop
-      - speaker: Nora
-        text: I don't know what comes next.
-        location: Rooftop
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/72965/277e9bf3-2700-49b1-85e7-c28b130056ef.mp3
-      - speaker: narrator
-        text: He looks at you. Holds the look.
-        location: Rooftop
-      - speaker: Marco
-        text: I don't need to. I have you.
-        target: Nora
-        location: Rooftop
-        sound_url: https://assets.castloop.ai/xnarrator-game/editor-beta/1780365598/0/audio/dialogue/28296/da63573b-402a-4495-bda6-85486047c377.mp3
-      - speaker: narrator
-        text: You turn fully toward him.
-        location: Rooftop
-      - speaker: narrator
-        text: He takes your face in his hands.
-        location: Rooftop
-      - speaker: narrator
-        text: He kisses you. Real. Unhurried.
-        location: Rooftop
-      - speaker: narrator
-        text: The city is behind you. The pizza box on the ledge. Your wine glass beside it.
-        location: Rooftop
-      - speaker: narrator
-        text: Wide shot. Both figures at the railing. The city. The kiss.
-        location: Rooftop
-      locations:
-      - name: Rooftop
-referee:
-  enabled: true
-  check_on:
-  - after_scene
-  rules:
-  - when:
-      left: GAME.ended
-      op: equal
-      right: true
-    result:
-      end: story_finished
 concepts:
   scopes:
     story:
