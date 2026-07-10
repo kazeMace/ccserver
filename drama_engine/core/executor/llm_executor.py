@@ -16,6 +16,7 @@ from __future__ import annotations
 import inspect
 import json
 import logging
+import re
 from typing import Any
 
 from drama_engine.core.executor.base import BaseExecutor, ExecutorRequest, ExecutorResponse
@@ -125,26 +126,93 @@ class LLMExecutor(BaseExecutor):
         return {"text": str(raw)}
 
     def _parse_text(self, text: str) -> dict[str, Any]:
-        """解析文本为 JSON dict。"""
-        text = text.strip()
-        # 去除 markdown 代码块标记
-        if text.startswith("```json"):
-            text = text[7:]
-        if text.startswith("```"):
-            text = text[3:]
-        if text.endswith("```"):
-            text = text[:-3]
+        """解析文本为 JSON dict，多策略递进提取。
+
+        策略顺序：
+          1. 直接 json.loads（纯 JSON 响应）
+          2. 去除 markdown 代码块标记后重试
+          3. 用 raw_decode 提取文本中第一个完整 JSON 对象
+          4. fallback：把文本当纯文本返回
+        """
         text = text.strip()
 
+        # 1. 直接解析
+        result = self._try_json_parse(text)
+        if result is not None:
+            return result
+
+        # 2. 去除 markdown 代码块标记后重试
+        stripped = self._strip_markdown_fences(text)
+        if stripped != text:
+            result = self._try_json_parse(stripped)
+            if result is not None:
+                return result
+
+        # 3. 从文本中提取第一个完整 JSON 对象
+        extracted = self._extract_json_object(text)
+        if extracted is not None:
+            return extracted
+
+        # 4. fallback：纯文本
+        return {"text": text}
+
+    def _try_json_parse(self, text: str) -> dict[str, Any] | None:
+        """尝试 json.loads，成功且为 dict 则返回，否则 None。"""
         try:
             result = json.loads(text)
             if isinstance(result, dict):
                 return result
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, ValueError):
+            pass
+        return None
+
+    def _strip_markdown_fences(self, text: str) -> str:
+        """去除 markdown 代码块标记（支持多种变体）。
+
+        支持：```json、```JSON、``` json、```、以及前后有空行的情况。
+        """
+        # 去除开头的 ```json 或 ``` 标记（不区分大小写）
+        text = re.sub(r'^```\s*[jJ][sS][oO][nN]?\s*\n?', '', text)
+        text = re.sub(r'^```\s*\n?', '', text)
+        # 去除结尾的 ``` 标记
+        text = re.sub(r'\n?```\s*$', '', text)
+        return text.strip()
+
+    def _extract_json_object(self, text: str) -> dict[str, Any] | None:
+        """从文本中提取第一个完整 JSON 对象。
+
+        使用 json.JSONDecoder().raw_decode 从第一个 '{' 开始解析，
+        可以正确处理 LLM 在 JSON 前后添加解释性文字的情况。
+        """
+        # 找到第一个 '{' 的位置
+        start = text.find('{')
+        if start == -1:
+            return None
+
+        decoder = json.JSONDecoder()
+        # 从第一个 '{' 开始尝试 raw_decode
+        try:
+            result, _ = decoder.raw_decode(text, start)
+            if isinstance(result, dict):
+                return result
+        except (json.JSONDecodeError, ValueError):
             pass
 
-        # fallback：把文本当纯文本返回
-        return {"text": text}
+        # 如果第一个 '{' 失败，尝试后续的 '{' (可能前面有一个不完整的结构)
+        pos = start + 1
+        while pos < len(text):
+            next_brace = text.find('{', pos)
+            if next_brace == -1:
+                break
+            try:
+                result, _ = decoder.raw_decode(text, next_brace)
+                if isinstance(result, dict):
+                    return result
+            except (json.JSONDecodeError, ValueError):
+                pass
+            pos = next_brace + 1
+
+        return None
 
 
 __all__ = ["LLMExecutor"]

@@ -6,6 +6,7 @@ Generator 负责调用 LLM/模板生成原始内容。
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 
@@ -78,6 +79,15 @@ class LLMGrowFlowGenerator(GrowFlowGenerator):
         if "text" in data and "narration" not in data:
             data["narration"] = data.pop("text")
 
+        # 二次提取：当 LLMExecutor 解析失败，data 只有 narration（由 text rename 而来），
+        # 且内容包含 JSON 结构时，尝试从中提取真正的结构化数据
+        if "narration" in data and "dialogue_history" not in data:
+            narration_text = str(data.get("narration", ""))
+            re_extracted = self._try_extract_json_from_text(narration_text)
+            if re_extracted is not None:
+                logger.info("[LLMGrowFlowGenerator] 二次提取成功，覆盖 fallback 数据")
+                data = re_extracted
+
         # 内容为空时记录原始响应并 fallback，避免下游 guard 拒绝
         has_narration = bool(data.get("narration") and str(data.get("narration")).strip())
         has_dialogue = bool(data.get("dialogue_history"))
@@ -108,6 +118,35 @@ class LLMGrowFlowGenerator(GrowFlowGenerator):
             "should_end": False,
             "ending_id": None,
         }
+
+    def _try_extract_json_from_text(self, text: str) -> dict[str, Any] | None:
+        """从文本中提取第一个包含 dialogue_history 或 narration 的 JSON 对象。
+
+        当 LLMExecutor._parse_text 首次解析失败（如 LLM 在 JSON 前后添加了说明文字），
+        整个响应被作为纯文本 fallback。此方法在 Generator 层进行二次尝试，
+        使用 raw_decode 从中提取有效的 JSON 结构。
+        """
+        # 先确认文本中是否可能包含 JSON
+        if '{' not in text:
+            return None
+
+        decoder = json.JSONDecoder()
+        pos = 0
+        while pos < len(text):
+            brace = text.find('{', pos)
+            if brace == -1:
+                break
+            try:
+                result, end_idx = decoder.raw_decode(text, brace)
+                if isinstance(result, dict):
+                    # 验证提取到的是有意义的剧情结构
+                    if result.get("dialogue_history") or result.get("narration"):
+                        return result
+            except (json.JSONDecodeError, ValueError):
+                pass
+            pos = brace + 1
+
+        return None
 
 
 class TemplateGrowFlowGenerator(GrowFlowGenerator):
