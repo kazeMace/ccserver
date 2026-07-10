@@ -246,7 +246,6 @@ class InteractiveScript:
     # 机制集合引用：{"plugin": "builtin.board", "config": {...}}，或其列表（引入多个集合）；
     # 不含规则本体。
     game_pack: dict[str, Any] | list[dict[str, Any]] = field(default_factory=dict)
-    rule_set: dict[str, Any] | list[dict[str, Any]] = field(default_factory=dict)
     raw: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:

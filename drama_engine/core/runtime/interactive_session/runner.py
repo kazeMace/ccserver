@@ -352,7 +352,7 @@ class InteractiveSessionRunner(BasicGameRunner):
         return state
 
     def _normalize_pack_specs(self, source: Any) -> list[dict]:
-        """把 game_pack / rule_set 声明归一为 spec 列表。
+        """把 game_pack 声明归一为 spec 列表。
 
         支持三种写法：
           - 单个 dict：{plugin: ..., config: ...}
@@ -372,9 +372,9 @@ class InteractiveSessionRunner(BasicGameRunner):
         return specs
 
     def _install_game_pack(self, script: Any, plugins: Any, state: State) -> None:
-        """安装 DSL 声明的 GamePack / RuleSet 机制集合。
+        """安装 DSL 声明的 GamePack 机制集合。
 
-        - 读取 script.game_pack.plugin（或 rule_set.plugin）。
+        - 读取 script.game_pack.plugin。
         - 从运行层 GamePack 注册表取 manifest，把其机制注册进 plugin registry。
         - 把 manifest 默认 config 与 DSL config 合并后写入 GAME.<key>，供机制读取。
         无声明时直接返回（纯剧情/社交推理脚本零关联）。
@@ -382,11 +382,9 @@ class InteractiveSessionRunner(BasicGameRunner):
         from drama_engine.core.plugins import PluginApi
         from drama_engine.core.game_packs import build_default_game_pack_runtime_registry
 
-        # game_pack / rule_set 都可能声明机制集合，且各自都支持单个或列表形式，
-        # 因此一个脚本可以引入任意多个机制集合（例如 RPG = dice + inventory + stats）。
-        specs: list[dict] = []
-        for source in (script.game_pack, script.rule_set):
-            specs.extend(self._normalize_pack_specs(source))
+        # game_pack 支持单个或列表形式，因此一个脚本可以引入任意多个机制集合
+        # （例如 RPG = dice + inventory + stats）。
+        specs: list[dict] = self._normalize_pack_specs(script.game_pack)
         if not specs:
             return
         registry = build_default_game_pack_runtime_registry()
@@ -394,7 +392,7 @@ class InteractiveSessionRunner(BasicGameRunner):
         writer = StateWriter(state)
         for spec in specs:
             plugin_id = spec["plugin"]
-            assert registry.has(plugin_id), f"未知 game_pack/rule_set: {plugin_id}"
+            assert registry.has(plugin_id), f"未知 game_pack: {plugin_id}"
             default_config = registry.install(plugin_id, api)
             merged_config = dict(default_config)
             merged_config.update(dict(spec.get("config") or {}))

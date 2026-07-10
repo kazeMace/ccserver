@@ -6,10 +6,10 @@ runtime:
   type: interactive_session
 
 # 引入骰子 + 经济两个机制集合。dice 提供可回放掷骰与环形移动；economy 提供加钱/扣钱/破产。
+# game_pack 支持列表形式，一个脚本可引入多个机制集合。
 game_pack:
-  plugin: builtin.dice
-rule_set:
-  plugin: builtin.economy
+  - plugin: builtin.dice
+  - plugin: builtin.economy
 
 extensions:
   dice:

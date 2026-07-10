@@ -142,7 +142,6 @@ class InteractiveSessionCompiler:
             guardrail=guardrail,
             plugins=list(canonical.get("plugins") or []),
             game_pack=canonical.get("game_pack") or {},
-            rule_set=canonical.get("rule_set") or {},
             raw=canonical,
         )
 
@@ -686,15 +685,15 @@ class InteractiveSessionCompiler:
           3. referee rules（含 top-level 与 scene 级 referee）的 effects
           4. 上述 effect 内部的嵌套 effect（for_each.effects / pending_resolve.effects）
 
-        白名单 = 内置 effect ∪ 脚本声明的 game_pack/rule_set 提供的机制名。因此声明了
+        白名单 = 内置 effect ∪ 脚本声明的 game_pack 提供的机制名。因此声明了
         builtin.social 的脚本里 tally_votes/eliminate 合法，但拼错的 tally_vote 仍会被抓。
 
         lenient 仅在脚本声明了 `plugins:`（自定义 Python 插件，编译期无法静态解析其 effect 名）
-        时开启——此时未知类型只告警不报错。只声明 game_pack/rule_set 时不进入 lenient，
+        时开启——此时未知类型只告警不报错。只声明 game_pack 时不进入 lenient，
         因为机制名可以从注册表静态解析、typo 应当被拒绝。
         """
         allowed_types = self._resolve_allowed_effect_types(canonical)
-        # 只有声明了无法静态解析的自定义 plugins 时才宽容；game_pack/rule_set 可解析，不宽容。
+        # 只有声明了无法静态解析的自定义 plugins 时才宽容；game_pack 可解析，不宽容。
         lenient = bool(canonical.get("plugins"))
 
         for state_id, state in flow.states.items():
@@ -741,7 +740,7 @@ class InteractiveSessionCompiler:
                     )
 
     def _resolve_allowed_effect_types(self, canonical: dict[str, Any]) -> frozenset[str]:
-        """合并「内置 effect」与「脚本声明的 game_pack/rule_set 机制名」为白名单。
+        """合并「内置 effect」与「脚本声明的 game_pack 机制名」为白名单。
 
         机制名来自 GamePackRuntimeRegistry 的 manifest.mechanisms（effect + condition 混合，
         对 effect 校验宁可放宽也不误伤）。未知/未注册的 pack id 忽略（其存在性由 runner
@@ -751,15 +750,14 @@ class InteractiveSessionCompiler:
         from drama_engine.core.game_packs import build_default_game_pack_runtime_registry
 
         registry = build_default_game_pack_runtime_registry()
-        for source in (canonical.get("game_pack"), canonical.get("rule_set")):
-            for spec in self._normalize_pack_specs(source):
-                plugin_id = spec.get("plugin")
-                if plugin_id and registry.has(plugin_id):
-                    allowed.update(registry.get(plugin_id).mechanisms)
+        for spec in self._normalize_pack_specs(canonical.get("game_pack")):
+            plugin_id = spec.get("plugin")
+            if plugin_id and registry.has(plugin_id):
+                allowed.update(registry.get(plugin_id).mechanisms)
         return frozenset(allowed)
 
     def _normalize_pack_specs(self, source: Any) -> list[dict[str, Any]]:
-        """把 game_pack / rule_set 声明归一为 spec 列表（单个 dict / 列表 / 字符串）。"""
+        """把 game_pack 声明归一为 spec 列表（单个 dict / 列表 / 字符串）。"""
         if source is None:
             return []
         items = source if isinstance(source, list) else [source]
@@ -795,7 +793,7 @@ class InteractiveSessionCompiler:
                 raise ValueError(
                     f"{location} 包含未知的 effect.type: '{effect_type}'。\n"
                     f"合法类型：{', '.join(sorted(allowed_types))}。\n"
-                    f"若为自定义 effect，请在 plugins: 块声明；若为机制 effect，请在 game_pack/rule_set 声明对应包。"
+                    f"若为自定义 effect，请在 plugins: 块声明；若为机制 effect，请在 game_pack 声明对应包。"
                 )
 
         # 递归校验嵌套子 effect（for_each.effects / pending_resolve.effects）。
