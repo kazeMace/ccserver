@@ -42,7 +42,6 @@ where = ["."]
 include = ["ccserver*"]
 exclude = [
     "tests*",
-    "drama_engine*",
     "playground*",
     "records*",
     "legacy_docs*",
