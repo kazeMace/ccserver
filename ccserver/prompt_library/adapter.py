@@ -10,7 +10,7 @@ import importlib
 import json
 from pathlib import Path
 
-from prompt_library.base import PromptLib
+from ccserver.prompt_library.base import PromptLib
 
 # 注册表：lib_id → PromptLib 实例
 _REGISTRY: dict[str, PromptLib] = {}
@@ -33,18 +33,22 @@ def register(lib_id: str, lib: PromptLib) -> None:
 
 
 def _auto_register():
-    """扫描所有 manifest.json，动态 import lib.py 并注册。"""
+    """扫描所有 manifest.json，动态 import lib.py 并注册。
+
+    模块路径基于 __package__（即 ccserver.prompt_library）+ 相对目录拼接，
+    避免依赖 __file__ 到仓库根的相对位置——装到 site-packages 后 parent.parent
+    不再指向包根，硬拼会拿到错误路径。
+    """
+    base_pkg = __package__  # "ccserver.prompt_library"
     for manifest_path in sorted(_PROMPTS_LIB_DIR.rglob("manifest.json")):
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         lib_id = manifest["lib_id"]
         class_name = manifest["class"]
 
-        # 将文件系统路径转为 Python 模块路径
-        # 例：prompt_library/cc_reverse/v2_1_81/lib.py
-        #   → prompt_library.cc_reverse.v2_1_81.lib
-        lib_file = manifest_path.parent / "lib.py"
-        rel = lib_file.relative_to(Path(__file__).parent.parent)
-        module_path = ".".join(rel.with_suffix("").parts)
+        # 把 manifest 所在目录相对 _PROMPTS_LIB_DIR 的相对路径转为模块子路径
+        # 例：cc_reverse/v2_1_81 → ccserver.prompt_library.cc_reverse.v2_1_81.lib
+        rel_dir = manifest_path.parent.relative_to(_PROMPTS_LIB_DIR)
+        module_path = ".".join([base_pkg, *rel_dir.parts, "lib"])
 
         module = importlib.import_module(module_path)
         cls = getattr(module, class_name)

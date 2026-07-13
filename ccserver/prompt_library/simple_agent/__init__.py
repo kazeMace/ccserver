@@ -5,7 +5,7 @@ from __future__ import annotations
 import platform
 from pathlib import Path
 
-from prompt_library.base import PromptLib
+from ccserver.prompt_library.base import PromptLib
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:

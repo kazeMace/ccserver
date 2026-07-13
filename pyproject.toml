@@ -19,27 +19,47 @@ dependencies = [
     "httpx>=0.24.0",
     "html2text>=2020.1.16",
     "prompt_toolkit>=3.0.0",
+    "pyyaml>=6.0",
+    "mcp>=1.0",
+    "beautifulsoup4>=4.12",
 ]
 
 [project.optional-dependencies]
-mcp = ["mcp"]
 gui = ["gradio"]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
 ]
 
-[project.scripts]
-ccserver = "ccserver.server:main"
-cctui = "tui:main"
-drama = "drama_engine.cli:main"
+# 说明：入口脚本尚未整理到 ccserver 包内（server.py / tui.py 目前在仓库根），
+# 打包成 wheel 后无法找到；待后续把入口迁进包再恢复 [project.scripts]。
 
 [tool.setuptools.dynamic]
 version = { file = "VERSION" }
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["ccserver*", "drama_engine*"]
+include = ["ccserver*"]
+exclude = [
+    "tests*",
+    "drama_engine*",
+    "playground*",
+    "records*",
+    "legacy_docs*",
+    "designs*",
+    "refs*",
+    "entry*",
+    "MagicMock*",
+    # 旧顶层 prompt_library 包路径，防止本地残留 __pycache__ 被误收
+    "prompt_library*",
+    # pipeline 运行时数据目录（存 pipeline 生成的 bare-root workspace），不能进 wheel
+    "ccserver.pipeline._bare_roots*",
+]
+
+# 把 prompt_library 的 slot 源文件（.md）与 manifest（.json）随 wheel 分发。
+# 没有这项，装到 site-packages 后 CcReverseV2181._load(...) 会读不到 md 文件。
+[tool.setuptools.package-data]
+"ccserver.prompt_library" = ["**/*.md", "**/*.json"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

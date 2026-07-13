@@ -146,7 +146,7 @@ designs/
 !**/README.md
 !**/CHANGELOG.md
 # prompt_library 的 .md 是 prompt slot 源文件（agent system 依赖），必须纳入版本管理
-!prompt_library/**/*.md
+!ccserver/prompt_library/**/*.md
 MagicMock/
 
 # ─── CCServer 运行时数据 ──────────────────────────────────────────────────────────

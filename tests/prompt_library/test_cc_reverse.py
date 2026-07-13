@@ -1,6 +1,6 @@
 # tests/prompts_lib/test_cc_reverse.py
 from unittest.mock import MagicMock
-from prompt_library.cc_reverse.v2_1_81.lib import CcReverseV2181
+from ccserver.prompt_library.cc_reverse.v2_1_81.lib import CcReverseV2181
 
 
 def _make_session():

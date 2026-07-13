@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from prompt_library.base import PromptLib
+from ccserver.prompt_library.base import PromptLib
 
 if TYPE_CHECKING:
     from ccserver.session import Session
